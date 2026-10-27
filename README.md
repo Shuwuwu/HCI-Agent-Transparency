@@ -1,1 +1,1 @@
-# HCI Agent Transparency
+# CS889 HCI Agent Transparency Project
