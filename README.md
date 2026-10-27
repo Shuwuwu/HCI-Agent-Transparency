@@ -1,1 +1,1 @@
-# HCI-Agent-transparency
+# HCI Agent Transparency
