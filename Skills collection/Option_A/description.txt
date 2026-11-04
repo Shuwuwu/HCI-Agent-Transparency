@@ -1,0 +1,5 @@
+References:
+SkillJect: Effectively Automating Skill-Based Prompt Injection for Skill-Enabled Agents
+arxiv.org/pdf/2602.14211
+github.com/aisa-group/skill-inject 
+
