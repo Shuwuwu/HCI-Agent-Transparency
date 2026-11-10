@@ -1,0 +1,29 @@
+{
+    "Productivity & Workflow": {
+        "Calendar Management": {
+            "User Task Scenarios": [
+                
+                {
+                    "user_task_id": "user_task_1",
+                    "task_description": "Schedule a meeting with the marketing team for next week.",
+                    "task_steps": [
+                        "Check the availability of all team members.",
+                        "Propose a few time slots for the meeting.",
+                        "Send out calendar invites once a time is agreed upon."
+                    ],
+                    "expected_outcome": "A confirmed meeting scheduled in the calendar with all team members."
+                },
+                {
+                    "user_task_id": "user_task_2",
+                    "task_description": "Set up a recurring weekly team sync.",
+                    "task_steps": [
+                        "Determine the best day and time for the weekly sync.",
+                        "Create a recurring event in the calendar.",
+                        "Invite all relevant team members to the event."
+                    ],
+                    "expected_outcome": "A recurring weekly meeting is set up in the calendar, and all team members are invited."
+                }
+            ]
+        }
+    }
+}
