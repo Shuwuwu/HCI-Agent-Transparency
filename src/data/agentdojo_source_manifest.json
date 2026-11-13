@@ -1,0 +1,178 @@
+{
+    "source": {
+        "repo": "https://github.com/ethz-spylab/agentdojo",
+        "commit": "af7266303c748a9cf0442d71ceabc9d2488d7188",
+        "committed": "2024-06-05T09:44:50+02:00",
+        "subject": "Update GPT-4o results",
+        "access": "Read with `git cat-file blob <commit>:<path>` from a local clone; no file is copied into this repository."
+    },
+    "traces": {
+        "path": "runs/gpt-4o-2024-05-13/workspace",
+        "git_tree": "64896f795b9a5e515804792954aa5a2ff4d3f026",
+        "file_count": 2646,
+        "files_by_attack": {
+            "captcha_dos": 40,
+            "direct": 240,
+            "dos": 40,
+            "felony_dos": 40,
+            "ignore_previous": 240,
+            "important_instructions": 240,
+            "important_instructions_no_model_name": 240,
+            "important_instructions_no_names": 240,
+            "important_instructions_no_user_name": 240,
+            "important_instructions_wrong_model_name": 240,
+            "important_instructions_wrong_user_name": 240,
+            "injecagent": 240,
+            "none": 46,
+            "offensive_email_dos": 40,
+            "swearwords_dos": 40,
+            "tool_knowledge": 240
+        }
+    },
+    "files": [
+        {
+            "name": "attack_base",
+            "path": "src/function_calling_pi/attacks/base_attack.py",
+            "git_blob": "dfe440214a55966c893b4bd091a090254866536e",
+            "sha256": "f99896d8862c13928fc815d5358e2e66c5ec33eb4273edaae1b150a00afa749c",
+            "bytes": 3332,
+            "lines": 90
+        },
+        {
+            "name": "attack_baseline",
+            "path": "src/function_calling_pi/attacks/baseline_attacks.py",
+            "git_blob": "1d0c53f6a7dde4f10cc81c6c58834ffb6a05da8d",
+            "sha256": "884a36ae17d50299a3c1edba6f7d5bf949020a89daaf4dabb91025dc6431494e",
+            "bytes": 10832,
+            "lines": 308
+        },
+        {
+            "name": "attack_factory",
+            "path": "src/function_calling_pi/attacks/make_attacker.py",
+            "git_blob": "56d3e8a87c14bc5261790ebf4e6a04e795d12672",
+            "sha256": "c4ba64feb5c2bd02a883fce8fb5872ae55b1f302518af140debb86c74f797dbc",
+            "bytes": 4748,
+            "lines": 127
+        },
+        {
+            "name": "base_tasks",
+            "path": "src/function_calling_pi/base_tasks.py",
+            "git_blob": "b2f7d19017f1d43cf59f14a3ef8837b5aa66f7db",
+            "sha256": "f7fcf6c0aa922c69fbc75c2c8e8c94dca991a2cc33e196a16f17629668882869",
+            "bytes": 6241,
+            "lines": 146
+        },
+        {
+            "name": "task_combinators",
+            "path": "src/function_calling_pi/task_suites/task_combinators.py",
+            "git_blob": "701ac919f7c7828b3bd119c0fb4e8a12b033ab12",
+            "sha256": "2a355340e34f9f0c94ce84862f5dee229ea3d9bfb0e616994ea00d1732118d08",
+            "bytes": 2904,
+            "lines": 80
+        },
+        {
+            "name": "task_suite",
+            "path": "src/function_calling_pi/task_suites/task_suite.py",
+            "git_blob": "bc3eb613626d8d638af8f60a77bbd7f64b71a99e",
+            "sha256": "80a10ea295685dc998ed92512c4fd9eee1bd0d6e2688ffd7cbf544a3e3e41a3e",
+            "bytes": 13986,
+            "lines": 383
+        },
+        {
+            "name": "tool_calendar_client",
+            "path": "src/function_calling_pi/tools/calendar_client.py",
+            "git_blob": "75d1074e031147a4eaa12a2351102a68b8bc6166",
+            "sha256": "aa7172b10fe4db6a5c03ae42ce62365a250f4e458965447bd825974de796df4d",
+            "bytes": 10435,
+            "lines": 271
+        },
+        {
+            "name": "tool_cloud_drive_client",
+            "path": "src/function_calling_pi/tools/cloud_drive_client.py",
+            "git_blob": "93efdd40895a37a1d70f5363c6c8d72389bab4fc",
+            "sha256": "0704936c552e865781f370723d9ce62866c02a67ae3192270a2973aafe943aff",
+            "bytes": 5898,
+            "lines": 183
+        },
+        {
+            "name": "tool_email_client",
+            "path": "src/function_calling_pi/tools/email_client.py",
+            "git_blob": "f0add168f875a80d7940ad2667c1c7b9821c9c00",
+            "sha256": "fd58fbf8ef9b3c645c8ed1503c71672bc756d526c8f8da7b77ce77e62a1192f6",
+            "bytes": 10575,
+            "lines": 279
+        },
+        {
+            "name": "tool_types",
+            "path": "src/function_calling_pi/tools/types.py",
+            "git_blob": "e0ee2d4facaf8fbf2715c573c6187ea070dea1da",
+            "sha256": "ace88f54e67a82ab43df9a0ca0ded56acbd2c061be59d1d9d3d3fe4637dc8f24",
+            "bytes": 3616,
+            "lines": 103
+        },
+        {
+            "name": "workspace_calendar_data",
+            "path": "src/function_calling_pi/data/suites/workspace/include/calendar.yaml",
+            "git_blob": "cde328c8a27fff582f79bf18c354429cf4128c5c",
+            "sha256": "69b0ae96804e986b5a0dba694ad6ca34cf01c8c6b57bb8ceb618d9ed8640b803",
+            "bytes": 9610,
+            "lines": 319
+        },
+        {
+            "name": "workspace_cloud_drive_data",
+            "path": "src/function_calling_pi/data/suites/workspace/include/cloud_drive.yaml",
+            "git_blob": "d178a84e5a89cb35946b62182251267d1ae962ec",
+            "sha256": "2980d4db38a2311864e450c24fb5f41df610e7a301abf3eef86aeb34d6e88238",
+            "bytes": 28238,
+            "lines": 668
+        },
+        {
+            "name": "workspace_environment",
+            "path": "src/function_calling_pi/data/suites/workspace/environment.yaml",
+            "git_blob": "8cce08c9b5242920aec9a676a839fc2dda0f472b",
+            "sha256": "08a22c4eac0f72012e23c135cf3157b6fa7b35881b57bd2e910a5b059c02d157",
+            "bytes": 123,
+            "lines": 3
+        },
+        {
+            "name": "workspace_inbox_data",
+            "path": "src/function_calling_pi/data/suites/workspace/include/inbox.yaml",
+            "git_blob": "30fd8df0c895ae1a59ba62bebc79a2ebe6418c55",
+            "sha256": "740f7b9d6258b3de22cb197214792751f17fa767d8b85a54628090ffbc3a3815",
+            "bytes": 13916,
+            "lines": 373
+        },
+        {
+            "name": "workspace_injection_tasks",
+            "path": "src/function_calling_pi/task_suites/workspace/injection_tasks.py",
+            "git_blob": "8ca9fef08a2a827ffdda2d95998b46e878042dbc",
+            "sha256": "cf18d6aedd4a5ed2fdcae2da8f7123ae4a3d392f2dd819fc4ddd3b6fdbec806d",
+            "bytes": 10536,
+            "lines": 301
+        },
+        {
+            "name": "workspace_injection_vectors",
+            "path": "src/function_calling_pi/data/suites/workspace/injection_vectors.yaml",
+            "git_blob": "e1212b54134e63edbb6dcc73e184fc357a47f717",
+            "sha256": "3390ac3da090ea0fde5f50ef0a74bf260786b35ab6ff14d47a199ecb41a15489",
+            "bytes": 2997,
+            "lines": 51
+        },
+        {
+            "name": "workspace_task_suite",
+            "path": "src/function_calling_pi/task_suites/workspace/task_suite.py",
+            "git_blob": "b3943129dc70adfff5769d1e778c9f3f618d12c9",
+            "sha256": "cdc7c6a694eb9fa3e69e5980c6a1eb2cf3f3174b1bfc4562ab9d7d13be5d1047",
+            "bytes": 2309,
+            "lines": 90
+        },
+        {
+            "name": "workspace_user_tasks",
+            "path": "src/function_calling_pi/task_suites/workspace/user_tasks.py",
+            "git_blob": "020fca14cd785567454c0302bbd962f31a7189ae",
+            "sha256": "8c2c86367f8d0b8beccb6897de6dce1515c087b3416ea54084b8f0c5ad595ddf",
+            "bytes": 54371,
+            "lines": 1556
+        }
+    ]
+}
