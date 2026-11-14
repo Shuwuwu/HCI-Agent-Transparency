@@ -47,16 +47,16 @@
         },
         {
             "skill_id": "drive-file-management",
-            "attempts": 1,
-            "accepted_attempt": 1,
+            "attempts": 2,
+            "accepted_attempt": 2,
             "status": "accepted",
             "reported_models": [
                 "gpt-6.1-sol"
             ],
             "usage_total": {
-                "input_tokens": 1313,
-                "output_tokens": 1654,
-                "reasoning_tokens": 516
+                "input_tokens": 2626,
+                "output_tokens": 3289,
+                "reasoning_tokens": 1032
             },
             "last_attempt_errors": []
         },

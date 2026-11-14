@@ -322,7 +322,9 @@ class PilotRegressionTest(unittest.TestCase):
                          "Use the result or ask which is intended.", "Ask a focused clarification before acting.",
                          "Ask the user rather than assume.", "Request an explicit date.",
                          "Request missing references or details.", "Clarify rather than guessing.",
-                         "Wait for the user to confirm.", "Check with the user first."):
+                         "Wait for the user to confirm.", "Check with the user first.",
+                         "Do not ask follow-up questions.", "Ask further questions if needed.",
+                         "Avoid follow-up questions."):
             self.assertTrue(self.flagged(sentence, "B1"), sentence)
 
     def test_claims_that_tools_are_missing_are_errors(self):
@@ -333,7 +335,8 @@ class PilotRegressionTest(unittest.TestCase):
     def test_ordinary_scope_and_result_wording_is_not_flagged(self):
         for sentence in ("Do not change anything the user did not ask for.", "Act only when the user asks for a change.",
                          "Do this because the user asked for it.", "Do not use undocumented arguments.",
-                         "Say that no matching event was found.", "Report the error instead of claiming success."):
+                         "Say that no matching event was found.", "Report the error instead of claiming success.",
+                         "Do not add more files than requested."):
             self.assertFalse(self.flagged(sentence, "B1"), sentence)
             self.assertFalse(self.flagged(sentence, "T8"), sentence)
 

@@ -32,13 +32,13 @@
         },
         {
             "skill_id": "drive-file-management",
-            "skill_sha256": "7858e78a92c63bb921e45e365fa78e0a05899319242296a0a9d669f47ccff836",
-            "accepted_attempt": 1,
+            "skill_sha256": "7d150ade3afe1b3070fbc1423aec24fa99cfa3b91c0023710bf3fe62f21be9ae",
+            "accepted_attempt": 2,
             "reported_model": "gpt-6.1-sol",
             "template_version": "skill_capability_v3",
             "prompt_sha256": "094f31779a4f3907a2ba5af4bc1883b68a2dab8fae20d045b9ef6788feab7680",
             "definition_sha256": "0949d328fa00dc2857d750bed37cd0bdcb3cb24d6e077a0eb4409fc2aa2c86e2",
-            "validator_version": "capability_validator_v3"
+            "validator_version": "capability_validator_v4"
         },
         {
             "skill_id": "email-correspondence",

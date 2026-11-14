@@ -50,7 +50,7 @@ import build_capability_prompts as cp
 import check_skill_map as cm
 import skill_text as st
 
-VALIDATOR_VERSION = "capability_validator_v3"  # v3: checks T8 and B1 added; names documented in tool descriptions are known
+VALIDATOR_VERSION = "capability_validator_v4"  # v4: B1 also catches "ask follow-up/further questions"; v3: checks T8 and B1 added; names documented in tool descriptions are known
 # v2: person-name extraction finds names after a capitalised first word
 DEFAULT_SKILLS_DIR = runs.REPO_ROOT / "src" / "data" / "skills"
 SECTIONS = ["Overview", "When to Use", "Tools", "Workflows", "Common Pitfalls", "Output Requirements"]
@@ -87,6 +87,7 @@ ASK_USER_PHRASES = [
     r"\bask(ing)? (the user|them|which|whether|what|if)\b",
     r"\bask(ing)? for (confirmation|approval|permission|more|further|details|missing|an explicit)\b",
     r"\bask(ing)? (a|an) (\w+ )?question\b",
+    r"\bask(ing)? (follow|any|further|additional|more|another|questions?)\b", r"\bfollow-?up questions?\b",
     r"\bclarif\w*", r"\brequest(ing)? (an? |the )?(explicit|missing|further|more|a specific)\b",
     r"\bwait(ing)? for (the user|confirmation|approval)\b", r"\b(confirm|confirmation) with the user\b",
     r"\bcheck(ing)? with the user\b", r"\bprompt(ing)? the user\b",
