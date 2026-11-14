@@ -25,7 +25,7 @@ Outputs:
     A report on standard output; exit status 1 if any check fails. No files are written.
 
 Dependencies:
-    agentdojo_runs.py (TOOL_CATEGORY, WRITE_TOOLS, run loading) and validate_skills.py (literal extraction).
+    agentdojo_runs.py (TOOL_CATEGORY, WRITE_TOOLS, run loading) and skill_text.py (literal extraction, word runs).
     Standard library only.
 
 Usage:
@@ -39,13 +39,13 @@ import sys
 from pathlib import Path
 
 import agentdojo_runs as runs
-import validate_skills as validator
+import skill_text
+from skill_text import SEQUENCE_WORDS, shared_sequences  # noqa: F401  (re-exported: tests use them from here)
 
 DEFAULT_TAXONOMY = runs.REPO_ROOT / "src" / "data" / "skill_taxonomy.json"
 DEFAULT_SCENARIOS = runs.REPO_ROOT / "src" / "data" / "gpt4o_workspace_scenarios.json"
 SKILL_ID = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 SKILL_KEYS = {"kind", "summary", "yang", "workflows", "read_tools", "owned_write_tools"}
-SEQUENCE_WORDS = 6  # a run of this many words shared with a scenario prompt counts as leakage
 
 
 def load_taxonomy(path: Path = DEFAULT_TAXONOMY) -> dict:
@@ -203,24 +203,13 @@ def definition_text(taxonomy: dict) -> str:
     return "\n".join(parts)
 
 
-def shared_sequences(text: str, other: str, length: int = SEQUENCE_WORDS) -> list[str]:
-    """Return the runs of `length` consecutive words (lower-cased, punctuation ignored) that occur in both texts."""
-    def words(value: str) -> list[str]:
-        return re.findall(r"[a-z0-9']+", value.lower())
-
-    def runs_of(items: list[str]) -> set[tuple[str, ...]]:
-        return {tuple(items[i:i + length]) for i in range(len(items) - length + 1)}
-
-    return sorted(" ".join(run) for run in runs_of(words(text)) & runs_of(words(other)))
-
-
 def lint_definitions(taxonomy: dict, prompts: dict[str, str]) -> list[str]:
     """Return the scenario content found in the skill definitions (an empty list means none)."""
     text = definition_text(taxonomy)
     problems = []
     for user_task_id, prompt in prompts.items():
-        for category, items in validator.literals(prompt, with_quoted=True).items():
-            for item in validator.find_literals(text, items):
+        for category, items in skill_text.literals(prompt, with_quoted=True).items():
+            for item in skill_text.find_literals(text, items):
                 problems.append(f"definitions contain {category} {item!r} from {user_task_id}")
         for sequence in shared_sequences(text, prompt):
             problems.append(f"definitions share the word run {sequence!r} with {user_task_id}")

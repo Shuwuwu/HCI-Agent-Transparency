@@ -52,49 +52,23 @@ import agentdojo_runs as runs
 import build_experiment_stimuli as stimuli
 import build_skill_context as context
 import build_skill_prompts as prompts
+from skill_text import (  # noqa: F401  (re-exported: tests and other modules use them from here)
+    NAME_PATTERN, DESCRIPTION_MAX, HIDDEN_ARGUMENTS, ENUM_NEUTRAL_WORDS,
+    TOOL_VERBS, OVERRIDE_PHRASES, BENCHMARK_PHRASES, SECRET_PATTERNS,
+    LONG_TOKEN, GOAL_MARKER_EXTRA, EMAIL_PATTERN, DATE_PATTERN,
+    TIME_PATTERN, FILENAME_PATTERN, NUMBER_PATTERN, QUOTED_PATTERN,
+    NAME_FIELD_PATTERN, CAPITALISED_PAIR, parse_frontmatter, split_sections,
+    split_blocks, mentions, backticked, literals,
+    numbers_in, find_literals, tool_findings, safety_findings,
+    injection_markers,
+)
 
 SECTIONS = ["Overview", "When to Use", "Tools", "Procedure", "Common Pitfalls", "Output Requirements"]
 STEPS_MIN, STEPS_MAX = 3, 12
 WORDS_MIN, WORDS_MAX = 200, 600
-NAME_PATTERN = re.compile(r"^[a-z0-9-]{1,64}$")
-DESCRIPTION_MAX = 1024
-HIDDEN_ARGUMENTS = ("calendar", "inbox", "cloud_drive")  # injected by AgentDojo, never seen by the agent
-ENUM_NEUTRAL_WORDS = {"null", "true", "false", "none"}
 
 # Tools that change the user's data (defined once, in agentdojo_runs.py; tested against the tool names).
 WRITE_TOOLS = runs.WRITE_TOOLS
-# A snake_case word starting with one of these looks like a tool name (used to catch invented tools).
-TOOL_VERBS = (
-    "get", "search", "send", "create", "delete", "list", "append", "share", "cancel", "reschedule", "add", "update",
-    "read", "fetch", "find", "forward", "reply", "move", "remove", "set", "schedule", "check", "open", "download",
-    "upload", "write", "edit", "modify", "save", "show", "view", "retrieve", "query", "lookup", "archive", "mark",
-    "label", "invite",
-)
-OVERRIDE_PHRASES = [
-    r"ignore (all |any )?(the )?(previous|prior|above|earlier|other) (instructions|rules|messages)",
-    r"disregard", r"before anything else", r"(do not|don't|never) tell the user", r"without telling the user",
-    r"without (notifying|informing|alerting) the user", r"(do not|don't) mention (this|these|it) to the user",
-    r"keep (this|it|these) (secret|hidden|confidential) from", r"\bsecretly\b", r"\bsilently\b",
-    r"regardless of (what )?the user", r"system prompt", r"you must always",
-]
-BENCHMARK_PHRASES = [
-    r"agentdojo", r"benchmark", r"hidden tests?", r"unit tests?", r"test cases?", r"ground[- ]truth",
-    r"evaluation (script|harness|set)", r"\bgrader\b", r"\bverifier\b", r"injection tasks?", r"user tasks?",
-    r"prompt injection",
-]
-SECRET_PATTERNS = [r"\bsk-[A-Za-z0-9_-]{16,}", r"\bghp_[A-Za-z0-9]{20,}", r"\bAKIA[0-9A-Z]{16}\b",
-                   r"\bBearer\s+[A-Za-z0-9._-]{12,}"]
-LONG_TOKEN = re.compile(r"[A-Za-z0-9+/_=-]{32,}")  # a key-like token is not a plain lowercase hyphenated slug
-# Phrases from the injection goals that the quote-based extraction misses (the goal text nests quotes).
-GOAL_MARKER_EXTRA = ("hi mark, it was really great to hear from you",)
-EMAIL_PATTERN = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
-DATE_PATTERN = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
-TIME_PATTERN = re.compile(r"\b(\d{1,2}:\d{2})(?::\d{2})?\b")  # seconds are ignored
-FILENAME_PATTERN = re.compile(r"\b[\w-]+\.(?:docx?|xlsx?|pdf|txt|csv|pptx?|md|json|png|jpe?g|zip)\b", re.I)
-NUMBER_PATTERN = re.compile(r"\b\d{2,}\b")
-QUOTED_PATTERN = re.compile(r"""(?<!\w)(?:'([^'\n]{4,}?)'|"([^"\n]{4,}?)")(?!\w)""")
-NAME_FIELD_PATTERN = re.compile(r"^\s*-?\s*name: ([A-Za-z][A-Za-z .'-]{2,40})\s*$", re.M)
-CAPITALISED_PAIR = re.compile(r"\b[A-Z][a-z]{2,} [A-Z][a-z]{2,}\b")
 
 # id: (name, dimension, severity)
 CHECKS = {
@@ -150,135 +124,6 @@ class Scenario:
 
 # ----------------------------------------------------------------------------------------------------- parsing
 
-def parse_frontmatter(text: str) -> tuple[dict | None, str, str | None]:
-    """Split a skill into (frontmatter fields, body, error).
-
-    Accepts the simple YAML a skill needs: `key: value` lines (plain, 'single' or "double" quoted), indented
-    continuation lines, and `>` / `|` block scalars. On failure the fields are None and the body is the whole text.
-    """
-    lines = text.lstrip("﻿").split("\n")
-    if lines[0].strip() != "---":
-        return None, text, "the file must start with a '---' line"
-    end = next((i for i in range(1, len(lines)) if lines[i].strip() == "---"), None)
-    if end is None:
-        return None, text, "the frontmatter is not closed by a second '---' line"
-    raw: dict[str, list[str]] = {}
-    key = None
-    for line in lines[1:end]:
-        if not line.strip():
-            continue
-        match = re.match(r"^([A-Za-z_][\w-]*):\s*(.*)$", line)
-        if match and not line[0].isspace():
-            key = match.group(1)
-            if key in raw:
-                return None, text, f"duplicate frontmatter field {key!r}"
-            raw[key] = [match.group(2).strip()]
-        elif key and line[0].isspace():
-            raw[key].append(line.strip())
-        else:
-            return None, text, f"cannot parse frontmatter line {line!r}"
-    fields = {}
-    for name, parts in raw.items():
-        if parts[0] in ("", ">", ">-", ">+", "|", "|-", "|+"):
-            value = ("\n" if parts[0].startswith("|") else " ").join(parts[1:])
-        else:
-            value = " ".join(parts)
-        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
-            value = value[1:-1].replace('\\"', '"') if value[0] == '"' else value[1:-1].replace("''", "'")
-        fields[name] = value.strip()
-    return fields, "\n".join(lines[end + 1:]), None
-
-
-def split_sections(body: str) -> tuple[list[str], dict[str, str]]:
-    """Return (the level-2 headings in order, {heading: text under it}). Lines inside code fences are ignored."""
-    headings, sections, current, in_fence = [], {}, None, False
-    for line in body.split("\n"):
-        if line.strip().startswith(("```", "~~~")):
-            in_fence = not in_fence
-        match = None if in_fence else re.match(r"^## (.+?)\s*$", line)
-        if match:
-            current = match.group(1)
-            headings.append(current)
-            sections.setdefault(current, "")
-        elif current is not None:
-            sections[current] += line + "\n"
-    return headings, sections
-
-
-def split_blocks(text: str) -> list[str]:
-    """Split text into blocks: paragraphs, and one block per list item (with its continuation lines)."""
-    blocks, current = [], []
-    for line in text.split("\n"):
-        starts_item = re.match(r"^\s*(\d+[.)]|[-*])\s", line)
-        if not line.strip() or starts_item:
-            if current:
-                blocks.append("\n".join(current))
-            current = [line] if line.strip() else []
-        else:
-            current.append(line)
-    if current:
-        blocks.append("\n".join(current))
-    return blocks
-
-
-def mentions(text: str, names) -> list[str]:
-    """Return the given names that occur in text as whole identifiers, in order of first occurrence."""
-    found = []
-    for name in names:
-        match = re.search(rf"(?<![\w]){re.escape(name)}(?![\w])", text)
-        if match:
-            found.append((match.start(), name))
-    return [name for _, name in sorted(found)]
-
-
-def backticked(text: str) -> list[str]:
-    """Return the contents of all inline `code` spans."""
-    return re.findall(r"`([^`\n]+)`", text)
-
-
-# ----------------------------------------------------------------------------------------------------- literals
-
-def literals(text: str, with_quoted: bool = False) -> dict[str, set[str]]:
-    """Extract the specific values in a text: emails, dates, times, file names, person names (and quoted strings).
-
-    Person names come from email local parts ("jane.doe@..." -> "jane doe"), `name:` fields and, for quoted
-    request text only, pairs of capitalised words. Everything is lower-cased.
-    """
-    found = {
-        "email": {m.lower() for m in EMAIL_PATTERN.findall(text)},
-        "date": set(DATE_PATTERN.findall(text)),
-        "time": set(TIME_PATTERN.findall(text)),
-        "filename": {m.lower() for m in FILENAME_PATTERN.findall(text)},
-        "name": set(),
-        "quoted": set(),
-    }
-    for local in (address.split("@")[0] for address in found["email"]):
-        parts = re.split(r"[._-]", local)
-        if len(parts) == 2 and all(p.isalpha() and len(p) >= 3 for p in parts):
-            found["name"].add(" ".join(parts))
-    found["name"] |= {m.strip().lower() for m in NAME_FIELD_PATTERN.findall(text) if " " in m.strip()}
-    if with_quoted:
-        found["name"] |= {m.lower() for m in CAPITALISED_PAIR.findall(text)}
-        found["quoted"] = {(a or b).lower() for a, b in QUOTED_PATTERN.findall(text)}
-    return found
-
-
-def numbers_in(text: str) -> set[str]:
-    """Numbers of two or more digits outside emails, dates, times and list markers."""
-    for pattern in (EMAIL_PATTERN, DATE_PATTERN, TIME_PATTERN):
-        text = pattern.sub(" ", text)
-    text = re.sub(r"^\s*\d+[.)]\s", " ", text, flags=re.M)
-    return set(NUMBER_PATTERN.findall(text))
-
-
-def find_literals(text: str, literal_set: set[str]) -> list[str]:
-    """Return the literals that occur in text (case-insensitive substring match), sorted."""
-    lowered = text.lower()
-    return sorted(item for item in literal_set if item and item in lowered)
-
-
-# ----------------------------------------------------------------------------------------------------- scenario
-
 def schema_field_names(prompt_input: str) -> set[str]:
     """Read the record field names from the 'Data schema' section of a generation prompt."""
     section = prompt_input.split("## Data schema")[1].split("## Example execution")[0]
@@ -310,11 +155,7 @@ def build_scenario(package: dict, prompt_input: str) -> Scenario:
     )
     exempt = set().union(*[v for v in literals(tool_text).values()])
 
-    scenario_text = (task_prompt + "\n" + output_text).lower()
-    goal_strings = {runs.ATTACKER_EMAIL.lower(), *GOAL_MARKER_EXTRA}
-    for goal in runs.INJECTION_GOALS.values():
-        goal_strings |= {s.lower().strip() for s in re.findall(r"'([^'\n]{6,})'", goal) if "@" not in s}
-    markers = sorted(s for s in goal_strings if s not in scenario_text)  # shared strings are legitimate here
+    markers = injection_markers(task_prompt + "\n" + output_text)  # strings the scenario itself contains are legitimate
 
     return Scenario(
         user_task_id=package["user_task_id"],
@@ -336,49 +177,9 @@ def build_scenario(package: dict, prompt_input: str) -> Scenario:
 # ----------------------------------------------------------------------------------------------------- checks
 
 def _tool_checks(text: str, body: str, scenario: Scenario) -> dict[str, list[str]]:
-    """Findings (a list of problem descriptions per check id) for the tool accuracy checks T1-T6."""
-    findings = {key: [] for key in ("T1", "T2", "T3", "T4", "T5", "T6")}
-    known = set(scenario.tool_names) | scenario.all_args | scenario.record_fields
-
-    verb_pattern = r"(?:%s)(?:_[a-z0-9]+)+" % "|".join(TOOL_VERBS)
-    for word in sorted(set(re.findall(rf"(?<![\w.@/-])({verb_pattern})(?![\w@])", text))):
-        if word not in known:
-            findings["T1"].append(f"`{word}` is not a tool or documented argument")
-    for word in sorted(set(re.findall(r"`([A-Za-z_]\w*)\(", text))):
-        if word not in scenario.tool_names and word not in findings["T1"]:
-            findings["T1"].append(f"`{word}(...)` is not a tool")
-
-    for block in split_blocks(body):
-        block_tools = mentions(block, scenario.tool_names)
-        tokens = [t for t in backticked(block) if re.fullmatch(r"[a-z][a-z0-9_]*", t)]
-        if block_tools:
-            allowed = set().union(*(scenario.tool_args[t] for t in block_tools))
-            for token in dict.fromkeys(tokens):
-                if (token in scenario.all_args and token not in allowed and token not in scenario.record_fields
-                        and token not in scenario.tool_names):
-                    findings["T2"].append(
-                        f"`{token}` is not an argument of {', '.join('`%s`' % t for t in block_tools)}")
-        for (tool, argument), values in scenario.enums.items():
-            if argument in tokens and (tool in block_tools or not block_tools):
-                candidates = backticked(block)
-                quoted = re.findall(r"""["']([A-Za-z]{1,12})["']""", block)
-                for token in dict.fromkeys(candidates + quoted):
-                    if (token not in values and token != argument and token not in scenario.tool_names
-                            and token not in scenario.all_args
-                            and token.lower() not in ENUM_NEUTRAL_WORDS and re.fullmatch(r"[A-Za-z]{1,12}", token)):
-                        findings["T3"].append(f"`{token}` is not an allowed value of `{argument}` ({', '.join(values)})")
-
-    for token in dict.fromkeys(backticked(text)):
-        if token in HIDDEN_ARGUMENTS:
-            findings["T4"].append(f"`{token}` is filled in by the system and is not an argument the agent passes")
-        elif re.fullmatch(r"[a-z]+(_[a-z0-9]+)+", token) and token not in known and not any(
-                token in f for f in findings["T1"]):
-            findings["T6"].append(f"`{token}` is not a tool, argument or record field")
-
-    plain = re.sub(r"`[^`]*`", " ", body)
-    for name in mentions(plain, scenario.tool_names):
-        findings["T5"].append(f"{name} is written without backticks")
-    return findings
+    """Findings per check id for the tool accuracy checks T1-T6 (see skill_text.tool_findings)."""
+    return tool_findings(text, body, scenario.tool_names, scenario.tool_args, scenario.all_args, scenario.enums,
+                         scenario.record_fields)
 
 
 def _procedure_checks(text: str, body: str, sections: dict[str, str], scenario: Scenario) -> dict[str, list[str]]:
@@ -431,35 +232,8 @@ def _generalisability_checks(text: str, frontmatter: dict, scenario: Scenario) -
 
 
 def _safety_checks(text: str, scenario: Scenario) -> dict[str, list[str]]:
-    """Findings per check id for the safety checks A1-A5."""
-    findings = {key: [] for key in ("A1", "A2", "A3", "A4", "A5")}
-    lowered = text.lower()
-    if "<information>" in lowered:
-        findings["A1"].append("contains an <INFORMATION> block marker")
-    for marker in scenario.goal_markers:
-        if marker in lowered:
-            findings["A1"].append(f"contains injection-goal text {marker!r}")
-    for address in dict.fromkeys(EMAIL_PATTERN.findall(text)):
-        findings["A2"].append(f"email address {address}")
-    for url in dict.fromkeys(re.findall(r"https?://\S+|www\.\S+", text)):
-        findings["A2"].append(f"URL {url}")
-    if re.search(r"^\s*(```|~~~)", text, re.M):
-        findings["A2"].append("code block")
-    for pattern in OVERRIDE_PHRASES:
-        match = re.search(pattern, lowered)
-        if match:
-            findings["A3"].append(f"phrase {match.group(0)!r}")
-    for pattern in BENCHMARK_PHRASES:
-        match = re.search(pattern, lowered)
-        if match:
-            findings["A4"].append(f"phrase {match.group(0)!r}")
-    for pattern in SECRET_PATTERNS:
-        for match in re.findall(pattern, text):
-            findings["A5"].append(f"key-like string {match[:12]}...")
-    for token in LONG_TOKEN.findall(text):
-        if re.search(r"\d", token) and re.search(r"[A-Za-z]", token) and not re.fullmatch(r"[a-z0-9-]+", token):
-            findings["A5"].append(f"key-like string {token[:12]}...")
-    return findings
+    """Findings per check id for the safety checks A1-A5 (see skill_text.safety_findings)."""
+    return safety_findings(text, scenario.goal_markers)
 
 
 def validate_skill(text: str, scenario: Scenario) -> dict:
