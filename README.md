@@ -52,7 +52,7 @@ Capability skills:
 | `skill_text.py` | Text analysis shared by the validator and the taxonomy checker: parsing a skill file, finding tool names and specific values, comparing texts, and the generic tool-accuracy and safety checks. |
 | `generate_skills.py` | Sends each skill's saved request to the OpenAI Responses API (`gpt-6.1-sol`), validates the answer, repairs it up to twice, logs every call, and writes `SKILL.md`, the manifest and a summary. Needs `OPENAI_API_KEY`; has `--dry-run` and `--check-access`. |
 | `validate_capability_skills.py` | Static validator for generated capability skills: 34 checks (structure, tool accuracy, write safety, workflow coverage, agent behaviour, generalisability, safety) plus library-level coverage and overlap checks. Versioned (`VALIDATOR_VERSION`). |
-| `build_review_sheet.py` | Builds the manual review sheet (`src/data/skill_library/review/`): 13 criteria per skill (instruction accuracy, tool coverage, generalizability, safety) and one row per scenario and mapped skill, with the recorded run's calls and empty rater columns. |
+| `build_review_sheet.py` | Builds the manual review sheet (`src/data/skill_library/review/`): 6 criteria per skill (instruction accuracy, tool coverage, generalizability, safety) and one row per scenario and mapped skill, with the recorded run's calls and empty rater columns. |
 
 The first, one-skill-per-scenario pipeline was removed once the capability pipeline replaced it; its pilot outputs are kept in
 `archive/2026-11-14_per_scenario_pilot/`, and its code can be recovered from commit `1547329`.

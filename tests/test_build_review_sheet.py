@@ -26,6 +26,9 @@ class TableShapeTest(unittest.TestCase):
         self.assertEqual(len(rows), len(SKILLS) * len(rs.CRITERIA))
         self.assertEqual({(r["skill"], r["criterion"]) for r in rows}, {(s, c) for s in SKILLS for c in rs.CRITERIA})
 
+    def test_six_criteria_are_kept(self):
+        self.assertEqual(list(rs.CRITERIA), ["IA1", "TC2", "GE1", "GE2", "SA1", "SA3"])
+
     def test_criteria_cover_the_four_requested_dimensions(self):
         self.assertEqual({d for d, _ in rs.CRITERIA.values()},
                          {"instruction accuracy", "tool coverage", "generalizability", "safety"})
@@ -74,11 +77,14 @@ class ContentTest(unittest.TestCase):
             if row["skill"] in ("calendar-lookup", "email-lookup"):
                 self.assertEqual(row["skill_data_changing_tools_not_called"], "")
 
-    def test_tool_coverage_evidence_names_missing_tools(self):
-        facts = {"not_named": ["get_current_day"], "outside_definition": ["send_email"], "workflow_tools": {},
-                 "owned": [], "write_lines": []}
-        self.assertEqual(rs.criterion_evidence("TC1", facts), "not named in any workflow: get_current_day")
-        self.assertEqual(rs.criterion_evidence("TC3", facts), "named but not in the definition: send_email")
+    def test_evidence_only_for_criteria_that_have_facts(self):
+        facts = {"workflow_tools": {"Find": ["a", "b"]}, "owned": [], "write_lines": []}
+        self.assertEqual(rs.criterion_evidence("TC2", facts), "Find: 2 tools (a, b)")
+        self.assertIn("NA", rs.criterion_evidence("SA1", facts))
+        self.assertEqual(rs.criterion_evidence("SA1", {**facts, "write_lines": ["- `x`: only on request"]}),
+                         "- `x`: only on request")
+        for criterion in ("IA1", "GE1", "GE2", "SA3"):
+            self.assertEqual(rs.criterion_evidence(criterion, facts), "")
 
     def test_long_argument_values_are_cut(self):
         text = rs.tool_call_text({"function": "f", "args": {"a": "x" * 200, "b": 3}})
