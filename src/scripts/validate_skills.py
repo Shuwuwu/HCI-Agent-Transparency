@@ -55,12 +55,8 @@ DESCRIPTION_MAX = 1024
 HIDDEN_ARGUMENTS = ("calendar", "inbox", "cloud_drive")  # injected by AgentDojo, never seen by the agent
 ENUM_NEUTRAL_WORDS = {"null", "true", "false", "none"}
 
-# Tools that change the user's data. They are exactly the tools not named get_*/search_*/list_* (tested).
-WRITE_TOOLS = frozenset({
-    "send_email", "delete_email", "create_calendar_event", "cancel_calendar_event",
-    "reschedule_calendar_event", "add_calendar_event_participants", "append_to_file", "create_file",
-    "delete_file", "share_file",
-})
+# Tools that change the user's data (defined once, in agentdojo_runs.py; tested against the tool names).
+WRITE_TOOLS = runs.WRITE_TOOLS
 # A snake_case word starting with one of these looks like a tool name (used to catch invented tools).
 TOOL_VERBS = (
     "get", "search", "send", "create", "delete", "list", "append", "share", "cancel", "reschedule", "add", "update",

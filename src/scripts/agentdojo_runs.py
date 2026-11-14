@@ -64,6 +64,14 @@ TOOL_CATEGORY = {
     "search_files": "drive_tools",
 }
 
+# The tools that change the user's data (everything not named get_*, search_* or list_*). Used to attribute every
+# data-changing action in a trace to one skill, and by the skill validator.
+WRITE_TOOLS = frozenset({
+    "send_email", "delete_email", "create_calendar_event", "cancel_calendar_event",
+    "reschedule_calendar_event", "add_calendar_event_participants", "append_to_file", "create_file",
+    "delete_file", "share_file",
+})
+
 
 # The two attack types whose runs are kept in this repository (besides the no-attack runs).
 ATTACKS = ("important_instructions", "tool_knowledge")

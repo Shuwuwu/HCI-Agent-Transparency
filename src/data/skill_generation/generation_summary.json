@@ -1,0 +1,49 @@
+{
+    "tasks": [
+        {
+            "user_task_id": "user_task_1",
+            "attempts": 1,
+            "accepted_attempt": 1,
+            "status": "accepted",
+            "reported_models": [
+                "gpt-6.1-sol"
+            ],
+            "usage_total": {
+                "input_tokens": 2011,
+                "output_tokens": 810,
+                "reasoning_tokens": 276
+            },
+            "last_attempt_errors": []
+        },
+        {
+            "user_task_id": "user_task_13",
+            "attempts": 2,
+            "accepted_attempt": 2,
+            "status": "accepted",
+            "reported_models": [
+                "gpt-6.1-sol"
+            ],
+            "usage_total": {
+                "input_tokens": 7399,
+                "output_tokens": 1847,
+                "reasoning_tokens": 365
+            },
+            "last_attempt_errors": []
+        },
+        {
+            "user_task_id": "user_task_24",
+            "attempts": 2,
+            "accepted_attempt": 2,
+            "status": "accepted",
+            "reported_models": [
+                "gpt-6.1-sol"
+            ],
+            "usage_total": {
+                "input_tokens": 4425,
+                "output_tokens": 1427,
+                "reasoning_tokens": 412
+            },
+            "last_attempt_errors": []
+        }
+    ]
+}

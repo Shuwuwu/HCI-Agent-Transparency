@@ -1,0 +1,146 @@
+{
+    "version": "capability_taxonomy_v1",
+    "source": {
+        "taxonomy": "Yang et al. 2025, 'The Adoption and Usage of AI Agents: Early Evidence from Perplexity', arXiv 2512.07828 v2, Table 1 (Agentic Taxonomy: Topics, Subtopics, and Tasks), topic Productivity & Workflow",
+        "tools": "AgentDojo workspace suite at commit af7266303c748a9cf0442d71ceabc9d2488d7188 (24 tools)",
+        "note": "The skill boundaries, the read/write split and the scenario map are our own design; Yang et al. define no action-type dimension. Only the 'skills' section may be shown to a skill generator; 'scenario_map' must never be."
+    },
+    "boundary_rules": [
+        "A skill is one workflow goal (answering questions about X, changing X, or producing content), not one tool and not one scenario.",
+        "Each skill maps to Yang et al. subtopics and a subset of their listed tasks.",
+        "Read and lookup tools may appear in several skills. Each of the 10 write tools is owned by exactly one skill, so every data-changing action can be attributed to one skill.",
+        "A workflow that serves a single scenario is merged into a neighbouring skill unless rule 3 requires the split."
+    ],
+    "yang_reference": {
+        "Calendar Management": ["Create/edit events", "Check availability", "Search/filter events", "Summarize/analyze events"],
+        "Email Management": ["Search/filter emails", "Create/edit emails", "Send emails", "Delete/unsubscribe emails", "Summarize/analyze emails"],
+        "Document & Form Editing": ["Create/edit documents", "Search/filter documents", "Summarize/analyze documents"],
+        "Spreadsheet & Data Editing": ["Create/edit spreadsheets", "Search/filter spreadsheets", "Summarize/analyze spreadsheets"],
+        "Account Management": ["Register/log in to accounts", "Manage settings/profiles", "Manage files", "Summarize/analyze account information"]
+    },
+    "skills": {
+        "calendar-lookup": {
+            "kind": "read",
+            "summary": "Answer questions about the user's calendar without changing it: find events, report their details, and count or summarize the events of a day.",
+            "yang": [
+                {"subtopic": "Calendar Management", "tasks": ["Search/filter events", "Summarize/analyze events"]}
+            ],
+            "workflows": [
+                {"id": "resolve-dates", "description": "Turn a relative or partial date in a request (today, next week, a weekday, a date without a year) into an exact calendar date, using the current day when needed."},
+                {"id": "day-overview", "description": "List, count and summarize the events on a given day."},
+                {"id": "find-event", "description": "Find an event by title or keyword, optionally on a given date, and report its details: participants, place, time and description."},
+                {"id": "next-occurrence", "description": "Find the next upcoming occurrence of a repeated event, looking forward from the current day."},
+                {"id": "time-between-events", "description": "Work out the time between two events, or between a given time and an event, from the events listed for a day."}
+            ],
+            "read_tools": ["get_current_day", "search_calendar_events", "get_day_calendar_events"],
+            "owned_write_tools": []
+        },
+        "calendar-scheduling": {
+            "kind": "write",
+            "summary": "Change the user's calendar when asked: check whether a time is free, then create events, add participants, reschedule or cancel.",
+            "yang": [
+                {"subtopic": "Calendar Management", "tasks": ["Check availability", "Create/edit events"]}
+            ],
+            "workflows": [
+                {"id": "check-availability", "description": "Decide whether a time slot is free by comparing it with the events already on that day, and use an alternative slot given by the user when the first one is busy."},
+                {"id": "create-event", "description": "Create an event from the title, start and end time, description, participants and location that the user supplies."},
+                {"id": "copy-participants", "description": "Reuse the participants of an existing event for a new event."},
+                {"id": "add-participants", "description": "Add further participants to an existing event."},
+                {"id": "reschedule-event", "description": "Move an existing event to a new start and end time."},
+                {"id": "cancel-event", "description": "Cancel an existing event."}
+            ],
+            "read_tools": ["get_current_day", "search_calendar_events", "get_day_calendar_events"],
+            "owned_write_tools": ["create_calendar_event", "add_calendar_event_participants", "reschedule_calendar_event", "cancel_calendar_event"]
+        },
+        "email-lookup": {
+            "kind": "read",
+            "summary": "Answer questions from the user's mailbox without changing it: find emails, extract the requested facts, and list or summarize mail.",
+            "yang": [
+                {"subtopic": "Email Management", "tasks": ["Search/filter emails", "Summarize/analyze emails"]}
+            ],
+            "workflows": [
+                {"id": "find-email", "description": "Find an email by sender, subject or keywords."},
+                {"id": "extract-fact", "description": "Extract the specific fact the user asked for from an email, such as a code, a link, a date, a time or a place."},
+                {"id": "list-mailbox", "description": "List and summarize unread, received, sent or draft emails."},
+                {"id": "resolve-recent", "description": "Interpret references such as recently or on a weekday using the emails' timestamps and the current day."},
+                {"id": "find-contact", "description": "Look up a contact's name or email address."}
+            ],
+            "read_tools": ["search_emails", "get_unread_emails", "get_received_emails", "get_sent_emails", "get_draft_emails", "search_contacts_by_name", "search_contacts_by_email", "get_current_day"],
+            "owned_write_tools": []
+        },
+        "email-correspondence": {
+            "kind": "write",
+            "summary": "Write to other people on the user's behalf when asked: compose and send emails and delete emails.",
+            "yang": [
+                {"subtopic": "Email Management", "tasks": ["Create/edit emails", "Send emails", "Delete/unsubscribe emails"]}
+            ],
+            "workflows": [
+                {"id": "compose-and-send", "description": "Write an email with the recipients, subject and body the user asked for, and send it."},
+                {"id": "address-recipients", "description": "Look up a recipient's email address when the user names a person, and add copies or attachments only when the user asks for them."},
+                {"id": "reply-to-sender", "description": "Find the email being answered and reply to its sender."},
+                {"id": "delete-email", "description": "Find an email the user identified and delete it."}
+            ],
+            "read_tools": ["search_emails", "search_contacts_by_name", "search_contacts_by_email"],
+            "owned_write_tools": ["send_email", "delete_email"]
+        },
+        "drive-file-management": {
+            "kind": "write",
+            "summary": "Inventory and manage the files in the user's cloud drive: list and find files, report their properties, and delete or share files when asked.",
+            "yang": [
+                {"subtopic": "Account Management", "tasks": ["Manage files", "Summarize/analyze account information"]}
+            ],
+            "workflows": [
+                {"id": "file-inventory", "description": "List the files and answer questions about their size, owner, sharing and last modification."},
+                {"id": "find-file", "description": "Find files by name or by keyword."},
+                {"id": "delete-file", "description": "Delete a file the user identified, after finding the right one."},
+                {"id": "share-file", "description": "Share a file with a person at the access level the user asked for."}
+            ],
+            "read_tools": ["list_files", "search_files", "search_files_by_filename", "get_file_by_id"],
+            "owned_write_tools": ["delete_file", "share_file"]
+        },
+        "document-content": {
+            "kind": "write",
+            "summary": "Work with the content of documents and spreadsheets in the cloud drive: read them, extract values, summarize, add to them or create new files.",
+            "yang": [
+                {"subtopic": "Document & Form Editing", "tasks": ["Create/edit documents", "Search/filter documents", "Summarize/analyze documents"]},
+                {"subtopic": "Spreadsheet & Data Editing", "tasks": ["Create/edit spreadsheets", "Search/filter spreadsheets", "Summarize/analyze spreadsheets"]}
+            ],
+            "workflows": [
+                {"id": "read-document", "description": "Retrieve a document or spreadsheet and read its content."},
+                {"id": "extract-records", "description": "Extract specific values or records from a document or table, such as the entries belonging to named people."},
+                {"id": "summarize-document", "description": "Summarize the content of a document."},
+                {"id": "extend-document", "description": "Add new content to the end of an existing file."},
+                {"id": "create-document", "description": "Create a new file with the content the user asked for."}
+            ],
+            "read_tools": ["search_files_by_filename", "search_files", "get_file_by_id"],
+            "owned_write_tools": ["append_to_file", "create_file"]
+        }
+    },
+    "scenario_map": {
+        "user_task_0": {"skills": ["calendar-lookup"], "rationale": "Reports the details of a named event (participants and a summary)."},
+        "user_task_1": {"skills": ["calendar-lookup"], "rationale": "Counts and summarizes one day's events."},
+        "user_task_2": {"skills": ["calendar-lookup"], "rationale": "Finds the next occurrence of a repeated event, starting from the current day."},
+        "user_task_3": {"skills": ["calendar-lookup"], "rationale": "Reports the place of a named event."},
+        "user_task_4": {"skills": ["calendar-lookup", "calendar-scheduling"], "rationale": "Combined task: a day overview (lookup), then an availability check followed by creating an event (scheduling)."},
+        "user_task_5": {"skills": ["calendar-lookup"], "rationale": "Computes the time between events on one day from its event list."},
+        "user_task_6": {"skills": ["calendar-scheduling"], "rationale": "Availability check, then creates an event with a participant."},
+        "user_task_8": {"skills": ["calendar-scheduling"], "rationale": "Finds an event and adds participants to it."},
+        "user_task_9": {"skills": ["calendar-scheduling"], "rationale": "Finds an event and creates a new one with the same participants."},
+        "user_task_10": {"skills": ["calendar-lookup"], "rationale": "Counts today's events (resolves the current day first)."},
+        "user_task_12": {"skills": ["calendar-scheduling"], "rationale": "Availability check with an alternative slot, then creates the event."},
+        "user_task_13": {"skills": ["email-lookup", "document-content", "email-correspondence"], "rationale": "Finds an email (lookup), reads and extends files and extracts values (document-content), and sends a reply email (correspondence)."},
+        "user_task_15": {"skills": ["email-lookup", "calendar-scheduling"], "rationale": "Reads emails for the event details (lookup), then creates the event (scheduling)."},
+        "user_task_16": {"skills": ["email-lookup"], "rationale": "Extracts a code from a recent email."},
+        "user_task_17": {"skills": ["email-lookup"], "rationale": "Extracts a place and time from emails, resolving a weekday reference."},
+        "user_task_21": {"skills": ["calendar-scheduling"], "rationale": "Copies participants from an existing event, checks availability with an alternative slot, creates the event."},
+        "user_task_22": {"skills": ["email-lookup"], "rationale": "Extracts a link from a recent email."},
+        "user_task_23": {"skills": ["calendar-lookup", "email-lookup"], "rationale": "Combined task: a day overview (calendar-lookup) and extracting a link from an email (email-lookup)."},
+        "user_task_24": {"skills": ["email-lookup"], "rationale": "Lists unread emails."},
+        "user_task_26": {"skills": ["drive-file-management"], "rationale": "File inventory question about size."},
+        "user_task_27": {"skills": ["drive-file-management"], "rationale": "File inventory question about sharing."},
+        "user_task_28": {"skills": ["document-content"], "rationale": "Reads a spreadsheet and extracts the entries of named people."},
+        "user_task_29": {"skills": ["document-content"], "rationale": "Reads a document and appends new content to it."},
+        "user_task_35": {"skills": ["drive-file-management"], "rationale": "Finds a file by a property (size) and deletes it."},
+        "user_task_39": {"skills": ["email-lookup"], "rationale": "Combined task: two extractions from emails."}
+    }
+}
