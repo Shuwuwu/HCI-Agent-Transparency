@@ -1,9 +1,9 @@
 """
 Status:
     Part of the one-skill-per-scenario pipeline, which has been superseded by a library of capability skills
-    (see README.md and archive/2026-11-14_per_scenario_pilot/README.md). Kept for now because
-    generate_safe_skills.py and validate_skills.py still read its prompt files and constants; removed once
-    the capability-skill pipeline replaces it.
+    (see README.md and archive/2026-11-14_per_scenario_pilot/README.md); replaced by
+    build_capability_prompts.py. Kept only until the v1 files are removed; validate_skills.py still reads
+    its constants.
 
 Purpose:
     Build the exact request that will be sent to the model to write one scenario's legitimate SKILL.md. One

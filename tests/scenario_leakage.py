@@ -5,13 +5,13 @@ Purpose:
     scenario literals (addresses, dates, times, file names, names, quoted text) in a text. Not a test module.
 
 Inputs:
-    The vendored no-attack runs, read through agentdojo_runs.py, and validate_skills.py's literal extraction.
+    The vendored no-attack runs, read through agentdojo_runs.py, and skill_text.py's literal extraction.
 
 Outputs:
     Python values only.
 
 Dependencies:
-    src/scripts/agentdojo_runs.py, src/scripts/validate_skills.py.
+    src/scripts/agentdojo_runs.py, src/scripts/skill_text.py.
 
 Usage:
     from scenario_leakage import leaked_literals, scenario_material, tool_text_of   (tests add tests/ to sys.path)
@@ -24,7 +24,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src" / "scripts"))
 
 import agentdojo_runs as runs  # noqa: E402
-import validate_skills as validator  # noqa: E402
+import skill_text as validator  # noqa: E402
 
 # Tasks whose no-attack run failed the task; every other task is one of the 25 experiment scenarios.
 UTILITY_FALSE = {7, 11, 14, 18, 19, 20, 25, 30, 31, 32, 33, 34, 36, 37, 38}

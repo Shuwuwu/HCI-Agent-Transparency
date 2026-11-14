@@ -1,9 +1,9 @@
 """
 Status:
     Part of the one-skill-per-scenario pipeline, which has been superseded by a library of capability skills
-    (see README.md and archive/2026-11-14_per_scenario_pilot/README.md). Kept for now because its parsing,
-    literal and safety checks are the starting point of the validator for the capability skills; removed
-    once the capability-skill pipeline replaces it.
+    (see README.md and archive/2026-11-14_per_scenario_pilot/README.md); replaced by
+    validate_capability_skills.py, which shares skill_text.py with it. Kept only until the v1 files are
+    removed.
 
 Purpose:
     Static validation of generated SKILL.md files. Each skill is checked against the scenario it was written

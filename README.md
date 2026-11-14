@@ -17,6 +17,7 @@ documents the agent is said to have followed.
 | `src/data/agentdojo_source_manifest.json` | Paths and git hashes of the AgentDojo files and traces used (provenance). |
 | `src/data/skill_taxonomy.json` | The capability skill library: 6 skills, the Yang et al. subtopics they cover, their workflows, and the map from the 25 scenarios to skills. |
 | `src/data/skill_library/` | Inputs of the capability skills: `sources/<skill>.json` (definition, tool specs, record schemas, provenance) and `prompts/<skill>.json` (the exact request to send to the skill-writing model). |
+| `src/data/skills/<skill>/SKILL.md` | The generated capability skills (empty until generated), with `manifest.json` tying each file to the request, response and validator version that produced it. Attempt logs are in `src/data/skill_library/runs/`. |
 | `src/data/experiment/user_task_N/` | Stimuli of each of the 25 safe-candidate scenarios: `metadata.json`, `no_attack_execution_trace.json`, `skills.json`, `action_log.json` (placeholder). |
 | `archive/` | Superseded research outputs kept as provenance (not read by any script). |
 | `Skills collection/` | Original and prompt-injected skill examples from SkillJect (see `Option_A/description.txt`). |
@@ -48,11 +49,13 @@ Capability skills:
 | `build_capability_prompts.py` | Builds the exact request for each skill from its source package and the templates in `src/prompts/skill_capability_*_v2.md`. Needs neither the clone nor the network. |
 | `prompt_utils.py` | Helpers shared by both prompt builders (settings, hashing, templates, record schemas). |
 | `skill_text.py` | Text analysis shared by the validators: parsing a skill file, finding tool names and specific values, comparing texts, and the generic tool-accuracy and safety checks. |
+| `generate_skills.py` | Sends each skill's saved request to the OpenAI Responses API (`gpt-6.1-sol`), validates the answer, repairs it up to twice, logs every call, and writes `SKILL.md`, the manifest and a summary. Needs `OPENAI_API_KEY`; has `--dry-run` and `--check-access`. |
 | `validate_capability_skills.py` | Static validator for generated capability skills: 32 checks (structure, tool accuracy, write safety, workflow coverage, generalisability, safety) plus library-level coverage and overlap checks. Versioned (`VALIDATOR_VERSION`). |
 
 Superseded (the first, one-skill-per-scenario pipeline; each file's docstring says so): `build_skill_context.py`,
-`build_skill_prompts.py`, `validate_skills.py`, `generate_safe_skills.py`. Their data lives in `src/data/skill_context/`,
-`src/data/skill_generation/prompts/` and `src/prompts/`. They are kept until the pipeline below replaces them.
+`build_skill_prompts.py`, `validate_skills.py` (its generator was replaced by `generate_skills.py`). Their data lives in
+`src/data/skill_context/`, `src/data/skill_generation/prompts/` and `src/prompts/skill_safe_*_v1.md`. They are kept only until
+the v1 files are removed.
 
 ## Skill pipeline: status
 
@@ -64,11 +67,10 @@ generated one skill per scenario and was found to produce task-shaped skills tha
 `archive/2026-11-14_per_scenario_pilot/README.md`.
 
 Done: taxonomy, scenario map and checker; scenario stimuli folders with `skills.json`; per-skill source packages and
-generation prompts; the per-skill static validator. The prompts are task-agnostic: the generator is shown a skill's scope, workflows, tool
+generation prompts; the per-skill static validator; the generator. The prompts are task-agnostic: the generator is shown a skill's scope, workflows, tool
 specifications and record schemas, and no scenario, example request, trace or answer.
 
-Not implemented yet (planned, in order): the generator (OpenAI `gpt-6.1-sol`, with
-logging and repair rounds); a manual review sheet; execution-based evaluation in AgentDojo; injected skill variants.
+Not run yet: the generator has never called the API (needs your key). Not implemented yet (planned, in order): a manual review sheet; execution-based evaluation in AgentDojo; injected skill variants.
 
 ## Running things
 
@@ -79,6 +81,8 @@ python3 -B src/scripts/build_experiment_stimuli.py # rebuild src/data/experiment
 python3 -B src/scripts/build_skill_sources.py      # rebuild src/data/skill_library/sources/ (needs the clone)
 python3 -B src/scripts/build_capability_prompts.py # rebuild src/data/skill_library/prompts/
 python3 -B src/scripts/validate_capability_skills.py # validate src/data/skills/*/SKILL.md (skips skills not written yet)
+python3 -B src/scripts/generate_skills.py --dry-run  # show what would be sent (sends nothing, needs no key)
+OPENAI_API_KEY=... python3 -B src/scripts/generate_skills.py --skills calendar-lookup email-correspondence  # pilot run
 ```
 
 Use `python3 -B` so that no `__pycache__` folders are created. Scripts that call the OpenAI API read the key from the

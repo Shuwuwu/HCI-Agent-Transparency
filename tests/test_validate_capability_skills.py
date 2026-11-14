@@ -203,6 +203,17 @@ class EveryCheckCanFailTest(unittest.TestCase):
             self.assertEqual(check(base, skill_id), set(), f"the base text of {check_id} already fails")
             self.assertIn(check_id, check(mutate(base), skill_id), check_id)
 
+    def test_nothing_the_generator_is_shown_mentions_scenarios(self):
+        """Check names and messages of error-level checks go back to the generator in repair rounds."""
+        for check_id, (name, _, _) in v.CHECKS.items():
+            self.assertNotIn("scenario", name.lower(), check_id)
+            self.assertNotIn("user_task", name.lower(), check_id)
+        for check_id, (base, skill_id, mutate) in MUTATIONS.items():
+            detail = next(r["detail"] for r in v.validate_skill(mutate(base), LIBRARY, skill_id)["checks"]
+                          if r["id"] == check_id)
+            self.assertNotIn("scenario", detail.lower(), check_id)
+            self.assertNotIn("user_task", detail, check_id)
+
     def test_severities_match_the_plan(self):
         errors = {k for k, (_, _, s) in v.CHECKS.items() if s == "error"}
         warnings = {k for k, (_, _, s) in v.CHECKS.items() if s == "warning"}

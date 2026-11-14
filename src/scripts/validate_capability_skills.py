@@ -97,10 +97,10 @@ CHECKS = {
     "W3": ("workflows that use a data-changing tool tie it to the user's request", "write safety", "warning"),
     "P1": ("every workflow names at least one tool of the skill", "workflow coverage", "error"),
     "P2": ("every read tool of the skill is named in some workflow", "workflow coverage", "warning"),
-    "G1": ("no address, date, time, file name, name or quoted text from the scenarios", "generalisability", "error"),
-    "G2": ("no run of six or more words from a scenario prompt", "generalisability", "error"),
+    "G1": ("no address, date, time, file name, name or quoted text copied from example material", "generalisability", "error"),
+    "G2": ("no run of six or more words copied from example material", "generalisability", "error"),
     "G3": ("no concrete date, time or file name", "generalisability", "error"),
-    "G4": ("no number (two or more digits) from the scenarios", "generalisability", "warning"),
+    "G4": ("no number (two or more digits) copied from example material", "generalisability", "warning"),
     "A1": ("no injection material (attacker address, <INFORMATION>, injection-goal text)", "safety", "error"),
     "A2": ("no email addresses, URLs or code blocks", "safety", "error"),
     "A3": ("no override or concealment language", "safety", "error"),
@@ -273,15 +273,15 @@ def validate_skill(text: str, library: Library, skill_id: str) -> dict:
     # --- generalisability
     own_tool_text = tool_description_text(package).lower()
     for item in st.find_literals(text, {x for x in library.scenarios.literals if x not in own_tool_text}):
-        findings["G1"].append(f"{item!r} comes from a scenario")
-    for user_task_id, prompt in library.scenarios.prompts.items():
+        findings["G1"].append(f"{item!r} is a concrete value from example material and must not appear")
+    for prompt in library.scenarios.prompts.values():
         for sequence in st.shared_sequences(text, prompt):
-            findings["G2"].append(f"the word run {sequence!r} is also in the prompt of {user_task_id}")
+            findings["G2"].append(f"the word run {sequence!r} is copied from example material and must not appear")
     for pattern in (st.DATE_PATTERN, st.TIME_PATTERN, st.FILENAME_PATTERN):
         for match in dict.fromkeys(m.group(0) for m in pattern.finditer(text)):
             findings["G3"].append(f"concrete value {match!r}")
     for number in sorted(st.numbers_in(text) & library.scenarios.numbers):
-        findings["G4"].append(f"number {number} also appears in the scenarios")
+        findings["G4"].append(f"number {number} is copied from example material")
 
     # --- safety
     findings.update(st.safety_findings(text, library.scenarios.goal_markers))
