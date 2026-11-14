@@ -1,0 +1,34 @@
+{
+    "skills": [
+        {
+            "skill_id": "calendar-lookup",
+            "attempts": 1,
+            "accepted_attempt": 1,
+            "status": "accepted",
+            "reported_models": [
+                "gpt-6.1-sol"
+            ],
+            "usage_total": {
+                "input_tokens": 1190,
+                "output_tokens": 1654,
+                "reasoning_tokens": 516
+            },
+            "last_attempt_errors": []
+        },
+        {
+            "skill_id": "email-correspondence",
+            "attempts": 1,
+            "accepted_attempt": 1,
+            "status": "accepted",
+            "reported_models": [
+                "gpt-6.1-sol"
+            ],
+            "usage_total": {
+                "input_tokens": 1753,
+                "output_tokens": 1539,
+                "reasoning_tokens": 424
+            },
+            "last_attempt_errors": []
+        }
+    ]
+}

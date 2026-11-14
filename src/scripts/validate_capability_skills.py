@@ -50,7 +50,8 @@ import build_capability_prompts as cp
 import check_skill_map as cm
 import skill_text as st
 
-VALIDATOR_VERSION = "capability_validator_v2"  # v2: person-name extraction finds names after a capitalised first word
+VALIDATOR_VERSION = "capability_validator_v3"  # v3: checks T8 and B1 added; names documented in tool descriptions are known
+# v2: person-name extraction finds names after a capitalised first word
 DEFAULT_SKILLS_DIR = runs.REPO_ROOT / "src" / "data" / "skills"
 SECTIONS = ["Overview", "When to Use", "Tools", "Workflows", "Common Pitfalls", "Output Requirements"]
 OVERLAP_WORDS = 15  # two skills sharing a run of this many words are reported as overlapping
@@ -73,6 +74,24 @@ SECURITY_PHRASES = [
     r"\bauthori[sz](e|ation|ed) to act\b",
 ]
 
+# Claims that a tool or capability is missing (the assistant may have more tools than a skill lists).
+MISSING_TOOL_PHRASES = [
+    r"\bno (listed|documented|available|other|such) (tool|tools|argument|arguments|parameter|parameters|option|way|"
+    r"function|capability|capabilities|threading)\b",
+    r"\b(has|have|there is|there are|is|are) no (tool|tools|way|function|capability|capabilities)\b",
+    r"\bnone of the (listed|available) tools\b",
+    r"\bnot (available|supported|provided)\b",
+]
+# Instructions to ask the user something: nobody can answer during an agent run, so a skill must not give them.
+ASK_USER_PHRASES = [
+    r"\bask(ing)? (the user|them|which|whether|what|if)\b",
+    r"\bask(ing)? for (confirmation|approval|permission|more|further|details|missing|an explicit)\b",
+    r"\bask(ing)? (a|an) (\w+ )?question\b",
+    r"\bclarif\w*", r"\brequest(ing)? (an? |the )?(explicit|missing|further|more|a specific)\b",
+    r"\bwait(ing)? for (the user|confirmation|approval)\b", r"\b(confirm|confirmation) with the user\b",
+    r"\bcheck(ing)? with the user\b", r"\bprompt(ing)? the user\b",
+]
+
 # id: (name, dimension, severity)
 CHECKS = {
     "S1": ("frontmatter parses with exactly name and description", "structure", "error"),
@@ -92,11 +111,13 @@ CHECKS = {
     "T5": ("tool names are written in backticks", "tool accuracy", "warning"),
     "T6": ("no unknown snake_case names in backticks", "tool accuracy", "warning"),
     "T7": ("no workspace tool outside the skill's own tool list", "tool accuracy", "error"),
+    "T8": ("no claim that a tool or capability is missing or unavailable", "tool accuracy", "error"),
     "W1": ("no data-changing tool the skill does not own is named", "write safety", "error"),
     "W2": ("every owned data-changing tool is named in the workflows", "write safety", "error"),
     "W3": ("workflows that use a data-changing tool tie it to the user's request", "write safety", "warning"),
     "P1": ("every workflow names at least one tool of the skill", "workflow coverage", "error"),
     "P2": ("every read tool of the skill is named in some workflow", "workflow coverage", "warning"),
+    "B1": ("no instruction to ask the user a question or to wait for confirmation", "agent behaviour", "error"),
     "G1": ("no address, date, time, file name, name or quoted text copied from example material", "generalisability", "error"),
     "G2": ("no run of six or more words copied from example material", "generalisability", "error"),
     "G3": ("no concrete date, time or file name", "generalisability", "error"),
@@ -131,6 +152,7 @@ class Library:
     all_args: set[str]
     enums: dict[tuple[str, str], list[str]]
     record_fields: set[str]
+    documented_names: set[str]  # snake_case names that appear in the tools' own descriptions (for example event_details)
     limits: dict
     scenarios: ScenarioMaterial
 
@@ -175,6 +197,7 @@ def load_library(taxonomy_path: Path = cm.DEFAULT_TAXONOMY, sources_dir: Path = 
         all_args=set().union(*tool_args.values()),
         enums={(n, p["name"]): p["enum"] for n, t in tools.items() for p in t["parameters"] if p["enum"]},
         record_fields={f["name"] for p in packages.values() for r in p["records"] for f in r["fields"]},
+        documented_names=set(re.findall(r"[a-z]+(?:_[a-z0-9]+)+", "\n".join(tool_description_text(p) for p in packages.values()))),
         limits=cp.LIMITS,
         scenarios=load_scenario_material(scenarios_path),
     )
@@ -245,10 +268,21 @@ def validate_skill(text: str, library: Library, skill_id: str) -> dict:
 
     # --- tool accuracy
     findings.update(st.tool_findings(text, body, library.tool_names, library.tool_args, library.all_args,
-                                     library.enums, library.record_fields))
+                                     library.enums, library.record_fields, library.documented_names))
     outside = [t for t in library.tool_names if t not in skill_tools and t not in runs.WRITE_TOOLS]
     for tool in st.mentions(text, outside):
         findings["T7"].append(f"`{tool}` is not one of this skill's tools")
+
+    lowered_text = text.lower()
+    for pattern in MISSING_TOOL_PHRASES:
+        match = re.search(pattern, lowered_text)
+        if match:
+            findings["T8"].append(f"phrase {match.group(0)!r} says what is not available; describe only the listed tools")
+    for pattern in ASK_USER_PHRASES:
+        match = re.search(pattern, lowered_text)
+        if match:
+            findings["B1"].append(f"phrase {match.group(0)!r} asks the user or waits for them; choose the most "
+                                  "reasonable reading and say which one was used")
 
     # --- write safety
     for tool in st.mentions(text, sorted(runs.WRITE_TOOLS - owned)):

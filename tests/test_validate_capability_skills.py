@@ -2,7 +2,7 @@
 Purpose:
     Check that validate_capability_skills.py accepts correct capability skills and rejects every kind of defect it
     is meant to catch. Two hand-written good skills (tests/fixtures/capability_skills/) must pass with no error and
-    no warning; each of the 32 checks is then triggered by changing a good skill in one small way (a "mutation");
+    no warning; each of the 34 checks is then triggered by changing a good skill in one small way (a "mutation");
     a mechanically built compliant skill for each of the 6 skill definitions guards against false alarms; the
     library-level coverage and overlap checks and the command line are tested too.
 
@@ -136,6 +136,7 @@ MUTATIONS = {
         t, "2. Call `get_day_calendar_events` for that day.", "2. Call get_day_calendar_events for that day.")),
     "T6": (SCHEDULING, "calendar-scheduling", lambda t: add_to(t, "Common Pitfalls", "- Fill `meeting_title` first.")),
     "T7": (LOOKUP, "calendar-lookup", lambda t: add_to(t, "Common Pitfalls", "- Search mail with `search_emails`.")),
+    "T8": (LOOKUP, "calendar-lookup", lambda t: add_to(t, "Common Pitfalls", "- No listed tool returns the current time.")),
     "W1": (LOOKUP, "calendar-lookup", lambda t: add_to(t, "Common Pitfalls", "- Never call `create_calendar_event`.")),
     "W2": (SCHEDULING, "calendar-scheduling", lambda t: change(
         t, "Call `cancel_calendar_event` with its `event_id`", "Cancel it using its `event_id`")),
@@ -144,6 +145,7 @@ MUTATIONS = {
     "P1": (LOOKUP, "calendar-lookup", lambda t: change(t, "call `get_current_day` and compute", "call the date tool and compute")),
     "P2": (LOOKUP, "calendar-lookup", lambda t: t[:t.index("## Workflows")] + t[t.index("## Workflows"):].replace(
         "`search_calendar_events`", "the search tool")),
+    "B1": (LOOKUP, "calendar-lookup", lambda t: add_to(t, "Common Pitfalls", "- Ask for clarification when the date is unclear.")),
     "G1": (LOOKUP, "calendar-lookup", lambda t: add_to(t, "Common Pitfalls", "- Do not confuse it with the Networking event.")),
     "G2": (LOOKUP, "calendar-lookup", lambda t: add_to(t, "Common Pitfalls", "- Please show me my unread emails.")),
     "G3": (LOOKUP, "calendar-lookup", lambda t: add_to(t, "Common Pitfalls", "- Example: 2024-01-05.")),
@@ -170,13 +172,14 @@ class GoodSkillsTest(unittest.TestCase):
     def test_result_shape_and_check_catalogue(self):
         result = v.validate_skill(LOOKUP, LIBRARY, "calendar-lookup")
         self.assertEqual([r["id"] for r in result["checks"]], list(v.CHECKS))
-        self.assertEqual(len(v.CHECKS), 32)
+        self.assertEqual(len(v.CHECKS), 34)
         self.assertEqual(result["validator_version"], v.VALIDATOR_VERSION)
         self.assertEqual(result["skill_id"], "calendar-lookup")
         for row in result["checks"]:
             self.assertEqual(set(row), {"id", "name", "dimension", "severity", "passed", "detail"})
         self.assertEqual({d for _, d, _ in v.CHECKS.values()}, {
-            "structure", "tool accuracy", "write safety", "workflow coverage", "generalisability", "safety"})
+            "structure", "tool accuracy", "write safety", "workflow coverage", "agent behaviour", "generalisability",
+            "safety"})
 
     def test_a_synthetic_compliant_skill_passes_for_every_skill_definition(self):
         for skill_id in LIBRARY.packages:
@@ -218,7 +221,7 @@ class EveryCheckCanFailTest(unittest.TestCase):
         errors = {k for k, (_, _, s) in v.CHECKS.items() if s == "error"}
         warnings = {k for k, (_, _, s) in v.CHECKS.items() if s == "warning"}
         self.assertEqual(warnings, {"S8", "T5", "T6", "W3", "P2", "G4"})
-        self.assertEqual(len(errors), 26)
+        self.assertEqual(len(errors), 28)
 
     def test_warnings_do_not_fail_a_skill(self):
         _, skill_id, mutate = MUTATIONS["W3"][1], MUTATIONS["W3"][1], MUTATIONS["W3"][2]
@@ -308,6 +311,39 @@ class SpecificBehaviourTest(unittest.TestCase):
         self.assertEqual(LIBRARY.limits, cp.LIMITS)
 
 
+class PilotRegressionTest(unittest.TestCase):
+    """Wording that the first real model output contained, and ordinary wording that must stay allowed."""
+
+    def flagged(self, sentence: str, check_id: str) -> bool:
+        return check_id in check(add_to(LOOKUP, "Common Pitfalls", f"- {sentence}"), "calendar-lookup")
+
+    def test_instructions_to_ask_the_user_are_errors(self):
+        for sentence in ("Ask for clarification when more than one interpretation remains plausible.",
+                         "Use the result or ask which is intended.", "Ask a focused clarification before acting.",
+                         "Ask the user rather than assume.", "Request an explicit date.",
+                         "Request missing references or details.", "Clarify rather than guessing.",
+                         "Wait for the user to confirm.", "Check with the user first."):
+            self.assertTrue(self.flagged(sentence, "B1"), sentence)
+
+    def test_claims_that_tools_are_missing_are_errors(self):
+        for sentence in ("No listed tool returns the current day.", "The tool has no documented threading argument.",
+                         "Tool support is not available for this.", "None of the listed tools can do it."):
+            self.assertTrue(self.flagged(sentence, "T8"), sentence)
+
+    def test_ordinary_scope_and_result_wording_is_not_flagged(self):
+        for sentence in ("Do not change anything the user did not ask for.", "Act only when the user asks for a change.",
+                         "Do this because the user asked for it.", "Do not use undocumented arguments.",
+                         "Say that no matching event was found.", "Report the error instead of claiming success."):
+            self.assertFalse(self.flagged(sentence, "B1"), sentence)
+            self.assertFalse(self.flagged(sentence, "T8"), sentence)
+
+    def test_names_documented_in_a_tool_description_are_not_unknown(self):
+        # event_details is only mentioned in the description of send_email's attachments argument.
+        self.assertIn("event_details", LIBRARY.documented_names)
+        self.assertNotIn("T6", check(add_to(SCHEDULING, "Common Pitfalls", "- Fill `event_details` for attachments.")))
+        self.assertIn("T6", check(add_to(SCHEDULING, "Common Pitfalls", "- Fill `event_summary` for attachments.")))
+
+
 class LibraryChecksTest(unittest.TestCase):
     TEXTS = {"calendar-lookup": LOOKUP, "calendar-scheduling": SCHEDULING}
 
@@ -390,7 +426,7 @@ class CommandLineTest(unittest.TestCase):
             document = json.loads(out.read_text(encoding="utf-8"))
             self.assertEqual(document["validator_version"], v.VALIDATOR_VERSION)
             self.assertEqual([r["skill_id"] for r in document["results"]], ["calendar-lookup", "calendar-scheduling"])
-            self.assertEqual(len(document["results"][0]["checks"]), 32)
+            self.assertEqual(len(document["results"][0]["checks"]), 34)
             self.assertEqual(document["library"]["errors"], [])
 
     def test_a_bad_skill_exits_with_status_1_and_prints_the_errors(self):

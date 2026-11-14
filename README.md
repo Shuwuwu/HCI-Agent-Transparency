@@ -46,11 +46,11 @@ Capability skills:
 |---|---|
 | `check_skill_map.py` | Checks the taxonomy: write-tool ownership, scenario map against each recorded trace, and that the skill definitions contain nothing taken from the scenarios. |
 | `build_skill_sources.py` | Builds the source package of each skill (definition, full tool specs, record schemas) from the taxonomy's `skills` section and AgentDojo's tool code. Never reads the scenario map. |
-| `build_capability_prompts.py` | Builds the exact request for each skill from its source package and the templates in `src/prompts/skill_capability_*_v2.md`. Needs neither the clone nor the network. |
+| `build_capability_prompts.py` | Builds the exact request for each skill from its source package and the templates in `src/prompts/skill_capability_*_v3.md`. Needs neither the clone nor the network. |
 | `prompt_utils.py` | Helpers shared by the source builder, the prompt builder and the generator (settings, hashing, templates, record schemas). |
 | `skill_text.py` | Text analysis shared by the validator and the taxonomy checker: parsing a skill file, finding tool names and specific values, comparing texts, and the generic tool-accuracy and safety checks. |
 | `generate_skills.py` | Sends each skill's saved request to the OpenAI Responses API (`gpt-6.1-sol`), validates the answer, repairs it up to twice, logs every call, and writes `SKILL.md`, the manifest and a summary. Needs `OPENAI_API_KEY`; has `--dry-run` and `--check-access`. |
-| `validate_capability_skills.py` | Static validator for generated capability skills: 32 checks (structure, tool accuracy, write safety, workflow coverage, generalisability, safety) plus library-level coverage and overlap checks. Versioned (`VALIDATOR_VERSION`). |
+| `validate_capability_skills.py` | Static validator for generated capability skills: 34 checks (structure, tool accuracy, write safety, workflow coverage, agent behaviour, generalisability, safety) plus library-level coverage and overlap checks. Versioned (`VALIDATOR_VERSION`). |
 
 The first, one-skill-per-scenario pipeline was removed once the capability pipeline replaced it; its pilot outputs are kept in
 `archive/2026-11-14_per_scenario_pilot/`, and its code can be recovered from commit `1547329`.

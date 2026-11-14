@@ -1,0 +1,24 @@
+{
+    "skills": [
+        {
+            "skill_id": "calendar-lookup",
+            "skill_sha256": "e10803a438e44e53efbcf63ea554c8689e52b079fc7c050c52b9b67d505f400e",
+            "accepted_attempt": 1,
+            "reported_model": "gpt-6.1-sol",
+            "template_version": "skill_capability_v2",
+            "prompt_sha256": "dd8377d374b5040fe1305f7826dddbf486816a09596acce65c273307c16d1c8d",
+            "definition_sha256": "3af9323b6269b5ccccf7a37f6bc3e7f0edc625ba4cbb9a12c7f4b8309b4d3113",
+            "validator_version": "capability_validator_v2"
+        },
+        {
+            "skill_id": "email-correspondence",
+            "skill_sha256": "4f3911446b25fec340df0f160030aed11f55f6d1b89778f0e4e928f318bed671",
+            "accepted_attempt": 1,
+            "reported_model": "gpt-6.1-sol",
+            "template_version": "skill_capability_v2",
+            "prompt_sha256": "1f23c46f129ba30891eedf29330b0308d82d1712314c0181e84fe258fb588be1",
+            "definition_sha256": "14b721caeb9523d4206266aefe3aa73b6fe76742f8f561e48e3d748473abc544",
+            "validator_version": "capability_validator_v2"
+        }
+    ]
+}

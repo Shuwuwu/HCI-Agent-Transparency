@@ -60,7 +60,7 @@ class CommittedPromptsTest(unittest.TestCase):
             self.assertEqual(list(record), ["skill_id", "template_version", "prompt_sha256",
                                             "estimated_input_tokens", "limits", "source", "request"], skill_id)
             self.assertEqual(record["skill_id"], skill_id)
-            self.assertEqual(record["template_version"], "skill_capability_v2")
+            self.assertEqual(record["template_version"], "skill_capability_v3")
             request = record["request"]
             self.assertEqual(set(request), {"model", "instructions", "input", "reasoning", "max_output_tokens"})
             self.assertEqual((request["model"], request["reasoning"], request["max_output_tokens"]),
@@ -194,6 +194,17 @@ class TemplateTest(unittest.TestCase):
         self.assertIn("Do not add warnings about malicious or untrusted content, injected instructions", SYSTEM_TEXT)
         self.assertIn("references to benchmarks, tests, evaluation or other skills", SYSTEM_TEXT)
         self.assertIn("A read-only skill must never instruct any change.", SYSTEM_TEXT)
+
+    def test_the_system_prompt_forbids_missing_tool_claims_and_questions_to_the_user(self):
+        self.assertIn("Do not state or imply which tools, arguments or capabilities are missing or unavailable.", SYSTEM_TEXT)
+        self.assertIn("Never tell the assistant to ask the user a question, request clarification or wait for confirmation",
+                      SYSTEM_TEXT)
+        self.assertIn("choose the most reasonable reading and say in the answer which reading you used", SYSTEM_TEXT)
+        self.assertIn('a final sentence beginning "Use when"', SYSTEM_TEXT)
+
+    def test_the_template_files_carry_the_version_in_their_names(self):
+        self.assertEqual(cp.TEMPLATE_VERSION, "skill_capability_v3")
+        self.assertTrue(cp.SYSTEM_TEMPLATE.name.endswith("_v3.md") and cp.USER_TEMPLATE.name.endswith("_v3.md"))
 
     def test_the_system_prompt_does_not_ask_for_examples_with_values(self):
         self.assertIn("Do not include names, dates, times, email addresses, file names, IDs, numbers or quoted text",

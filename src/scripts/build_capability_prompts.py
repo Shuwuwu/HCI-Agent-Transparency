@@ -13,7 +13,7 @@ Purpose:
 
 Inputs:
     src/data/skill_library/sources/<skill-id>.json (build_skill_sources.py).
-    src/prompts/skill_capability_system_v2.md and skill_capability_user_v2.md: the prompt templates (the user
+    src/prompts/skill_capability_system_v3.md and skill_capability_user_v3.md: the prompt templates (the user
     template has {{placeholders}} that this script fills).
 
 Outputs:
@@ -41,10 +41,10 @@ from pathlib import Path
 import agentdojo_runs as runs
 import prompt_utils
 
-TEMPLATE_VERSION = "skill_capability_v2"
+TEMPLATE_VERSION = "skill_capability_v3"
 PROMPTS_DIR = runs.REPO_ROOT / "src" / "prompts"
-SYSTEM_TEMPLATE = PROMPTS_DIR / "skill_capability_system_v2.md"
-USER_TEMPLATE = PROMPTS_DIR / "skill_capability_user_v2.md"
+SYSTEM_TEMPLATE = PROMPTS_DIR / "skill_capability_system_v3.md"
+USER_TEMPLATE = PROMPTS_DIR / "skill_capability_user_v3.md"
 DEFAULT_SOURCES_DIR = runs.REPO_ROOT / "src" / "data" / "skill_library" / "sources"
 DEFAULT_OUT_DIR = runs.REPO_ROOT / "src" / "data" / "skill_library" / "prompts"
 

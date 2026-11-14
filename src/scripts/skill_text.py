@@ -257,13 +257,15 @@ def _used_as_argument(block: str, token: str, tool_names) -> bool:
 
 
 def tool_findings(text: str, body: str, tool_names, tool_args: dict[str, set[str]], all_args: set[str],
-                  enums: dict[tuple[str, str], list[str]], record_fields: set[str]) -> dict[str, list[str]]:
+                  enums: dict[tuple[str, str], list[str]], record_fields: set[str],
+                  documented_names: frozenset[str] | set[str] = frozenset()) -> dict[str, list[str]]:
     """Findings (a list of problem descriptions per check id) for the tool accuracy checks T1-T6.
 
     tool_names: the tools whose names may be used; tool_args: tool -> its documented argument names; all_args: the
-    union of those; enums: (tool, argument) -> allowed values; record_fields: field names of the record types."""
+    union of those; enums: (tool, argument) -> allowed values; record_fields: field names of the record types;
+    documented_names: other names that the tool descriptions themselves use (known to T1 and T6, never an argument)."""
     findings = {key: [] for key in ("T1", "T2", "T3", "T4", "T5", "T6")}
-    known = set(tool_names) | all_args | record_fields
+    known = set(tool_names) | all_args | record_fields | set(documented_names)
 
     verb_pattern = r"(?:%s)(?:_[a-z0-9]+)+" % "|".join(TOOL_VERBS)
     for word in sorted(set(re.findall(rf"(?<![\w.@/-])({verb_pattern})(?![\w@])", text))):

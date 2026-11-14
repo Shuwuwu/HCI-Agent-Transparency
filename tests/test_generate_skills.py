@@ -298,7 +298,7 @@ class RecordsTest(unittest.TestCase):
         self.assertEqual((row["prompt_sha256"], row["definition_sha256"]),
                          (record["prompt_sha256"], record["source"]["definition_sha256"]))
         self.assertEqual((row["validator_version"], row["template_version"]),
-                         (validator.VALIDATOR_VERSION, "skill_capability_v2"))
+                         (validator.VALIDATOR_VERSION, "skill_capability_v3"))
         self.assertEqual(gen.stale_skills(manifest), [])
 
     def test_an_edited_skill_file_matches_no_attempt_and_is_reported_stale(self):
