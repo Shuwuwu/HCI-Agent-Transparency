@@ -2,23 +2,63 @@
     "skills": [
         {
             "skill_id": "calendar-lookup",
-            "skill_sha256": "e10803a438e44e53efbcf63ea554c8689e52b079fc7c050c52b9b67d505f400e",
+            "skill_sha256": "7afa82a5f2cff046a718fa4e2e3bf6da31dea6238b0a74d8b056926e3540f84d",
+            "accepted_attempt": 3,
+            "reported_model": "gpt-6.1-sol",
+            "template_version": "skill_capability_v3",
+            "prompt_sha256": "e1738acb1a24c9190a3eafa1cd8839cc723738e11b30ea344b53f51a0d068579",
+            "definition_sha256": "3af9323b6269b5ccccf7a37f6bc3e7f0edc625ba4cbb9a12c7f4b8309b4d3113",
+            "validator_version": "capability_validator_v3"
+        },
+        {
+            "skill_id": "calendar-scheduling",
+            "skill_sha256": "dc92d833e223b05c2890748f9e0a7d482bd6a2c32c63a51853a5ef19fc9380af",
             "accepted_attempt": 1,
             "reported_model": "gpt-6.1-sol",
-            "template_version": "skill_capability_v2",
-            "prompt_sha256": "dd8377d374b5040fe1305f7826dddbf486816a09596acce65c273307c16d1c8d",
-            "definition_sha256": "3af9323b6269b5ccccf7a37f6bc3e7f0edc625ba4cbb9a12c7f4b8309b4d3113",
-            "validator_version": "capability_validator_v2"
+            "template_version": "skill_capability_v3",
+            "prompt_sha256": "e421c1dfdd3469cb673406c0c0b0bfa1bda9bada8137af96a64af3dcf388ba66",
+            "definition_sha256": "3e1a81b6b8b07c91824b5f1f84d755a54504aad5a501fb680ff0af03ce297623",
+            "validator_version": "capability_validator_v3"
+        },
+        {
+            "skill_id": "document-content",
+            "skill_sha256": "519cc596393e69270ead78535bfe9a2e62ec7ee9aea99f021f4d3a3cfa8d08f7",
+            "accepted_attempt": 1,
+            "reported_model": "gpt-6.1-sol",
+            "template_version": "skill_capability_v3",
+            "prompt_sha256": "a386c59c595aae72a1d0b61f6691f5ad4895c366eea05d25e9e47d8a921867c0",
+            "definition_sha256": "5c19aaa2ddb1199499e5177e98a0b94d97241dfdd47b88d3aaf232073da600ed",
+            "validator_version": "capability_validator_v3"
+        },
+        {
+            "skill_id": "drive-file-management",
+            "skill_sha256": "7858e78a92c63bb921e45e365fa78e0a05899319242296a0a9d669f47ccff836",
+            "accepted_attempt": 1,
+            "reported_model": "gpt-6.1-sol",
+            "template_version": "skill_capability_v3",
+            "prompt_sha256": "094f31779a4f3907a2ba5af4bc1883b68a2dab8fae20d045b9ef6788feab7680",
+            "definition_sha256": "0949d328fa00dc2857d750bed37cd0bdcb3cb24d6e077a0eb4409fc2aa2c86e2",
+            "validator_version": "capability_validator_v3"
         },
         {
             "skill_id": "email-correspondence",
-            "skill_sha256": "4f3911446b25fec340df0f160030aed11f55f6d1b89778f0e4e928f318bed671",
+            "skill_sha256": "e19c895c16d1ce3015bed06785077401687514eba73381398cf41d221e09f2c0",
+            "accepted_attempt": 3,
+            "reported_model": "gpt-6.1-sol",
+            "template_version": "skill_capability_v3",
+            "prompt_sha256": "f6b9e0a427b582a87488fcfe2fc814640ea371a1bf0015086bb09f62c4a12aa7",
+            "definition_sha256": "14b721caeb9523d4206266aefe3aa73b6fe76742f8f561e48e3d748473abc544",
+            "validator_version": "capability_validator_v3"
+        },
+        {
+            "skill_id": "email-lookup",
+            "skill_sha256": "b750743194035a42b74ce1c90ab9c27bda34c0e29440e86fe5d9e82838ef4399",
             "accepted_attempt": 1,
             "reported_model": "gpt-6.1-sol",
-            "template_version": "skill_capability_v2",
-            "prompt_sha256": "1f23c46f129ba30891eedf29330b0308d82d1712314c0181e84fe258fb588be1",
-            "definition_sha256": "14b721caeb9523d4206266aefe3aa73b6fe76742f8f561e48e3d748473abc544",
-            "validator_version": "capability_validator_v2"
+            "template_version": "skill_capability_v3",
+            "prompt_sha256": "cdc11ce9f10886d0c7bb31cf8b7cd6bfcd5adb0110e4c24cb626c93c2fb894ac",
+            "definition_sha256": "cf3fd68b19d58d43832bc57988a7d8176c4e4a7c2a101f2ae9a5e9dd676fc1c2",
+            "validator_version": "capability_validator_v3"
         }
     ]
 }

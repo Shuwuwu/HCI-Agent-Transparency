@@ -1,64 +1,64 @@
 ---
 name: email-correspondence
-description: Compose and send emails on the user's behalf, resolve named recipients, reply to identified senders, and delete identified emails when the user requests those actions.
+description: Compose and send emails, resolve recipients, reply to senders, and delete identified emails on the user's behalf. Use when the user asks to send correspondence, answer an email, or delete an email.
 ---
 
 ## Overview
 
-Handle outgoing correspondence and email deletion according to the user's instructions. Resolve recipients and target messages before acting, preserve the requested meaning, and base claims about existing contacts and messages on tool results. Send or delete only when the user's request asks for that change.
+Carry out requested correspondence using the user's instructions and facts established by tool results. Resolve recipients, prepare the requested message, and report the actual outcome. Use data-changing tools only when the user requests the corresponding send or deletion.
 
 ## When to Use
 
-Use this skill when the user asks to send an email, identify a named recipient for correspondence, reply to an existing message, or delete an identified email. Include copies and attachments only when requested.
+Use for sending a new email, resolving recipients for correspondence, replying to an existing sender, or deleting an identified email. Include copies and attachments only when requested.
 
-If essential details are missing or multiple contacts or messages fit, ask a focused clarification before taking the requested action.
+When wording is ambiguous, choose the most reasonable interpretation supported by the request and available records, then disclose that interpretation in the final answer.
 
 ## Tools
 
-- `search_emails`: Find an inbox message using subject or body content through `query`, optionally restricted by `sender`. Use an empty `query` only when a broader inbox search is necessary.
-- `search_contacts_by_name`: Resolve a person the user named to a contact address using `query`.
-- `search_contacts_by_email`: Look up contact information for an already known address using `query` when confirmation is useful.
-- `send_email`: Send requested correspondence with `recipients`, `subject`, and `body`, plus requested `cc`, `bcc`, or `attachments`. Use only when the user asks to send.
-- `delete_email`: Delete an identified inbox message using `email_id`. Use only when the user asks for deletion.
+- `search_emails`: Find an email to answer or delete, or retrieve requested attachment information from an identified email. Use `query` for subject or body text and optional `sender` for a known sender address.
+- `search_contacts_by_name`: Resolve a named recipient or sender using `query`.
+- `search_contacts_by_email`: Match a supplied address to a contact using `query` when contact identity is relevant.
+- `send_email`: Send a requested new message or reply using `recipients`, `subject`, and `body`, with requested `cc`, `bcc`, or `attachments`. This changes user data; use only when sending is requested.
+- `delete_email`: Delete the identified email using `email_id`. This changes user data; use only when deletion is requested.
 
 ## Workflows
 
 ### Compose And Send
 
-1. Identify the intended recipients, subject, and body from the user's instructions. If a recipient is named without an address, call `search_contacts_by_name`. Clarify any essential missing content rather than inventing it.
-2. Prepare `recipients`, `subject`, and `body` for `send_email`. Preserve the user's intent and requested tone. Include `cc`, `bcc`, and `attachments` only when requested and sufficiently specified.
-3. Check any date-dependent details before calling `send_email`. No listed tool returns the current day; if a relative date must become a concrete date, ask the user rather than assume. Format calendar attachment times as documented.
-4. Call `send_email` only because the user requested sending. Report the outcome supported by its result; if the result is an error or empty, do not claim the email was sent.
+1. Extract the requested recipients, subject, body, and any explicit copy or attachment instructions. Use `search_contacts_by_name` for recipients identified by name rather than address.
+2. Prepare `subject` and `body` for `send_email`, preserving the user's intended meaning and supplied wording where appropriate. Do not invent factual claims or commitments.
+3. Assemble `recipients` and any requested `cc`, `bcc`, or `attachments`. Use `search_emails` if the user identified an existing email containing needed attachment information. Omit optional additions unless requested.
+4. Call `send_email` only because the user requested sending. Inspect the returned email details and report the observed result rather than assuming delivery from the attempt alone.
 
 ### Address Recipients
 
-1. Call `search_contacts_by_name` with the person the user named as `query`. Use returned contact addresses rather than constructing or guessing an address.
-2. If an address is already known and contact confirmation is needed, call `search_contacts_by_email`. If either contact search returns no match, an error, or ambiguous matches, explain the issue and ask for clarification.
-3. Populate `recipients` for `send_email` from the resolved addresses. Resolve separately named copy recipients with `search_contacts_by_name`, assigning them to `cc` or `bcc` exactly as requested. Do not add copies implicitly.
-4. Prepare `attachments` for `send_email` only when requested. File attachments require `type` and `file_id`; event attachments require `type` and `event_details` containing the documented event fields. No listed tool retrieves cloud files or calendar events, so request missing references or details instead of inventing them.
-5. Call `send_email` only if the user also requested sending and all required details are available. Otherwise, report the resolved recipient information without sending.
+1. For each named recipient, call `search_contacts_by_name` with the person's name as `query`. Select the contact best supported by the request and returned records.
+2. When a supplied address needs a contact identity match, call `search_contacts_by_email` with that address as `query`. Preserve explicitly supplied recipient addresses rather than substituting another contact.
+3. Resolve copy recipients through `search_contacts_by_name` or `search_contacts_by_email` as appropriate. Populate `cc` and `bcc` only when the user asks for those copies; do not turn ordinary recipients into copy recipients.
+4. For requested attachments sourced from an identified email, use `search_emails` to retrieve the relevant record. Build `attachments` for `send_email` using the documented file or calendar-event representation and established attachment details. Follow the documented date and time formats.
+5. Supply the resolved values to the requested `send_email` operation, not an additional send. If an essential recipient or attachment cannot be established, report the unresolved item rather than claiming the intended message was sent.
 
 ### Reply To Sender
 
-1. Call `search_emails` using identifying subject or body content as `query`. If the user identifies the sender by name, first call `search_contacts_by_name`, then use the resolved address as `sender`.
-2. Inspect the returned messages to identify the intended email. If results are empty, erroneous, or ambiguous, report that or ask for clarification before calling `send_email`.
-3. Prepare the reply for `send_email`, using the selected message's `sender` as the recipient and its subject as context. Write the requested response without automatically including other recipients or attachments.
-4. Call `send_email` only when the user requested the reply be sent. This tool sends a message but has no documented threading argument; do not claim guaranteed thread placement. Report the actual outcome.
+1. Find the source message with `search_emails`, using identifying subject or body terms in `query`. If filtering by a named sender, first resolve the address with `search_contacts_by_name`, then use it as `sender`.
+2. Compare returned subjects, bodies, senders, and timestamps with the request. Refine `search_emails` when necessary to identify the most reasonable matching message.
+3. Prepare `send_email` with the source message's sender in `recipients`, a subject appropriate to the source message, and the requested reply in `body`. Do not automatically copy the source message's other recipients or attachments.
+4. Call `send_email` only when the user requests the reply to be sent. Include `cc`, `bcc`, or `attachments` only if requested, and report the returned outcome.
 
 ### Delete Email
 
-1. Call `search_emails` with the user's identifying details. Resolve a named sender through `search_contacts_by_name` when needed before filtering by `sender`.
-2. Inspect the returned messages and select the one matching the request. If there is no clear match, clarify rather than calling `delete_email`.
-3. Only when deletion was requested, call `delete_email` with `email_id` set to the selected email's returned `id_`.
-4. Confirm deletion only if the `delete_email` result supports success. Report an error or empty result without claiming completion.
+1. Locate the requested message with `search_emails`. Use `search_contacts_by_name` first if a named sender must be resolved for `sender`.
+2. Check the returned records against the identifying details. Refine `search_emails` as needed; do not delete every search result merely because it matched broad search terms.
+3. Only when deletion is requested, call `delete_email` with `email_id` taken from the selected email record's `id_`.
+4. Inspect the `delete_email` result. Report deletion only when supported by the result; otherwise report the error or unestablished outcome.
 
 ## Common Pitfalls
 
-- Do not use undocumented arguments or infer addresses from names.
-- Do not mistake a contact match for authorization to send.
-- Do not add copies, attachments, or reply-all recipients without instruction.
-- Do not assume a failed or empty tool result means success.
+- `search_emails` searches subjects and bodies through `query`; use `sender` for sender-address filtering.
+- Do not assume the current day when interpreting relative dates. If returned information cannot establish the requested time-qualified match, report that limitation.
+- An empty result or error is not success. Report the failed lookup or operation and do not perform dependent changes using guessed values.
+- Do not repeat `send_email` merely because an earlier attempt has an uncertain outcome.
 
 ## Output Requirements
 
-Give a concise outcome: what was sent, which recipient was resolved, or which message was deleted. State unresolved details or failures plainly. Distinguish prepared correspondence from successfully sent correspondence, and avoid exposing unnecessary message content.
+Briefly state what was sent or deleted, supported by tool results. For sent messages, identify the recipients and subject; mention copies or attachments when relevant. Disclose material interpretation choices. If an operation failed or could not proceed, identify the unresolved issue and avoid claiming completion.

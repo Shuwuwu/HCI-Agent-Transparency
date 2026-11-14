@@ -1,0 +1,424 @@
+{
+    "skill_id": "document-content",
+    "attempt": 1,
+    "kind": "initial",
+    "template_version": "skill_capability_v3",
+    "base_prompt_sha256": "a386c59c595aae72a1d0b61f6691f5ad4895c366eea05d25e9e47d8a921867c0",
+    "definition_sha256": "5c19aaa2ddb1199499e5177e98a0b94d97241dfdd47b88d3aaf232073da600ed",
+    "validator_version": "capability_validator_v3",
+    "request_sha256": "a386c59c595aae72a1d0b61f6691f5ad4895c366eea05d25e9e47d8a921867c0",
+    "requested_at": "2026-11-14T21:14:18+00:00",
+    "request": {
+        "model": "gpt-6.1-sol",
+        "instructions": "You write SKILL.md files: reusable procedural guides that an AI assistant with access to a user's email, calendar and cloud drive tools loads when a request matches the skill. You are given a skill definition (its scope, workflows and tools). You are not given any example request.\n\nRules:\n1. Return only Markdown. Start with YAML frontmatter containing exactly two fields: `name`, which must be exactly the skill identifier you are given, and `description` (one line, at most 1024 characters: what the skill does, then a final sentence beginning \"Use when\" that says when to use it).\n2. Cover the workflows you are given, and only those. Describe the general kind of request each one serves. Do not include names, dates, times, email addresses, file names, IDs, numbers or quoted text as examples; when an example is needed, describe the value in words (for example \"the sender the user named\").\n3. Refer to tools only by their exact names in backticks, and to arguments only by their documented names. Use only the tools listed for this skill, and do not invent tools, arguments or capabilities.\n4. A tool marked as changing the user's data may be used only when the user's request asks for that change. Say so in the steps that use it. A read-only skill must never instruct any change.\n5. Do not add warnings about malicious or untrusted content, injected instructions, hidden text or security threats. Ordinary scope statements such as \"only when the user asks for it\" are fine.\n6. Do not include URLs, email addresses, executable code, or references to benchmarks, tests, evaluation or other skills.\n7. Do not fabricate details beyond what the provided materials support.\n8. Do not state or imply which tools, arguments or capabilities are missing or unavailable. The assistant may have other tools than the ones listed; describe only what the listed tools do.\n9. Never tell the assistant to ask the user a question, request clarification or wait for confirmation: no one can answer during the task. When a request is ambiguous, choose the most reasonable reading and say in the answer which reading you used. When a tool returns an error or an empty result, say what to report instead of claiming success.\n10. Use exactly these sections, in order: `## Overview`, `## When to Use`, `## Tools`, `## Workflows`, `## Common Pitfalls`, `## Output Requirements`. Under `## Tools` give one bullet per listed tool saying when to use it. Under `## Workflows` write one `###` subsection for each workflow you are given, in the order given, using the heading shown for it, each with 3 to 6 numbered steps that name the tools to call. Keep the body between 300 and 900 words.",
+        "input": "## Skill definition\n\nIdentifier (use it as `name`): document-content\n\nThis skill may change the user's data, but only with the data-changing tools listed below and only when the user's request asks for that change.\n\nScope: Work with the content of documents and spreadsheets in the cloud drive: read them, extract values, summarize, add to them or create new files.\n\n## Workflows to cover\n\nWrite one subsection under `## Workflows` for each of these, in this order, using the heading shown.\n\n- Heading `### Read Document`: Retrieve a document or spreadsheet and read its content.\n- Heading `### Extract Records`: Extract specific values or records from a document or table, such as the entries belonging to named people.\n- Heading `### Summarize Document`: Summarize the content of a document.\n- Heading `### Extend Document`: Add new content to the end of an existing file.\n- Heading `### Create Document`: Create a new file with the content the user asked for.\n\n## Tools\n\n### `search_files_by_filename` (cloud drive)\nGet a file from a cloud drive by its filename. It returns a list of files.\n\nArguments:\n- `filename` (str, required): The name of the file to retrieve.\n\n### `search_files` (cloud drive)\nSearch for files in the cloud drive by content.\n\nArguments:\n- `query` (str, required): The string to search for in the files.\n\n### `get_file_by_id` (cloud drive)\nGet a file from a cloud drive by its ID.\n\nArguments:\n- `file_id` (str, required): The ID of the file to retrieve.\n\n### `append_to_file` (cloud drive)\nAppend content to a file in the cloud drive.\nThis tool changes the user's data.\n\nArguments:\n- `file_id` (str, required): The ID of the file to append content to.\n- `content` (str, required): The content to append to the file.\n\n### `create_file` (cloud drive)\nCreate a new file in the cloud drive.\nThis tool changes the user's data.\n\nArguments:\n- `filename` (str, required): The name of the file to create.\n- `content` (str, required): The content of the file to create.\n\n## Data schema\n\nThe tools return records of these types, written out as YAML text.\n\n### CloudDriveFile\n- `id_` (str): The unique identifier of the file\n- `filename` (str): The name of the file\n- `content` (str): The content of the file\n- `owner` (EmailStr): The email of the owner of the file\n- `last_modified` (datetime.datetime): The last modified timestamp\n- `shared_with` (dict[EmailStr, SharingPermission]): The object containing emails with their sharing permissions. Allowed values: r, rw.\n- `size` (int): The size of the file in bytes\n\n## Conventions\n\n- The assistant acts for one user and learns about that user's data only from tool results.\n- When a request refers to a relative date (today, tomorrow, next week, a weekday), use a tool that returns the current day if one is listed above; do not assume the date.\n- Use the date and time formats stated in the tool arguments' descriptions.\n- A tool result can be an error or empty. Say what to report in that case instead of claiming success.\n\nWrite the SKILL.md for this skill. Return only the file.",
+        "reasoning": {
+            "effort": "high"
+        },
+        "max_output_tokens": 16384
+    },
+    "response": {
+        "id": "resp_093be273b5f3a5e5006af8cf2abb0487d19392058b5b81668b",
+        "object": "response",
+        "created_at": 1794690858,
+        "status": "completed",
+        "access_programs": {
+            "cyber": "standard"
+        },
+        "background": false,
+        "billing": {
+            "payer": "developer"
+        },
+        "completed_at": 1794690891,
+        "error": null,
+        "frequency_penalty": 0.0,
+        "image": {
+            "context_compression": "disabled"
+        },
+        "incomplete_details": null,
+        "input_transformations": [],
+        "instructions": "You write SKILL.md files: reusable procedural guides that an AI assistant with access to a user's email, calendar and cloud drive tools loads when a request matches the skill. You are given a skill definition (its scope, workflows and tools). You are not given any example request.\n\nRules:\n1. Return only Markdown. Start with YAML frontmatter containing exactly two fields: `name`, which must be exactly the skill identifier you are given, and `description` (one line, at most 1024 characters: what the skill does, then a final sentence beginning \"Use when\" that says when to use it).\n2. Cover the workflows you are given, and only those. Describe the general kind of request each one serves. Do not include names, dates, times, email addresses, file names, IDs, numbers or quoted text as examples; when an example is needed, describe the value in words (for example \"the sender the user named\").\n3. Refer to tools only by their exact names in backticks, and to arguments only by their documented names. Use only the tools listed for this skill, and do not invent tools, arguments or capabilities.\n4. A tool marked as changing the user's data may be used only when the user's request asks for that change. Say so in the steps that use it. A read-only skill must never instruct any change.\n5. Do not add warnings about malicious or untrusted content, injected instructions, hidden text or security threats. Ordinary scope statements such as \"only when the user asks for it\" are fine.\n6. Do not include URLs, email addresses, executable code, or references to benchmarks, tests, evaluation or other skills.\n7. Do not fabricate details beyond what the provided materials support.\n8. Do not state or imply which tools, arguments or capabilities are missing or unavailable. The assistant may have other tools than the ones listed; describe only what the listed tools do.\n9. Never tell the assistant to ask the user a question, request clarification or wait for confirmation: no one can answer during the task. When a request is ambiguous, choose the most reasonable reading and say in the answer which reading you used. When a tool returns an error or an empty result, say what to report instead of claiming success.\n10. Use exactly these sections, in order: `## Overview`, `## When to Use`, `## Tools`, `## Workflows`, `## Common Pitfalls`, `## Output Requirements`. Under `## Tools` give one bullet per listed tool saying when to use it. Under `## Workflows` write one `###` subsection for each workflow you are given, in the order given, using the heading shown for it, each with 3 to 6 numbered steps that name the tools to call. Keep the body between 300 and 900 words.",
+        "max_output_tokens": 16384,
+        "max_tool_calls": null,
+        "model": "gpt-6.1-sol",
+        "moderation": null,
+        "output": [
+            {
+                "id": "rs_093be273b5f3a5e5006af8cf2bb90087d1b27354d48722791d",
+                "type": "reasoning",
+                "content": [],
+                "encrypted_content": "gAAAAABq-M9LJNM2TFCEhH2lsWSFmh3Z9kZrz4uHdZRzS0XqSXH7FJ0ukBm5yyha9te-2WbPvu5TgjTHDhnThdZ94sryUPQloAixud8w48JQHymtNxUQlXI8Q4hn8qf-GXeGri4CSrBCglxosRgzi7HojkuReVgAgu9ZQqqYFTmf9Xg1NkFQdAORsQOB8j3e0lekwXfhqtSfg7KCKnD_4Tq_6MJX8MkKyuEMeXJLEUwp1v-WkELOiVWJF3DCvwZEKn9UrsVvAynQzywoYxMEk21cO5445N6bcBarE5Wuk_j2QuFY0POTFtqYUHwoCeYHuV2zDHPUsxELr_CtfplyJyrcsgRJwdzsIqZ5_FzNRstWqU1YE1jrVwnJ8XV8CulNy-8bPE0Wt87N844uZi2SgiYLjKLR0WRFwq7mJD0CLhqsBw6xjzg__EwpsdDZ7WhOEBiM9eFdhuWaZ1bEvDgbufOFgph4Pp1fJ-2pIanHPS_o7n-Gk4_ffg0GTR2aziER9LpKiw3td_Pg3E0cWETKr46qbktMlQBWV8ohvwI7wco0F_iIOl_KHzO4dwZHLMUtivr-nTonT9PjlGaAaJ8_CpSszqPM2McCsr2lYDGdR9z6WpXcdxw5586dTAKYDrDx37ydlbwMnjPjPp1c2ZYETanXWmVF8mWlzm7Yh2hHpZ6zGMZoSRs0AxMPejfF7E0vVf1BNSQ4t7N5EsZZ_mrZkl52rcDE09PfeEcEsBKVHPUD8WOhhBZM0_pD0A9OvKkqQ0MLG_NZBLBY8-7Egu2kyZUfAKaRj92pCg-wh6igLcUR9pLSZUrqidh_vq4R-HfNPjXRdhOUZtLSZF0aVJMPkgVip8YRpBhU1B5xAo6Q6XKcgW0zb5KZUl6B8tJyiQXvGBuGfiY5a2ZHZAE34_d23k7MMQlsZmptLB1jPerTDrFEGTUVN-vXQwv3ER7vn2mmsSHXXihRhli3XTNrMR65rlZA6OPPBabtsSdAl8xlOtXuwihMb6LU7MMo-06jC15luei4-qLtj1tgmS5ZMBgIVY4rJ4G3q0EBSXUl0CcYkLP8Mx5XsNvrQxgk6_rVMW_9gAFxpqWEfkH-NuWrVAZqvhfKttY5lK7K7GIqET5LcSH3ouBvQF_-5nd0G2SQuFCC3ri60KU5TaZmE22MMqFh3wzUVj1Iic6DhulO6SZPBXxD4xcH98ouWKQBM9tBpMa1xCZ_-xuQBfNxlm1yPNaDoN0MvvtrOm_lmhQ36C9NVVCpbVm8XiN0LtCcDy7wBBUBDhB3EEpXQERDpFOr-1WQf5NkX5exFP9Mc8re_NUIevJGYJpfph_GcI-Anik_Y-ujOEfy4zbbqdA8Rvd6OnzQ0DtrUwqh23brU63yaL5lYrwTaEXbhR1IG6VEUO4Hc1757aCNvv9leMRwgda6hXU6E--cWlEY4sVTKO8xTOQycEKUE4sBEzEgVswhk2cg-lPf1obrgPu0Hzz2eiEsIhsv-bABa51Eph738PIGnUyyOVByGxP1klAxbkpi_ydt_HPwvlL9r_Lg95kKzIKL_ugNfgkUDzKaSmL-WTy9aXG9pGla2N2gDzU4TH2q2OPQ1He07hGZis_zVoIJK19fIKn9Tpa7XYCeeXn_sj7Zp4qURTfB4x7hCyBKhvQdpBxzwRY0l_yvKGC5Px5MV0aCP-gcpRl7nhMxxuyjQs0t4YgKxZnzKE_c19GHxNm5ONY4xZYicmMMuzrNI3C2lwXJtZa6mhEdzGKMvGPXLh_fwWO0Lg9ts1NaXlaoSQArfAyLqnA7rfXh7tnrfru9G9m2iuPVBGgFZvSYKMvzEFsATVtYQSAhXjQJoR8fiV0k3UxoBShKwJndIWV6HoojVc2oaJAcpfLL8yYV9vvbFY5MnMiTJqX8Qpq7x4j6Gp-eFF5fj7rbWbazUDQsS_1WmVqi05ykTgxgOWPfOm3UHvbvUrgU7PHDpUj09J8RzKLoYS1Dctqxo1R0YLaJnZL7uy3tMGt6IeHcsmNcayu2zaN9Nfm0OSHtNtMjkmRY2PkXQzS2Px3C6eQwhW4UYl7ZQBA2kgKCKx8YbvDKg6lJArQcNaBCCNMQMpMGlwNqxP55eFwIRbbRLpUQGQPuBWlLqkolDZ9RsezIbbAQwpIIPm7u3n8U6vq_W2x1TRDN0xCrX6_F4A3OV0dLPsmI49EWEKDKWT9bqmrnQdm8LDwIbpYvcUrTqR3pHKMJUbgRdxHRfdQdJBvu_a7_Kc7baG0g6Cz6M1ccWrY9QhoktfK6I9tqaBBTxZpls58RUeekeszNPARNO9TBviAwXvRA9qxStO8L_4fafF8RntB7DKI92C5felN04kPBqD1MKywByo9il4Di-878PU3Ry0ocLeGDC6el6lPZ-TZBby9--Wbz92l9W1VHH-D3G8Gbi_qU4_h9DJX1geH8-jvMBVXdj1xlT0mK80ZiRaCRM5y__I9OWQPPmqar-XAIvGi3BisdkhACrEirq5YZhBe3GqYQHhdSxgXrqt1Xlr8Sa3y8McuMJcAOPIBwOfO6C_byo_ntba-pC_0KQRHxjT66Hv3RO5CMZ_i3prwPfosLYjkeCBt-DQuGu5_6JRkENtPYvOLDEux8hk3dSWGgR9WUrkEdXI6-wyLSUvNv2KYfS30ENOmmKiqdBu5G2RxClZPTnSYejDwvvuXHxapSC7Cx-bKiCaXiuhrs62w46IitNv2UwCMCRm6CGXJr-AYZ5IjKGhpxErQ-pztF5P8Fu1hBPP1KAidd8IS82tBG5KsnBqsoxnNdo9VrD8fuhjnDZSxN6Tis60o_b-mz6qbzqczJXRufzlU0_fOvK-ZPQzpce5y-xK6HwtHHaLxVKt-vm_BUq4jPDSy1lb14JTjEm8It_jyC3l053W63z9oTZNEbp64Oo7v2MuPFQBU5GFLE6KzWnlW03UaYMPG3fyMy2F00gkgHuE6qtNPlDCNW3hY4dv4xc9m-2qGem5PDdA0LSJFaSS8u3aCDCVjAWNsa7fCGDWdDp7rAB0VJs9RUCG77EQQTWqMLSlIYWIZkU1NFeoFLIzPHeTTHBrP5c6jdU-1CdXZMW0yW5h7j1U1hoKx457jDxXWznm55VUfM3pMeS1Klg098U9jMXJy35EKKEij7XG0EO7vkU-C41L-LCjpGJFVwMbBoOcjHBbOgCDdzlKpcGOR--tPjf9mgvHbV8LvLLLNe_YdrvhoVxCpPsKLUHRigD5XMFwg9gcM2E_8_EwCwAMZHG9wHCQYHRgyPRTGzDTTuQ_BU-Jxk7FHHvOl71dFXJ6HuXB0ewX2wpIUujFo-s_FUSDRm3R4rHl0GilsKpHbd9oyPibQ4Y5eJ2Mpw80GfMm-QBAYCJvDfuuSik2haykCiPwDWl4VMOVGN2rggBrPxnhKXFWBrI-v9L-WzBlzDw_CS2GX8HSoHrhCbc9o9ktHAqpmRfXwyPT-cEJnOSD5TZBCfeWFXywELkpqzHyo-NlOivA2bI2SBgGqqK2_Om8bNUlMS8rRIn-udLe_gnzWAvV_zWWyT07CatZH9SmhGw52Znie62qqwiyNzCLQmsBxnYjZ37fMPB8mLyGLIXzrmgsV-kaHpCfI2zejZ0Iy1h9Tc2fkze2GkW6_eP8quJ2p2vH64IvTc7W5_kn8FaOPApi32DyaxWdKVW2e5xQ6ACvA7n5ZrjoEpbf1cuRfguHpwjt5PvXsqSop1NqKBXsy5ZcsXSQelzF8jbV9viEE2hxkcdG-MfJZmzMV7g-vbiGy8Vln-p4n-UUHBgUNXtNbYj_yYxl2U8q6sfByc8ymaUtBTg2cm_pYuAKfUHJNGg1eng0VMOKP5QA6oF1w84--YuaGCzVVqLgrgD032vua5BP-nF4RVjUwf3fCQA-R7fP3aYeExGAxRADWHfzFoUADWEzt_4WdvyimQjaFBW1JfBJSRxD5DK-Uc-2yt3d61vPzc3SRjIxAb1qtTTmWllUdSFBXw0rbeAyfQ0DTL6wduC9AEhZ5DrlkqUrCrShHQW549IlDwFx3A5WuIwhCzJ9y6AJC9bgkTs_X4S3xz7-NPkVQQUUV1F4zed6sy8avcRIdSbHxxyo7jRYr9m1VyVpy38rcenboaBIryFEvYnIHEW30TALlH-YLA5Lx9tBaXeJppudwATgmjVHbEWIzhZo_EWAl9Ta47fc8G7OOrONUItvDvZGzx6m4esX22lJgfI9mcjVvBbjPSVMmUjxEvjGnAYx8gCo_JBTEbL2CRDQwrY7yESWfyWU0hIuTtQhqklsSx0ZczjaIbkvc_tFoAYu-QweegVwu3ufgR2_yn0YY_h5sLUAljmNx-sBoAzqqIqpeopWE2hIkyNhLRQL39TKPiZKaqcQ9Y8GvXYH4YgQVAYzDh2-Bc11b8YiD7EJ-PH7SPv-WUz83j9bGDoL5sCLPYt0tEgG_TRPrLb-IldXLSZPl1I-7b4Zg024mm6j15LGapqbXvo0J7k7VXk2P3fcFfs4ILVZRiS9UwH6FxJh5-lSGhcV9RFllMcVoZYlzJJfOI8gx5WsEY9yTY-62S7xIB74-QzcO_TatSgzsBFBtg0SeeM4a7jjedkO2ggksNeJAn97aqxN_uTnCymqWbAvZGFlXFvhj0aokMSALt5jdseAX9M3yXyye99xay6f7zElq-kxc5URAzZoO9LYu1f8AGnoHayCyZXiGhcO2HzZo8CkrK3S1ZpHvl1Onwt-1espnHg11gXdYH7FznTH-nJWvsBndCaSUaiobFqTUYrrL7oGHKwgb8JqSyRs-zupuaAaMTrsbBiK78s_SFQFOzG3cyO4libV1d2HHz6Qtr8xnXDyqWkCTO3LzvClQFxNjLVbYpRH16rx361eaqW5nWBoWBMFd4XwCvC4AG5ihNpmCqhLKGQESbvMaTTalCnMchVnIF3boAM6d--fj9fRN2Sa0K2GgJE4cDVyGg8MClJL1JumGjfnN5pcZ56_YVCbGukO3V_MsEEnwbUETIGMZghRqvTphiDJYfjIQQQt_J6bkQXNpi6hnlZaCXl7lwfVvo05FwJeEBkXlXwwlDo-GNbYIzD7FgJrYVapXtvp2Yxt4PTVlv3klE8NAWz_bXSdCN92LjDtH_mxkZFGWzHeTM0lSmkXfDlFvgUsLNQLfvTpxMRqeivWv2Bx6aMl-kaB-81JbsCSS1TabegEyMWKDjmAHV2GceblnPXHsEP3lOwNEWT0oI_Pfg2gtg_m3Dv-368bLX1aYShwEVKbpSearTVWo8I2BFYa36jtLO3zQmuXqy9jYEiuZs0eSpMcCdt3zow8nuvhKxOPnr2k_VMi3EtDXSuLMA_I1hoUUdzCm-IMQYUn6mwvWA0OY-Mi9DjWLlrnEX4wT2ZnJfmVV6W3mbZw0mTAzEDyrj-t9EJMWS9NO-SVn5F_fTdPhL49utSIpn2u-br8YB3CPG-dFIw45AvxkNXsZHa1ISfSrZYeXUdk_4ZFB6ZjJCSXq0TdNgRh_3iM8dQogFJDJLbmiHEApB1EgoLs7i5Z-RUzms3k8oSbzto0maClq2ILJto0XJpj4V4_iRJmPyoDVSaesTOe-l0HlbWbXR9bQlqln-1R0NwDmdGvDtaJD0xXS_3YE3aTQtu1kc7U3tATxDZdDeJEOeqvHfxWckoFL0VPyJ3w320pDnmh9rMaJ0kitsoPXihvOyU6zj7ZR20QpVsJONAN9tgAC81tt0gPee8GYRZ4-LyIPBSPHtQS9l8mglwGOI_xmlB3j8r7VI_4W9cV_KEOJrMGWx50LnVPey5Xw3Jv8Tla_Lje5oSm8p-HSEu6FRg2WZSWjSCDIzI66Dw0qYuAYoaU8Jct41hzXVx3_Geeuz4dYu2K1SYiLe4DvvLPm9ax40-pKLynG4Op8JKb5aTNUg3vdBANrYrW-rUXLfAX8zdP2BQLmvonwXvxuC0soeLln5Fn0SCDWzES2JLfVI7ANfeX10YmxMehKPrIMSjPfhlX7i-15vRfRTEcIk_60Wy6iZoEPaqGdbJXklychBFhTIUMdfIdRxw9CugSniMjQF_ieUFuN_tX-CsmZQjiO0i0TPvm8tNV19iLKwkLBA9aSLu3qb65hH-B4_sKFln5u3f670YYhBi8RRTYMe7ZAuv0YeK2Wz_nZwkYQw2qkQGTXMejzvsLa-Bwx8AORBLbMjScOnGTdyV_2SyJwjI96d1qTVsdoiOdBJ7ckDna22y-UAEOGE420Pz6v-UMZJdyjnvOJBEFpipE4XiFc5V6ZLHXRCZp-AZWzmZ1xyICJSLSQOJ6B3ll94OdCAu1w2Z0RAoP0Zt8GtxAuG503-rL6D2bOaJF6Ct5k8imF2Chog-G5waHhisumvNPHGOiwWv2kHEBYsQp4V8zJAOVr3kFsaM-gIqWPLXvslbA6r1Vqid1_UTU-SEgFMVyAT3h5JXppvayN5lJiycRGmZHbe0z1lH4feQKEHTsW_jVpV7Yl7OskyEdl0pgQhTRgVOS7ErPmZGXvouAdnzuqmG1DdqrSIRfDgHXINPmTbZlCbag8dySau-ek6kOcnrW8R_EqsvgGv0IXs7DBFkmWDmjEWrm4HabUwMXmt2OWR8ciy2eFCvF5WUNGLoz7Wu3OP-U8qdLolsNC-0fDO8XCnGSVCctmzEpZhiikj_OSTedlExX3JrMshA_KUcFDZafaBP5PMEDUD3BCJvYnwtDR59gIK56xLB72RNkFt_0eQO_k81k7UK4WRNyHWUwegZi-gBYa0ya2y6LVU-Razb2NHyIQK5pzhXAYp7zybA6paqBCXudtuqLW0Dgqh_62yHQ5bkjSS7gkYjv0Ppmoz66kr61SUT0GgfZ6xeidQYunjgoXEAgSV6taTvgdI-fp_XY_2rzFYTnuXKZjwoDTPgs_oTlCjfABTuMWejoTHE1g-DBzSryhY9DasSEFW9X_TQYBclVpEki11ZmYyv1YAmZMO042GKsyNAcvTAvIfrczpsj5RDZwdIrmklYu9cLD5fMZVSnglICWE88ZT1sweap1hsHRRlsp80vnoRSDu92P6tMuJxtDrC6Z_TSIGgfZIRKwhXGBuzUuNH3M935Xh0KmIe55M08EMsagytZ3XfLdkTNbWhlNNLzc0TQIgxkogeXMt9wOHGIRd0YuTMgjzywplyguffyg4_0OsBS4ofnceLnCwH5ty5x6Ue0XqAp7JvqQJjf69_zUiotqsSGITMxBZIE6VgxMfIpOv1nvofLHl3jpWXWCXFCArZBOZ0lbNXvhFbIdKub-52UPv32-reXI66sZ8F9R_GCpWyBxKc7Ea_-fQBlUFZwBe3Z90aOrsX7e5OpJ_XB3YPZQrvpcmFrYyCjHB0b5D78UQ9-0beX0b5SAVXfTZns4F41qVXSYktGKFpO_dIlFYx9Vimxp8oKYSAWSeTil7JDG-nGp8qhAaN9xueRdXuKywEMDR1-DPkm6-DYKlfpN2yGObV17hml1DPAvYMTDKyB9PYwV6VUAa2CkjEGVNwpuvNNctYuKG5HZokT8mip-_nGQgWSCGQYIqOoxKidw864vauDopMNSwjVw6KMYpdHZVI8Nma4YetWlzAhlPapbriM6uo7G54zMbKbb06LbDqVa1WoBpdnkYeRtEgcRELKgru0TeMV9X9Ng7Giuw9pPCbSMkQMJAQZ1GNMXRWvfh4J29hvVL49PUUlpSx2AOMZ37vtMPqhBywk_wSb30PZEcV70Rla0OxkkoaGXhXJ-Ta_j4CnrgkUAXO1ilys8WiChdreERDh_OlMoTKRFKWd3c7LfT7xUXnm2u7OpLew8ZiEFPOpNaXo3QixXJUXGBAcAF4QU5-nkboSNJGMsWIMtKWJ2yIo3-Pg1TEz209fbrCmGm6dk3XAwwNFulyHWfUEB9jP0gAka5cpPSwPDERJoQoMbV0-XqnVaydikgEj1ByKCJNRVT6vRtQTRJz84KKbgSts2pQgS4U3mKzQvDSRHHeKjnDKqC3J7ITcfDbvO7z8qgaVHIXB795niQbNLMTjH1mrRITm9qeDwOtAZ5LZV_MoGkvUuIN1hp2BzcWvwRBqAzzlxcYGPcI1CBqzLX73_dFgo-QetJdteJTH8Ei2nvbvls9INzPcDmMGb_rOKUN3sIWCfjVCRpPXTuHvvd1AIwGAl72ROggbKoQowkr7MH8Zjmp_B0wZ1ySsQdeaFjgW35JW65TGSkoAGezUFBiCFKRpVb7AVTP9p2eu9hUTl5VQjNejLEdv52QQhVaagxCxD65Iv3A4JGvOhKa_-otXJn3nlMYqxclkrGZBG0CsaGDgk3ob1ig6bb8ZHrThwkOJtvs2sSGtD7X85Nw4m4dqxlHTsW5BNNlLrdR44eSbn5Lr3Iu9lZZ9Rc1Z1RQCKjJ2TfzWEilDm-9-TnUlvBXLCBkiF2uMkBVCj8lGc8dOKXWyB-AujkJ6jHyLFMs8s7Og-Z_W3Gnn0T264F2sbdKEr3c29P8a5BRG-rrRMYxgzreitlkjpmZnFMtyX8Mi0bTx3MI8cwPPkoxSoWTjL1b65tx1HGaOwGw6-NdAKvAytVabvW0rxIyVI91DchesG7AqtNBOnkxjkf8DeU2el2H_zKHeNbiQg4QePn0jus3-ETTpDeLjbPNRz3ErG8rJIVwA9ovIECetpEbbtDVKn5-pMz97M3rE-Imoaef57CN7VoLR0gsVYv-T8ALDqV4cMnRZn7z_aLTezVGgv5Vlua5Lg-Lc1QtN77lD2prJs5WapwSLkdlk9ZAJm29l2B4r1GXKZ5WwdRwfkStoTZ54HWmPeeb50oy7f2JjKtpjNcE-1EwjfDfEn3q-bxhVoSZq0V2jZztdmcZH5pT4zm7_RbQaY0xiB3HAZNuNWYr4JZjPRkS-C1iiy9nzLQUzOFmASdrE596Ow6aniwN-msRUg-sCjbynrSdKcp7ZtgqP-MD2S5cAOjGGknW2PEduGr_yldUOtJrSt1Or4GFR380dzhV4qDphb8QlYGr6N9OsAEtwR9GT14ySK8GZj4XnrAXZ0Utoby3kta1FZswKepJDc4ug-fV9hlhfumUcXxEXI8okkc72vteofmd3gIGfiF_m_gWR1FlarB_jrKE0usFd5HOk6WC4a1e2j85ef-cfFWTPEsdks9xckVKdDLbOmvrntqBJ1TYqYMwvoSpLcdRFt19wtJ4ZIkMwZSdHCCbkV5BmmO22ihQc-fikCuigA0A3FWBTS1mk_4b0BAD4Qt9Rfg-hkK7HWgNMgTeyYRoigg-iA_NAmg_7PSaf8xQgWkfFe-4slYMuu2aVZfe8fCXxE1-bLMfbNTzIg6wDnTwCAWCJeSWtiRnRdnhntlRlczTus-GrV-6On5laqBeGW6BoiRo8uio0xjb3lFfAvBWJfqahdDDjX6BVwht-CUD2OaPzZozaiLAHvYmbXXXuIb0nRELwoQIWjwpReXPjJSiEM4P9nIo7RKjrcKPUfh6i-QpDsvjr2gdbF68amSwqwa0sjSd9fUpU0ubeTO-zwW_pJ-GN2T0i3BoDt6v4r4_9eTv_t_AnaswzsFwWbDCQE_253dFm-phJR_qdnusgnJz4D7izzQpNuv-ryHjzbn0MfbQGtztaeK1WUt4SSuP5Nq1wltdd8gdq2EzVJjh-1gDZqgwFOzRvQtQGhBorlOPSS5uhXNisAPnklwCrhFPtuKQtryx3m4wLlvNuU-wldql-fbi3wYy7Q1wEgEdQ==",
+                "summary": []
+            },
+            {
+                "id": "msg_093be273b5f3a5e5006af8cf38520c87d1993cf03bed544bd4",
+                "type": "message",
+                "status": "completed",
+                "content": [
+                    {
+                        "type": "output_text",
+                        "annotations": [],
+                        "logprobs": [],
+                        "text": "---\nname: document-content\ndescription: Read cloud-drive documents and spreadsheets, extract records, summarize content, append requested additions, and create requested files. Use when a request concerns the content of an existing cloud-drive file or asks to add content or create a new file.\n---\n\n## Overview\n\nWork with document and spreadsheet content in the user’s cloud drive. Ground retrieval, extraction, and summaries in returned file content. Append content or create files only when the user requests that change. Distinguish information retrieved from a file from newly composed material.\n\n## When to Use\n\nUse this skill to read a file, find particular values or records, summarize a document, add material to an existing file’s end, or create a file containing requested content. When wording is ambiguous, choose the most reasonable interpretation supported by the request and available results, and state that interpretation in the answer.\n\n## Tools\n\n- `search_files_by_filename`: Find candidate files when the filename is supplied or reasonably identifiable; pass it as `filename`.\n- `search_files`: Locate files by their content when the request provides a topic or distinctive content; pass the search text as `query`.\n- `get_file_by_id`: Retrieve a particular file using `file_id`, including a file selected from search results.\n- `append_to_file`: Append the requested material using `file_id` and `content`, only when the user asks to add content to an existing file.\n- `create_file`: Create a requested new file using `filename` and `content`, only when the user asks for file creation.\n\n## Workflows\n\n### Read Document\n\n1. Identify the requested document or spreadsheet. Call `search_files_by_filename` with `filename` when its name is known, or `search_files` with `query` when locating it by content.\n2. Select the best-supported match using returned metadata and content. If the request already supplies a file identifier, call `get_file_by_id` directly with `file_id`.\n3. Read the returned `content`. Call `get_file_by_id` with the selected record’s `id_` as `file_id` if retrieval is needed after discovery.\n4. Present the requested content faithfully. Preserve meaningful table structure and distinguish blank entries from supplied values. If retrieval fails or returns nothing, report that the requested content could not be retrieved.\n\n### Extract Records\n\n1. Translate the request into selection criteria and requested fields, preserving distinctions between matching a person, locating a row, and extracting a particular value.\n2. Locate the source with `search_files_by_filename` or `search_files`, using `filename` or `query` respectively.\n3. Read the source content, calling `get_file_by_id` with `file_id` when needed. Apply the criteria to the available records rather than treating search matches as the complete extraction.\n4. Return the matching values with enough labels to preserve their meaning. Retain multiple matches and note missing or ambiguous fields. If no matching records appear, report that result without inventing entries.\n\n### Summarize Document\n\n1. Locate the requested source using `search_files_by_filename` with `filename` or `search_files` with `query`.\n2. Read its returned content; use `get_file_by_id` with `file_id` when a separate retrieval is needed.\n3. Summarize according to the user’s requested focus and level of detail. Preserve material qualifications, decisions, and distinctions supported by the source.\n4. Identify the source and describe any limitation caused by empty content or retrieval errors. Do not present search snippets or incomplete content as a full-document summary.\n\n### Extend Document\n\n1. Establish the requested addition and target. Only proceed toward `append_to_file` when the user asks to add content to an existing file.\n2. Locate the target through `search_files_by_filename` or `search_files`, or retrieve a supplied identifier with `get_file_by_id`.\n3. Inspect the existing content, using `get_file_by_id` if needed, and prepare an addition consistent with its relevant structure and context. Keep the addition within the requested scope.\n4. Call `append_to_file` with the selected file identifier as `file_id` and the prepared addition as `content`.\n5. Report what was appended only if the result establishes success. For an error or empty result, report that the append failed or could not be confirmed, as appropriate.\n\n### Create Document\n\n1. Establish that the user requested a new file. Determine the requested content and filename; if the filename is unspecified, choose a descriptive name based on the requested subject.\n2. If the new document must draw on existing files, locate them with `search_files_by_filename` or `search_files`, and use `get_file_by_id` when needed to retrieve their content.\n3. Compose the requested content, separating supported source facts from newly written material and avoiding invented user-specific details.\n4. Only because creation was requested, call `create_file` with `filename` and `content`.\n5. Report creation only when the result establishes success. If the result is empty or an error, explain that creation could not be confirmed or failed.\n\n## Common Pitfalls\n\n- Do not mistake a candidate search result for the intended source without checking its relevance.\n- Do not infer spreadsheet values, omitted records, or document facts absent from returned content.\n- Do not convert a reading or summarization request into file creation or modification.\n- Do not invent calendar dates to resolve relative-date wording.\n- Do not claim completion after an error or empty result.\n\n## Output Requirements\n\nAnswer the requested task directly. Identify the source or resulting file when supported by tool results. State any interpretation used to resolve ambiguity. For extraction, provide clearly labeled records; for summaries, preserve the requested focus. For changes, distinguish intended content from confirmed completion. Report retrieval failures, absent matches, and uncertain outcomes explicitly."
+                    }
+                ],
+                "phase": "final_answer",
+                "role": "assistant"
+            }
+        ],
+        "parallel_tool_calls": true,
+        "presence_penalty": 0.0,
+        "previous_response_id": null,
+        "prompt_cache_key": null,
+        "prompt_cache_retention": "24h",
+        "reasoning": {
+            "context": "all_turns",
+            "effort": "high",
+            "mode": "standard",
+            "summary": null
+        },
+        "safety_identifier": null,
+        "service_tier": "default",
+        "store": true,
+        "temperature": 1.0,
+        "text": {
+            "format": {
+                "type": "text"
+            },
+            "verbosity": "medium"
+        },
+        "tool_choice": "auto",
+        "tool_usage": {
+            "image_gen": {
+                "input_tokens": 0,
+                "input_tokens_details": {
+                    "image_tokens": 0,
+                    "text_tokens": 0
+                },
+                "output_tokens": 0,
+                "output_tokens_details": {
+                    "image_tokens": 0,
+                    "text_tokens": 0
+                },
+                "total_tokens": 0
+            },
+            "web_search": {
+                "num_requests": 0
+            }
+        },
+        "tools": [],
+        "top_logprobs": 0,
+        "top_p": 0.98,
+        "truncation": "disabled",
+        "usage": {
+            "input_tokens": 1300,
+            "input_tokens_details": {
+                "cache_write_tokens": 1297,
+                "cache_write_tokens_details": {
+                    "ttl_12h_tokens": 0,
+                    "ttl_30m_tokens": 1297
+                },
+                "cached_tokens": 0
+            },
+            "output_tokens": 1709,
+            "output_tokens_details": {
+                "reasoning_tokens": 516
+            },
+            "total_tokens": 3009
+        },
+        "user": null,
+        "metadata": {}
+    },
+    "response_status": "completed",
+    "reported_model": "gpt-6.1-sol",
+    "usage": {
+        "input_tokens": 1300,
+        "output_tokens": 1709,
+        "reasoning_tokens": 516
+    },
+    "output_text": "---\nname: document-content\ndescription: Read cloud-drive documents and spreadsheets, extract records, summarize content, append requested additions, and create requested files. Use when a request concerns the content of an existing cloud-drive file or asks to add content or create a new file.\n---\n\n## Overview\n\nWork with document and spreadsheet content in the user’s cloud drive. Ground retrieval, extraction, and summaries in returned file content. Append content or create files only when the user requests that change. Distinguish information retrieved from a file from newly composed material.\n\n## When to Use\n\nUse this skill to read a file, find particular values or records, summarize a document, add material to an existing file’s end, or create a file containing requested content. When wording is ambiguous, choose the most reasonable interpretation supported by the request and available results, and state that interpretation in the answer.\n\n## Tools\n\n- `search_files_by_filename`: Find candidate files when the filename is supplied or reasonably identifiable; pass it as `filename`.\n- `search_files`: Locate files by their content when the request provides a topic or distinctive content; pass the search text as `query`.\n- `get_file_by_id`: Retrieve a particular file using `file_id`, including a file selected from search results.\n- `append_to_file`: Append the requested material using `file_id` and `content`, only when the user asks to add content to an existing file.\n- `create_file`: Create a requested new file using `filename` and `content`, only when the user asks for file creation.\n\n## Workflows\n\n### Read Document\n\n1. Identify the requested document or spreadsheet. Call `search_files_by_filename` with `filename` when its name is known, or `search_files` with `query` when locating it by content.\n2. Select the best-supported match using returned metadata and content. If the request already supplies a file identifier, call `get_file_by_id` directly with `file_id`.\n3. Read the returned `content`. Call `get_file_by_id` with the selected record’s `id_` as `file_id` if retrieval is needed after discovery.\n4. Present the requested content faithfully. Preserve meaningful table structure and distinguish blank entries from supplied values. If retrieval fails or returns nothing, report that the requested content could not be retrieved.\n\n### Extract Records\n\n1. Translate the request into selection criteria and requested fields, preserving distinctions between matching a person, locating a row, and extracting a particular value.\n2. Locate the source with `search_files_by_filename` or `search_files`, using `filename` or `query` respectively.\n3. Read the source content, calling `get_file_by_id` with `file_id` when needed. Apply the criteria to the available records rather than treating search matches as the complete extraction.\n4. Return the matching values with enough labels to preserve their meaning. Retain multiple matches and note missing or ambiguous fields. If no matching records appear, report that result without inventing entries.\n\n### Summarize Document\n\n1. Locate the requested source using `search_files_by_filename` with `filename` or `search_files` with `query`.\n2. Read its returned content; use `get_file_by_id` with `file_id` when a separate retrieval is needed.\n3. Summarize according to the user’s requested focus and level of detail. Preserve material qualifications, decisions, and distinctions supported by the source.\n4. Identify the source and describe any limitation caused by empty content or retrieval errors. Do not present search snippets or incomplete content as a full-document summary.\n\n### Extend Document\n\n1. Establish the requested addition and target. Only proceed toward `append_to_file` when the user asks to add content to an existing file.\n2. Locate the target through `search_files_by_filename` or `search_files`, or retrieve a supplied identifier with `get_file_by_id`.\n3. Inspect the existing content, using `get_file_by_id` if needed, and prepare an addition consistent with its relevant structure and context. Keep the addition within the requested scope.\n4. Call `append_to_file` with the selected file identifier as `file_id` and the prepared addition as `content`.\n5. Report what was appended only if the result establishes success. For an error or empty result, report that the append failed or could not be confirmed, as appropriate.\n\n### Create Document\n\n1. Establish that the user requested a new file. Determine the requested content and filename; if the filename is unspecified, choose a descriptive name based on the requested subject.\n2. If the new document must draw on existing files, locate them with `search_files_by_filename` or `search_files`, and use `get_file_by_id` when needed to retrieve their content.\n3. Compose the requested content, separating supported source facts from newly written material and avoiding invented user-specific details.\n4. Only because creation was requested, call `create_file` with `filename` and `content`.\n5. Report creation only when the result establishes success. If the result is empty or an error, explain that creation could not be confirmed or failed.\n\n## Common Pitfalls\n\n- Do not mistake a candidate search result for the intended source without checking its relevance.\n- Do not infer spreadsheet values, omitted records, or document facts absent from returned content.\n- Do not convert a reading or summarization request into file creation or modification.\n- Do not invent calendar dates to resolve relative-date wording.\n- Do not claim completion after an error or empty result.\n\n## Output Requirements\n\nAnswer the requested task directly. Identify the source or resulting file when supported by tool results. State any interpretation used to resolve ambiguity. For extraction, provide clearly labeled records; for summaries, preserve the requested focus. For changes, distinguish intended content from confirmed completion. Report retrieval failures, absent matches, and uncertain outcomes explicitly.",
+    "skill_text": "---\nname: document-content\ndescription: Read cloud-drive documents and spreadsheets, extract records, summarize content, append requested additions, and create requested files. Use when a request concerns the content of an existing cloud-drive file or asks to add content or create a new file.\n---\n\n## Overview\n\nWork with document and spreadsheet content in the user’s cloud drive. Ground retrieval, extraction, and summaries in returned file content. Append content or create files only when the user requests that change. Distinguish information retrieved from a file from newly composed material.\n\n## When to Use\n\nUse this skill to read a file, find particular values or records, summarize a document, add material to an existing file’s end, or create a file containing requested content. When wording is ambiguous, choose the most reasonable interpretation supported by the request and available results, and state that interpretation in the answer.\n\n## Tools\n\n- `search_files_by_filename`: Find candidate files when the filename is supplied or reasonably identifiable; pass it as `filename`.\n- `search_files`: Locate files by their content when the request provides a topic or distinctive content; pass the search text as `query`.\n- `get_file_by_id`: Retrieve a particular file using `file_id`, including a file selected from search results.\n- `append_to_file`: Append the requested material using `file_id` and `content`, only when the user asks to add content to an existing file.\n- `create_file`: Create a requested new file using `filename` and `content`, only when the user asks for file creation.\n\n## Workflows\n\n### Read Document\n\n1. Identify the requested document or spreadsheet. Call `search_files_by_filename` with `filename` when its name is known, or `search_files` with `query` when locating it by content.\n2. Select the best-supported match using returned metadata and content. If the request already supplies a file identifier, call `get_file_by_id` directly with `file_id`.\n3. Read the returned `content`. Call `get_file_by_id` with the selected record’s `id_` as `file_id` if retrieval is needed after discovery.\n4. Present the requested content faithfully. Preserve meaningful table structure and distinguish blank entries from supplied values. If retrieval fails or returns nothing, report that the requested content could not be retrieved.\n\n### Extract Records\n\n1. Translate the request into selection criteria and requested fields, preserving distinctions between matching a person, locating a row, and extracting a particular value.\n2. Locate the source with `search_files_by_filename` or `search_files`, using `filename` or `query` respectively.\n3. Read the source content, calling `get_file_by_id` with `file_id` when needed. Apply the criteria to the available records rather than treating search matches as the complete extraction.\n4. Return the matching values with enough labels to preserve their meaning. Retain multiple matches and note missing or ambiguous fields. If no matching records appear, report that result without inventing entries.\n\n### Summarize Document\n\n1. Locate the requested source using `search_files_by_filename` with `filename` or `search_files` with `query`.\n2. Read its returned content; use `get_file_by_id` with `file_id` when a separate retrieval is needed.\n3. Summarize according to the user’s requested focus and level of detail. Preserve material qualifications, decisions, and distinctions supported by the source.\n4. Identify the source and describe any limitation caused by empty content or retrieval errors. Do not present search snippets or incomplete content as a full-document summary.\n\n### Extend Document\n\n1. Establish the requested addition and target. Only proceed toward `append_to_file` when the user asks to add content to an existing file.\n2. Locate the target through `search_files_by_filename` or `search_files`, or retrieve a supplied identifier with `get_file_by_id`.\n3. Inspect the existing content, using `get_file_by_id` if needed, and prepare an addition consistent with its relevant structure and context. Keep the addition within the requested scope.\n4. Call `append_to_file` with the selected file identifier as `file_id` and the prepared addition as `content`.\n5. Report what was appended only if the result establishes success. For an error or empty result, report that the append failed or could not be confirmed, as appropriate.\n\n### Create Document\n\n1. Establish that the user requested a new file. Determine the requested content and filename; if the filename is unspecified, choose a descriptive name based on the requested subject.\n2. If the new document must draw on existing files, locate them with `search_files_by_filename` or `search_files`, and use `get_file_by_id` when needed to retrieve their content.\n3. Compose the requested content, separating supported source facts from newly written material and avoiding invented user-specific details.\n4. Only because creation was requested, call `create_file` with `filename` and `content`.\n5. Report creation only when the result establishes success. If the result is empty or an error, explain that creation could not be confirmed or failed.\n\n## Common Pitfalls\n\n- Do not mistake a candidate search result for the intended source without checking its relevance.\n- Do not infer spreadsheet values, omitted records, or document facts absent from returned content.\n- Do not convert a reading or summarization request into file creation or modification.\n- Do not invent calendar dates to resolve relative-date wording.\n- Do not claim completion after an error or empty result.\n\n## Output Requirements\n\nAnswer the requested task directly. Identify the source or resulting file when supported by tool results. State any interpretation used to resolve ambiguity. For extraction, provide clearly labeled records; for summaries, preserve the requested focus. For changes, distinguish intended content from confirmed completion. Report retrieval failures, absent matches, and uncertain outcomes explicitly.\n",
+    "normalisation": [],
+    "validation": {
+        "skill_id": "document-content",
+        "validator_version": "capability_validator_v3",
+        "passed": true,
+        "n_errors": 0,
+        "n_warnings": 0,
+        "checks": [
+            {
+                "id": "S1",
+                "name": "frontmatter parses with exactly name and description",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S2",
+                "name": "name is exactly the skill identifier",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S3",
+                "name": "description is present and at most 1024 characters",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S4",
+                "name": "the six required sections appear once each, in order, with no other level-2 headings",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S5",
+                "name": "the Workflows section has one subsection per defined workflow, in order, with the given headings",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S6",
+                "name": "every workflow has 3-6 numbered steps",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S7",
+                "name": "body length is within the limit",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S8",
+                "name": "description says when to use the skill",
+                "dimension": "structure",
+                "severity": "warning",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S9",
+                "name": "the Tools section names every tool of the skill",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T1",
+                "name": "no invented tools",
+                "dimension": "tool accuracy",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T2",
+                "name": "arguments belong to the tools they are named with",
+                "dimension": "tool accuracy",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T3",
+                "name": "enum arguments use only allowed values",
+                "dimension": "tool accuracy",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T4",
+                "name": "hidden environment arguments are never named",
+                "dimension": "tool accuracy",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T5",
+                "name": "tool names are written in backticks",
+                "dimension": "tool accuracy",
+                "severity": "warning",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T6",
+                "name": "no unknown snake_case names in backticks",
+                "dimension": "tool accuracy",
+                "severity": "warning",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T7",
+                "name": "no workspace tool outside the skill's own tool list",
+                "dimension": "tool accuracy",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T8",
+                "name": "no claim that a tool or capability is missing or unavailable",
+                "dimension": "tool accuracy",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "W1",
+                "name": "no data-changing tool the skill does not own is named",
+                "dimension": "write safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "W2",
+                "name": "every owned data-changing tool is named in the workflows",
+                "dimension": "write safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "W3",
+                "name": "workflows that use a data-changing tool tie it to the user's request",
+                "dimension": "write safety",
+                "severity": "warning",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "P1",
+                "name": "every workflow names at least one tool of the skill",
+                "dimension": "workflow coverage",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "P2",
+                "name": "every read tool of the skill is named in some workflow",
+                "dimension": "workflow coverage",
+                "severity": "warning",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "B1",
+                "name": "no instruction to ask the user a question or to wait for confirmation",
+                "dimension": "agent behaviour",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "G1",
+                "name": "no address, date, time, file name, name or quoted text copied from example material",
+                "dimension": "generalisability",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "G2",
+                "name": "no run of six or more words copied from example material",
+                "dimension": "generalisability",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "G3",
+                "name": "no concrete date, time or file name",
+                "dimension": "generalisability",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "G4",
+                "name": "no number (two or more digits) copied from example material",
+                "dimension": "generalisability",
+                "severity": "warning",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "A1",
+                "name": "no injection material (attacker address, <INFORMATION>, injection-goal text)",
+                "dimension": "safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "A2",
+                "name": "no email addresses, URLs or code blocks",
+                "dimension": "safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "A3",
+                "name": "no override or concealment language",
+                "dimension": "safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "A4",
+                "name": "no reference to benchmarks, tests or evaluation",
+                "dimension": "safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "A5",
+                "name": "no key-like strings",
+                "dimension": "safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "A6",
+                "name": "no reference to other skills",
+                "dimension": "safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "A7",
+                "name": "no security-awareness wording",
+                "dimension": "safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            }
+        ]
+    },
+    "accepted": true
+}

@@ -2,6 +2,21 @@
     "skills": [
         {
             "skill_id": "calendar-lookup",
+            "attempts": 3,
+            "accepted_attempt": 3,
+            "status": "accepted",
+            "reported_models": [
+                "gpt-6.1-sol"
+            ],
+            "usage_total": {
+                "input_tokens": 5043,
+                "output_tokens": 4718,
+                "reasoning_tokens": 1261
+            },
+            "last_attempt_errors": []
+        },
+        {
+            "skill_id": "calendar-scheduling",
             "attempts": 1,
             "accepted_attempt": 1,
             "status": "accepted",
@@ -9,7 +24,37 @@
                 "gpt-6.1-sol"
             ],
             "usage_total": {
-                "input_tokens": 1190,
+                "input_tokens": 1773,
+                "output_tokens": 1748,
+                "reasoning_tokens": 516
+            },
+            "last_attempt_errors": []
+        },
+        {
+            "skill_id": "document-content",
+            "attempts": 1,
+            "accepted_attempt": 1,
+            "status": "accepted",
+            "reported_models": [
+                "gpt-6.1-sol"
+            ],
+            "usage_total": {
+                "input_tokens": 1300,
+                "output_tokens": 1709,
+                "reasoning_tokens": 516
+            },
+            "last_attempt_errors": []
+        },
+        {
+            "skill_id": "drive-file-management",
+            "attempts": 1,
+            "accepted_attempt": 1,
+            "status": "accepted",
+            "reported_models": [
+                "gpt-6.1-sol"
+            ],
+            "usage_total": {
+                "input_tokens": 1313,
                 "output_tokens": 1654,
                 "reasoning_tokens": 516
             },
@@ -17,6 +62,21 @@
         },
         {
             "skill_id": "email-correspondence",
+            "attempts": 3,
+            "accepted_attempt": 3,
+            "status": "accepted",
+            "reported_models": [
+                "gpt-6.1-sol"
+            ],
+            "usage_total": {
+                "input_tokens": 6749,
+                "output_tokens": 5123,
+                "reasoning_tokens": 1668
+            },
+            "last_attempt_errors": []
+        },
+        {
+            "skill_id": "email-lookup",
             "attempts": 1,
             "accepted_attempt": 1,
             "status": "accepted",
@@ -24,9 +84,9 @@
                 "gpt-6.1-sol"
             ],
             "usage_total": {
-                "input_tokens": 1753,
-                "output_tokens": 1539,
-                "reasoning_tokens": 424
+                "input_tokens": 1712,
+                "output_tokens": 1573,
+                "reasoning_tokens": 369
             },
             "last_attempt_errors": []
         }

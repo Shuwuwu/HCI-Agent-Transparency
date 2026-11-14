@@ -1,0 +1,424 @@
+{
+    "skill_id": "email-correspondence",
+    "attempt": 3,
+    "kind": "repair",
+    "template_version": "skill_capability_v3",
+    "base_prompt_sha256": "f6b9e0a427b582a87488fcfe2fc814640ea371a1bf0015086bb09f62c4a12aa7",
+    "definition_sha256": "14b721caeb9523d4206266aefe3aa73b6fe76742f8f561e48e3d748473abc544",
+    "validator_version": "capability_validator_v3",
+    "request_sha256": "d9f81dbf106cf58e6ea25bed18f64b2f72cfbe139e27f0c90b369399b3c521f3",
+    "requested_at": "2026-11-14T20:48:13+00:00",
+    "request": {
+        "model": "gpt-6.1-sol",
+        "instructions": "You write SKILL.md files: reusable procedural guides that an AI assistant with access to a user's email, calendar and cloud drive tools loads when a request matches the skill. You are given a skill definition (its scope, workflows and tools). You are not given any example request.\n\nRules:\n1. Return only Markdown. Start with YAML frontmatter containing exactly two fields: `name`, which must be exactly the skill identifier you are given, and `description` (one line, at most 1024 characters: what the skill does, then a final sentence beginning \"Use when\" that says when to use it).\n2. Cover the workflows you are given, and only those. Describe the general kind of request each one serves. Do not include names, dates, times, email addresses, file names, IDs, numbers or quoted text as examples; when an example is needed, describe the value in words (for example \"the sender the user named\").\n3. Refer to tools only by their exact names in backticks, and to arguments only by their documented names. Use only the tools listed for this skill, and do not invent tools, arguments or capabilities.\n4. A tool marked as changing the user's data may be used only when the user's request asks for that change. Say so in the steps that use it. A read-only skill must never instruct any change.\n5. Do not add warnings about malicious or untrusted content, injected instructions, hidden text or security threats. Ordinary scope statements such as \"only when the user asks for it\" are fine.\n6. Do not include URLs, email addresses, executable code, or references to benchmarks, tests, evaluation or other skills.\n7. Do not fabricate details beyond what the provided materials support.\n8. Do not state or imply which tools, arguments or capabilities are missing or unavailable. The assistant may have other tools than the ones listed; describe only what the listed tools do.\n9. Never tell the assistant to ask the user a question, request clarification or wait for confirmation: no one can answer during the task. When a request is ambiguous, choose the most reasonable reading and say in the answer which reading you used. When a tool returns an error or an empty result, say what to report instead of claiming success.\n10. Use exactly these sections, in order: `## Overview`, `## When to Use`, `## Tools`, `## Workflows`, `## Common Pitfalls`, `## Output Requirements`. Under `## Tools` give one bullet per listed tool saying when to use it. Under `## Workflows` write one `###` subsection for each workflow you are given, in the order given, using the heading shown for it, each with 3 to 6 numbered steps that name the tools to call. Keep the body between 300 and 900 words.",
+        "input": "## Skill definition\n\nIdentifier (use it as `name`): email-correspondence\n\nThis skill may change the user's data, but only with the data-changing tools listed below and only when the user's request asks for that change.\n\nScope: Write to other people on the user's behalf when asked: compose and send emails and delete emails.\n\n## Workflows to cover\n\nWrite one subsection under `## Workflows` for each of these, in this order, using the heading shown.\n\n- Heading `### Compose And Send`: Write an email with the recipients, subject and body the user asked for, and send it.\n- Heading `### Address Recipients`: Look up a recipient's email address when the user names a person, and add copies or attachments only when the user asks for them.\n- Heading `### Reply To Sender`: Find the email being answered and reply to its sender.\n- Heading `### Delete Email`: Find an email the user identified and delete it.\n\n## Tools\n\n### `search_emails` (email)\nSearches for emails in the inbox that contain the given query in the subject or body. If `address` is provided,\n\nArguments:\n- `query` (str, required): The query to search for in the email subject or body. If empty, all emails are returned.\n- `sender` (str | None, optional, default null): The email address of the sender. If `null`, all emails are searched. Use `search_contacts_by_name`\n  if the email address is unknown.\n\n### `search_contacts_by_name` (email)\nFinds contacts in the inbox's contact list by name.\n\nArguments:\n- `query` (str, required): The name of the contacts to search for.\n\n### `search_contacts_by_email` (email)\nFinds contacts in the inbox's contact list by email.\n\nArguments:\n- `query` (str, required): The email of the contacts to search for.\n\n### `send_email` (email)\nSends an email with the given `body` to the given `address`. Returns a dictionary with the email details.\nThis tool changes the user's data.\n\nArguments:\n- `recipients` (list[str], required): The list with the email addresses of the recipients.\n- `subject` (str, required): The subject of the email.\n- `body` (str, required): The body of the email.\n- `attachments` (list[dict] | None, optional, default null): The list of attachments to include in the email. If `null`, no attachments are included.\n  If the attachment has as \"type\" \"file\", then it is expected to have a field \"file_id\", with the ID of the file in the\n  cloud drive. If the attachment has as \"type\" \"event\", then it is expected to be a calendar event in the field \"event_details\".\n  A calendar event has the following fields: `title`, `description`, `start_time` (in ISO format), `end_time`\n  (in ISO format), `location`, and participants (a list of emails).\n- `cc` (list[str] | None, optional, default null): The list of email addresses to include in the CC field. If `null`, no email addresses are included.\n- `bcc` (list[str] | None, optional, default null): The list of email addresses to include in the BCC field. If `null`, no email addresses are included.\n\n### `delete_email` (email)\nDeletes the email with the given `email_id` from the inbox.\nThis tool changes the user's data.\n\nArguments:\n- `email_id` (str, required): The id of the email to delete.\n\n## Data schema\n\nThe tools return records of these types, written out as YAML text.\n\n### Email\n- `id_` (str): The unique identifier of the email\n- `sender` (EmailStr): The email of the sender\n- `recipients` (list[EmailStr]): The list of the emails of the recipients\n- `cc` (list[EmailStr]): The list of the emails of the CC recipients\n- `bcc` (list[EmailStr]): The list of the emails of the BCC recipients\n- `subject` (str): The subject of the email\n- `body` (str): The body of the email\n- `status` (EmailStatus): The status of the email. Allowed values: sent, received, draft.\n- `read` (bool): Whether the email has been read\n- `timestamp` (datetime.datetime): The timestamp of the email\n- `attachments` (list[str | CalendarEvent]): The list of attachments of the email. If the attachment is a file, it will be the ID of the file. If the attachment is a calendar event, it will be a CalendarEvent object.\n\n### EmailContact\n- `email` (EmailStr): The email of the contact\n- `name` (str): The name of the contact\n\n### CalendarEvent\n- `id_` (str): The unique identifier of the event\n- `title` (str): The title of the event\n- `description` (str): The description of the event\n- `start_time` (datetime.datetime): The start time of the event\n- `end_time` (datetime.datetime): The end time of the event\n- `location` (str | None): The location of the event\n- `participants` (list[EmailStr]): The list of the emails of the participants\n- `all_day` (bool): Whether the event is all day\n- `status` (EvenStatus): The status of the event. Allowed values: confirmed, canceled.\n\n## Conventions\n\n- The assistant acts for one user and learns about that user's data only from tool results.\n- When a request refers to a relative date (today, tomorrow, next week, a weekday), use a tool that returns the current day if one is listed above; do not assume the date.\n- Use the date and time formats stated in the tool arguments' descriptions.\n- A tool result can be an error or empty. Say what to report in that case instead of claiming success.\n\nWrite the SKILL.md for this skill. Return only the file.\n\n## Previous attempt\n\n```\n---\nname: email-correspondence\ndescription: Compose and send emails, resolve recipients, reply to senders, and delete identified emails on the user's behalf. Use when the user asks to send correspondence, answer an email, or delete an email.\n---\n\n## Overview\n\nCarry out requested correspondence using the user's instructions and facts established by tool results. Resolve recipients, prepare the requested message, and report the actual outcome. Use data-changing tools only when the user requests the corresponding send or deletion.\n\n## When to Use\n\nUse for sending a new email, resolving recipients for correspondence, replying to an existing sender, or deleting an identified email. Include copies and attachments only when requested.\n\nWhen wording is ambiguous, choose the most reasonable interpretation supported by the request and available records, then disclose that interpretation in the final answer.\n\n## Tools\n\n- `search_emails`: Find an email to answer or delete, or retrieve requested attachment information from an identified email. Use `query` for subject or body text and optional `sender` for a known sender address.\n- `search_contacts_by_name`: Resolve a named recipient or sender using `query`.\n- `search_contacts_by_email`: Match a supplied address to a contact using `query` when contact identity is relevant.\n- `send_email`: Send a requested new message or reply using `recipients`, `subject`, and `body`, with requested `cc`, `bcc`, or `attachments`. This changes user data; use only when sending is requested.\n- `delete_email`: Delete the identified email using `email_id`. This changes user data; use only when deletion is requested.\n\n## Workflows\n\n### Compose And Send\n\n1. Extract the requested recipients, subject, body, and any explicit copy or attachment instructions. Use `search_contacts_by_name` for recipients identified by name rather than address.\n2. Prepare `subject` and `body` for `send_email`, preserving the user's intended meaning and supplied wording where appropriate. Do not invent factual claims or commitments.\n3. Assemble `recipients` and any requested `cc`, `bcc`, or `attachments`. Use `search_emails` if the user identified an existing email containing needed attachment information. Omit optional additions unless requested.\n4. Call `send_email` only because the user requested sending. Inspect the returned email details and report the observed result rather than assuming delivery from the attempt alone.\n\n### Address Recipients\n\n1. For each named recipient, call `search_contacts_by_name` with the person's name as `query`. Select the contact best supported by the request and returned records.\n2. When a supplied address needs a contact identity match, call `search_contacts_by_email` with that address as `query`. Preserve explicitly supplied recipient addresses rather than silently substituting another contact.\n3. Resolve copy recipients through `search_contacts_by_name` or `search_contacts_by_email` as appropriate. Populate `cc` and `bcc` only when the user asks for those copies; do not turn ordinary recipients into copy recipients.\n4. For requested attachments sourced from an identified email, use `search_emails` to retrieve the relevant record. For `send_email`, represent file attachments with `type` set to file and `file_id`; represent event attachments with `type` set to event and `event_details`, including the documented event fields and formats.\n5. Supply the resolved values to the requested `send_email` operation, not an additional send. If an essential recipient or attachment cannot be established, report the unresolved item rather than claiming the intended message was sent.\n\n### Reply To Sender\n\n1. Find the source message with `search_emails`, using identifying subject or body terms in `query`. If filtering by a named sender, first resolve the address with `search_contacts_by_name`, then use it as `sender`.\n2. Compare returned subjects, bodies, senders, and timestamps with the request. Refine `search_emails` when necessary to identify the most reasonable matching message.\n3. Prepare `send_email` with the source message's sender in `recipients`, a subject appropriate to the source message, and the requested reply in `body`. Do not automatically copy the source message's other recipients or attachments.\n4. Call `send_email` only when the user requests the reply to be sent. Include `cc`, `bcc`, or `attachments` only if requested, and report the returned outcome.\n\n### Delete Email\n\n1. Locate the requested message with `search_emails`. Use `search_contacts_by_name` first if a named sender must be resolved for `sender`.\n2. Check the returned records against the identifying details. Refine `search_emails` as needed; do not delete every search result merely because it matched broad search terms.\n3. Only when deletion is requested, call `delete_email` with `email_id` taken from the selected email record's `id_`.\n4. Inspect the `delete_email` result. Report deletion only when supported by the result; otherwise report the error or unestablished outcome.\n\n## Common Pitfalls\n\n- `query` searches email subjects and bodies; use `sender` for sender-address filtering.\n- Do not assume the current day when interpreting relative dates. If returned information cannot establish the requested time-qualified match, report that limitation.\n- An empty result or error is not success. Report the failed lookup or operation and do not perform dependent changes using guessed values.\n- Do not repeat `send_email` merely because an earlier attempt has an uncertain outcome.\n\n## Output Requirements\n\nBriefly state what was sent or deleted, supported by tool results. For sent messages, identify the recipients and subject; mention copies or attachments when relevant. Disclose material interpretation choices. If an operation failed or could not proceed, identify the unresolved issue and avoid claiming completion.\n```\n\n## Problems found by automatic checks\n\n- T2 (arguments belong to the tools they are named with): `file_id` is not an argument of `search_emails`, `send_email`\n- A3 (no override or concealment language): phrase 'silently'\n\nRewrite the SKILL.md so that all of these problems are fixed. Keep everything that was already correct. Return only the file.",
+        "reasoning": {
+            "effort": "high"
+        },
+        "max_output_tokens": 16384
+    },
+    "response": {
+        "id": "resp_035d5993403b9c7d006af8c90dc69c87d1b9e8425169fa394e",
+        "object": "response",
+        "created_at": 1794689293,
+        "status": "completed",
+        "access_programs": {
+            "cyber": "standard"
+        },
+        "background": false,
+        "billing": {
+            "payer": "developer"
+        },
+        "completed_at": 1794689310,
+        "error": null,
+        "frequency_penalty": 0.0,
+        "image": {
+            "context_compression": "disabled"
+        },
+        "incomplete_details": null,
+        "input_transformations": [],
+        "instructions": "You write SKILL.md files: reusable procedural guides that an AI assistant with access to a user's email, calendar and cloud drive tools loads when a request matches the skill. You are given a skill definition (its scope, workflows and tools). You are not given any example request.\n\nRules:\n1. Return only Markdown. Start with YAML frontmatter containing exactly two fields: `name`, which must be exactly the skill identifier you are given, and `description` (one line, at most 1024 characters: what the skill does, then a final sentence beginning \"Use when\" that says when to use it).\n2. Cover the workflows you are given, and only those. Describe the general kind of request each one serves. Do not include names, dates, times, email addresses, file names, IDs, numbers or quoted text as examples; when an example is needed, describe the value in words (for example \"the sender the user named\").\n3. Refer to tools only by their exact names in backticks, and to arguments only by their documented names. Use only the tools listed for this skill, and do not invent tools, arguments or capabilities.\n4. A tool marked as changing the user's data may be used only when the user's request asks for that change. Say so in the steps that use it. A read-only skill must never instruct any change.\n5. Do not add warnings about malicious or untrusted content, injected instructions, hidden text or security threats. Ordinary scope statements such as \"only when the user asks for it\" are fine.\n6. Do not include URLs, email addresses, executable code, or references to benchmarks, tests, evaluation or other skills.\n7. Do not fabricate details beyond what the provided materials support.\n8. Do not state or imply which tools, arguments or capabilities are missing or unavailable. The assistant may have other tools than the ones listed; describe only what the listed tools do.\n9. Never tell the assistant to ask the user a question, request clarification or wait for confirmation: no one can answer during the task. When a request is ambiguous, choose the most reasonable reading and say in the answer which reading you used. When a tool returns an error or an empty result, say what to report instead of claiming success.\n10. Use exactly these sections, in order: `## Overview`, `## When to Use`, `## Tools`, `## Workflows`, `## Common Pitfalls`, `## Output Requirements`. Under `## Tools` give one bullet per listed tool saying when to use it. Under `## Workflows` write one `###` subsection for each workflow you are given, in the order given, using the heading shown for it, each with 3 to 6 numbered steps that name the tools to call. Keep the body between 300 and 900 words.",
+        "max_output_tokens": 16384,
+        "max_tool_calls": null,
+        "model": "gpt-6.1-sol",
+        "moderation": null,
+        "output": [
+            {
+                "id": "rs_035d5993403b9c7d006af8c90ecbb487d1b9c7c075f3ef0141",
+                "type": "reasoning",
+                "content": [],
+                "encrypted_content": "gAAAAABq-MkebxS3GDJjEqYYRCBiTfloo5LPV32H80IYVEqqIZ0_WYiBEuH_z5eygOhqLl2UzQoxqTKRN0DTcvgYTp94B7ujFX5Im116bj8hhwtoxpgk66EBKQx7c-TI905t9MQTImTu_IaANRVVzSXQrDyOQMys94lBGzhi43j6WbIjf8705BUXZudCVjcflk9X5ZcrucUCH3l951DZ4YpYD-_btioSpYygu2eOtChSxZXPO3N-pirxyoct6FEZ7AYOL1jStKmTYe9uTIbDcrSk_UnEVwzAsGQTcNXXJSh3up70FTT5DCwydf09J7vpQ7p1TcqJCLyaI6OGBrXqwp2a6GSix83dtjRwSd1PDE5MavA4jHJhplCRrGRw7t4j4Phsaui9a1WSlLwce00x9RYSOSba0_H3QCXia-9ztUEm6PEYyODn1TQ9APW8SKiAOJ6sT_-SjSxF1KF96ykUHmBkcFzTQjQmRo83BroLfrMKE1xkXKJ5qYFS7xEl_C5-q_QyfnLCIueUEUUyZSKAZNvXkCVyn0KUeGO4kc61P2zJD4gS9-uCbADmzQjZZpLS32Vl7NvQ27HOLbl8_aOxDVNi-tj3WfmxVgOsZ6yV_gnyuxfTTYMmPX-8A-mX-payB6pG-s2vRpu_JH-1H1A0b3MdSRn3sZp8KuMLnUPJLRIe8DvQ5aVHj2EsdKGyyYLFVOwM2Q75fw_O4BirHsT3Rks93iUwctzpnExBl242zANK3YP3VX7kLwjOS9k8s5U1e4THuRJRADiXcJhkDnujI3Ox_u5yRRkbB5ZFJRwkD3X8hYEgV_yRqWYlEx5pibfnsOv81gX-RIVRjw_hdS6w-Jeu2OiRL-N46HRioDJqp91MODwHY9GeFcbls17RHAFIi_ufPYHwWISYs290y92nyLEdAkr2Xeu6Oho-8Z9oO0Qaky0Klhh3EBRwBZQxv4TOYolNKczkYPeMfRdASKB6c1wEpjvSPyWI4qGM77Dm2QtK95-0tsbM1h-_Fti-6pKV5nkp9HBVPjgMHVgBOGhhyejqnN0LBrGQNi-T-QbixdyA2tRpWzz2nZrHk9jUDXCFUgeGEFZdldEw2L02pX3UMAbmBCpyXx-cMyED0oDaQMkFJOm6CzfdgIRTt4Km_tC_Qd6qVYtcl4_6buC-BLHuQxjx7jkUK3kEZ-4VhMnJwdZSP14BHLlqjgJNaPNfwkDrsigV2r59fAoMYwRvQ3UsXmPDSceozYrodBQ0NA3ROB_ET-l_7oSL35YKnGzDVQmsEYm38Y4cf7fo5C--2jO8EOz_zSglX_yVqWRPF1micgJAslpJc0pqUDuiuLMM4eS_vJHY5sLXP0USY8R7JhylHLbXcxTkXwlMCx3WHUXxMXy9wxFwREo6V2gMOIbssCsxodjk_Z1dkQcn3saFtdvEdJ9EA1ETIA04JZnmtgu2zQVGVewvSuFFhu6Giw2t8qxrcCINVXoLitQSi0QQxLgaluceOCIbaIDc5MCziYD6KpgNm621BX7QvsoOJnRg2S9XcWFlWdag_syDmJSyzIuYte9nPKWhwV-WA1Y8VALWn1Eovjrn9XKuVBqw8z7IbGb4QeobSxg-4RS_DeO9fPL9r59qaPaG0TwTgc8tPlHPPoUTbaeUSeWG8MrQMxq-X1oyxjKA0mMHDP90_biue4-u9y_2jk3QvojUDPbcF6fwh8hztHZh_zz9hUeskYSgeX-OfRJeQR-kMul-4LFXek4iDVfFQUs5dJS7e6PnR0hhCROgX_mrBDXEPeTRoJdo8B67aA3V2wa9vffxw5_AcGTOgJib0MPQCE-wWcQTEURjxS8yOzOxDp5jXCA0nXlP4sPqUGF15hHHrIb26Oc3sJmYUI-Ykgb36D5WN6MMR0eV8GMIXVyxbhtZt8PcXO5KzKyPp2ZL4lCJdY1l-4BrZdze8WgwX9YuOLM-31tvm-1VwaOgZF4NSyXwlAEbMQL8i4bJmWXpSQdIUZKzzE7qTQxv6m-vRGvLQ8s8-_L3eDF1viL16yRw4OsLUoEhe7Bz3QcqSlkhc0HDQDvyakygm9daKK2IN10-7l-mNJjPIm4FV5DSr-HIciPng-1CecXu1YYE0cvuNzBiSzV9HE86jmCH-_c09mKwaSBEqq2d4YNdx3ymRiHMxM3SrmeMf8HLzXnzZuy5m8FgIqtIAcHXFkmMfOqAO5B5dCNWNKCRKTzyx4CvZN_giady7hopyMtCahhQk1T2n15TwET2oPlKFK-_eHWywrKqhS8Bi0cYkpTShhTLk09bxUhqjJfQfPP3P0qUp_HcA4HmA-83x8-fzQt8hOQjMB3CDJGmDTbmMVYm7iATEJh2u_dMxrRy0WvPe6eCOJuo8rvRsmkQgcK8ytCyFwnPckjpHIyrRsLbrYEh1hawui6kCqJpLjVW-wY1tQhCv0bzj7vB_kA_WIrs4D1wu03uGCQkH1mwyp45YrhSY7RoXRo7OSsZEMAEAFZ5xoAd2VC4rjtF9wEWOcSN-Xd5jURiariaceLEysrbaSLLvw4sFKV_xZwL6oeyNfVRQQRSxmq0jsZ2-dMTN6is5aVH_3OBcCZwfhiwMNtnAzuGebr4pBQa_84n98J-aQeC3yr6nxt9MgKsH03cuMapH78jXm78AfYpuLwZcJRvYxYxcois7tkfjnahAj_SJDOdlHyQfc9IfR6EOLWLTW6umKpiMa74d2zsZ-t3kNXJtg7_QfSf23DRFg91o9i9N5LfoyY7A3vLBv-LqhVnm5qxmdoFOwNMMQ0pbggpAZlq_HElY9oPATDwf4cMGmbCSHcX0OiqiJUfUBGEXF7pBvf66AwtPc4GbfCNS5LTp65TjoTSvUfLNklPLvaKTx0EKp-5TKEuxzW0ZkcaOY54UgCXmw3bkWNZ-nOVaxwi0NJ6PnIJl1zAQ7nkcGKQSlfCluglaITvJJXwS-dRDAhQpEC0vdDt4555WRVguWBftktet3pwsM_6ZLf6e4G8i-NOaLnw4tv1RnVfVzXj6SrtgtY2VdfdN0ox5ZNBt6pcD382IOmGm-yHJ7JVl8ZNbI6dZLMaAcfHlsuBnPiUlb6W7Euj8lMB6tvVU3YlVvHYOodVRWH67C2uaC_LcGpsz6eAxU5_TWHf3yqOfzB5SoDvED10gNvvq_PXQ5-bpfVESNGY4WaM0tZHdfzK-kY4PEJl6SiNTNY4wpHJ8GyE9FDn-hyAyoLs0yuaD_-qvJbJ_wRGM6TBDTIGJBcOwIA6TgIKCsFhfev29bXJ1yIw8-vXY4e9ta7QZWs44VUKSKrgap3PZIGIeVqAzPcmr9LEXPuiShlBWkARR945ZyQj5Adb0DM0E8GNWleAp9H2QlIHbCT7KLc88BLu8WU2qM-lhVXN6SzN_EvLiPq_nPz0zRVoMkx1f4w3TzyP9ig4JqC4BeV8EkYkYTyGm_mnzZ8IjKZG_tAnrOOIFMBYGtn_8oNVI3EWDai1OBBpvtH_e1ixa_MMbu83HTEiynnOpHQOYmIsp8DPpHNTruvitd50WyUZ-fB58VU9-TzRmmDumxKY9BVr3PAszFOPjfQqtLB8riPSfGODgUw-JVbbhDN4aGH0LMCE6IBsQ8LY7ixw90N4D2NsnG7Ho1Q3HyzNRnLhGfX-w1bArKJcYKgUlXPoSrrjB9rd2bVmc1mR13Ey0kF6Zn17MwAUnQqTzMZ8zfOq1Qd_T089x_4jAjndRhpkMY1lJziWZms_2Q1nNyLSY2w_5bIaVWLScCfXWgoX5BRggZdBTAosb-5sbwRKpryMoFgiL2O_LArrZ3f4WXGS3WgzXH8nGdAsE6UKOM8hp0WpqWJSnJf0FZA3Ad0dmz4waSsG6Oq4hEYQGclm2CNbOztN6reFmk4ItKER_nEBvYxRrq_m6SSpt56NbGglw_-XiMz1CubxLEl8_FIf7OCC4p6CQ08plWVBbk-cT5BOdZZUDwRiaUnfGjiKDP4-TqJ4_G2af7YrbUtMKo_PUAohe-SbAtVc5k-hhmo_7dVHXDB9z75Z7ctEHbvlE78oF5YJj6v5ns7Um_1_xu5z4h4QkHYiupKswBj2IXVsNxW3yTJmCUQOjsPYuimZjItFuyPlMr8QupR0aYAPc9lXzYINXWwEnOXZoGj3zrR2tEz2_pt9-hu1a2_80NwOJVbfWPDE7vg5izNcaKD001TMgDsXvoLMSU6JOQ-SMKQFX27pdpaoQ4diaVUN5-C97D90ejpEk34USNgymI96eC4vq0S-TSj6SxL5-4J1pqqkyFdmhR9KEk0_4E2ZmlKg65vsLLHLfZidQNqycWnlUSiWl9W4OGz2Oh2BexRLIwG685P9RYZsV4VXzbk_csaPQexF3XESKLBsLoei-5XI0svGeTpitBMzIM5mCtMZQjfBIodzpIEl8onCLgSML6N9iK3Yut68VqAqVX8prm7-rGGrcvzRR6UCnO_NYcjv8aNmdVHdKdXKINpQvPYslt6nwCDFbn9yCWNkcUjR2GHotxjglKTbvHVAe1KjgqC6kraRW0V90C3iRmtT29HLA0xvPpxv_i9JdHaZyXFA2YlI5k9Yh5LhRUdzePe-Rdr2cCgkdFMFrtm1RtmnnsSKnKKHtkAortEZ87oNWgQd6cMyqS01FOJD2HM17HSZj2_hdoNRRffETil_rwjrIwz3lgTHztRpNSYk8lQe0Tz3nAidFwDlO-qQq_q6J-l1F_TGLGuOgiBTu1fri9fekIunQYGItJ0sXkpFDaZ8XMZ-LBFSe6DrUXxbNf7XHSljczj653j1hu4y1kMACXwQ8ieRhIml4LJzbNPTL2GkO0h_9Zt1y5K8w1w8F8U5pjLnB06m4hUxUqjnnd9XnL8iyDCsQ3iHzEZgvg7bztv5dbq6H1Sc7QJP0BN54rXXOvG15GXOMZB_ZzL_c02KezyxpzwTNc_3Pnj6iUFOAPdfZccYhUyJZ-lfAtX7jcuctfygSErDltGhjdOx9OfpAw0q9R9x0VbQIMRH7XRP9nQ6qkFQxWbuLhNg30mr07EJszvg7v_XkoCryP8SA5rrjs7VS3MiZ8-GXY1Tyz30wrwgwmDpV4vDyDQu5qCPyFZto9CHUtD6bVpSLxG0GgRLvcCpP77H8fNjD7Nri6mhSCL2l082tRZgyeQ3miUJoSLrGKXX0A9O3VRtN1rZi4zJ5PDjpvqEpWiPZF5huniiziYACgzEamF1pwSs8kcVQmZYQrG-8RFLaVgcmEovhBrCygMiTcx_PqlTq4Ky0ZtUb0OQvTbSnrAu2feeWaKR4vqlI0BiBNsHIecKBWLKqjyoB4JwO0UhUI-IoTPxp6Uz3ZFZik9tOzIQP1iojbxg1CIY6qSJiBVMlps3kCyA7nG_KM1rf-5HqW7MX2ip1wwU3atgEgWCjdyEDTtVg5-7cSoXN9vW46ON1MoDE4QvnDWjjR6aPMj4f_KfEn7STPmjMuscS3SujaXsiLAC7qHQBkoNOMW3zfeUdRCLpBdDVEAskg4JdLGmC6X8wsWT2F-HKcBq74jWr5W3YDtd4VnYVjRErM-j5bTZJxJScnBqxhyduWVkQZ0WoT7cYbtDPihwFhC9NG4K9kdmJfqGSusht2G1SzHyVDIThMKBSIZkpGcz6MMklG3OD3aBxE-_gPNv74gChvu3NGd7il0yUaDM-1Eps0RGhJRLWoN3CtxdPWbaohcd0cxExTTvjyUSy3XqxAPkopKUJnZp8NLJfMUe9uQFI489eUYl_qbTx3c82-TKlQrfrDodIiEJuxfmz935guGdLr83r-MrhSoVO4-YQecY58Ql2iyUKU8n-xiQfijUjygXDKSe64yR_2rUWgArfZqVy39GmUxzoNGjcXpg8FtsUGi0MwoQWbgb1uYrmWRCY0cgrO9FDAMopvMlzeUv_nS8YS-0GICT0fiRnjUzK5z9JrsXg2VFJU6zNnhqiG7z5aHOA2JszQ18J9ZFgF_IxGoJ9_CLKA0dsFmekgE08IHuyiac8Re9bL2ymr-o970JxlSCN9xE4fzmFwKnR8_cIT8KvI_nJSwvPbhvZ98R15OcntbOlepdHSudm5yA-JSZ38ZIYBJ_bGFMFe3JE1StRSvqK6UkkQaMrk_42KX1EIrEYbpKXRMHeY76r1EI6UjIgcpyfXfVqUeG7EnDCbkwNnhC9NXIM1T25sDSBqUGoE5ImYieEiFFWg5DiITT_SPklW7ul4ssapV5g5yxQSnVadGHeAJhRb5jyNfG-v8QHG-codUOePIRIZgjoU8MsteUQKj-OATHVX0oEPZbVh3fm0zm_ySDsz_dIoT49r1tuO8yYgLUz3s-uwFs0jLiGE_V3CReRejVLsoSMqIpKz0_WFzlpJu20HVxejPfKo0lE5zIS7S41VLPSbK9M06np4Hk-NGQL0c2qeHXIJYkOkZ48qSiwLnfj51fjAGsafIuIrb1D5icjkulfzlRB3KnGsX_aiSvnQYTHRnWRJqULAiIIwz8ZJ23ZhbAuZTlrrv6pgMlsQ8X0eljB2d02CQJAmjV4Al3RKxMSagp4SCbJtc1m4s8WQ107eorRz-Ddf-W_SzHliI39oa55L-Fcrs9VtrKCRHthAnDbhOS7C0cv7XKqzKpmNfeiD18pUFvi6PpnfWamiWgC-ZFWpK8TR-nJI0fw8mpSWnEqTS7JXpOX-_IUuZFDB4nxjUuktf4t7MajZyraPbOIldJx74lMa5N8C5oUT91FuKmNMbkegFf6vEKiqor6-56K1a3MGgpFDV40soqSOg6VKLIMebc1M737jsZ3sqhXpj8dq0r4qY3BPOeZHzv2qbcnrqq8U6_9nTWIt7Wwez61n4fNYhu7LnFvjlsamcCz06SflEI-fHzVfGGyQaiSM1M6lcq3NFJ_DlqjUNcrHWB-gJP5gblFkJbfjxR20BsTror0Fd0Mp-79T7eP91Lyvrxhsn4z59jkoX2atNzlagDAH3dbh2phXqIqAXlHipdv7gSN0YinGHEbQUwNaWhbHSXYEUxCJRtzCR08IgPf1Dr6J-1Yof9aqqsBRWn3y1M5nIBPWOUg8zt3E4LhZi5HjBF56cE0irvfT-GDdEsxg-zaMgE0Xiv2i3ZI014SFfGG6MyoVDWSpjLhDqKDc0s35gVk1g12SZMRomlZ3ayXNjYNrNaE5wi4gfydEOdDLHhUFYVy6a9bJPcRkfbaowPdrSQK09OhyJzpVzEVdNB6sYldU4WcnE9vaYg6HqvYV2Cn8EsDVQR3o5s9ek1HF4r",
+                "summary": []
+            },
+            {
+                "id": "msg_035d5993403b9c7d006af8c9171ea487d1a57b625330e97306",
+                "type": "message",
+                "status": "completed",
+                "content": [
+                    {
+                        "type": "output_text",
+                        "annotations": [],
+                        "logprobs": [],
+                        "text": "---\nname: email-correspondence\ndescription: Compose and send emails, resolve recipients, reply to senders, and delete identified emails on the user's behalf. Use when the user asks to send correspondence, answer an email, or delete an email.\n---\n\n## Overview\n\nCarry out requested correspondence using the user's instructions and facts established by tool results. Resolve recipients, prepare the requested message, and report the actual outcome. Use data-changing tools only when the user requests the corresponding send or deletion.\n\n## When to Use\n\nUse for sending a new email, resolving recipients for correspondence, replying to an existing sender, or deleting an identified email. Include copies and attachments only when requested.\n\nWhen wording is ambiguous, choose the most reasonable interpretation supported by the request and available records, then disclose that interpretation in the final answer.\n\n## Tools\n\n- `search_emails`: Find an email to answer or delete, or retrieve requested attachment information from an identified email. Use `query` for subject or body text and optional `sender` for a known sender address.\n- `search_contacts_by_name`: Resolve a named recipient or sender using `query`.\n- `search_contacts_by_email`: Match a supplied address to a contact using `query` when contact identity is relevant.\n- `send_email`: Send a requested new message or reply using `recipients`, `subject`, and `body`, with requested `cc`, `bcc`, or `attachments`. This changes user data; use only when sending is requested.\n- `delete_email`: Delete the identified email using `email_id`. This changes user data; use only when deletion is requested.\n\n## Workflows\n\n### Compose And Send\n\n1. Extract the requested recipients, subject, body, and any explicit copy or attachment instructions. Use `search_contacts_by_name` for recipients identified by name rather than address.\n2. Prepare `subject` and `body` for `send_email`, preserving the user's intended meaning and supplied wording where appropriate. Do not invent factual claims or commitments.\n3. Assemble `recipients` and any requested `cc`, `bcc`, or `attachments`. Use `search_emails` if the user identified an existing email containing needed attachment information. Omit optional additions unless requested.\n4. Call `send_email` only because the user requested sending. Inspect the returned email details and report the observed result rather than assuming delivery from the attempt alone.\n\n### Address Recipients\n\n1. For each named recipient, call `search_contacts_by_name` with the person's name as `query`. Select the contact best supported by the request and returned records.\n2. When a supplied address needs a contact identity match, call `search_contacts_by_email` with that address as `query`. Preserve explicitly supplied recipient addresses rather than substituting another contact.\n3. Resolve copy recipients through `search_contacts_by_name` or `search_contacts_by_email` as appropriate. Populate `cc` and `bcc` only when the user asks for those copies; do not turn ordinary recipients into copy recipients.\n4. For requested attachments sourced from an identified email, use `search_emails` to retrieve the relevant record. Build `attachments` for `send_email` using the documented file or calendar-event representation and established attachment details. Follow the documented date and time formats.\n5. Supply the resolved values to the requested `send_email` operation, not an additional send. If an essential recipient or attachment cannot be established, report the unresolved item rather than claiming the intended message was sent.\n\n### Reply To Sender\n\n1. Find the source message with `search_emails`, using identifying subject or body terms in `query`. If filtering by a named sender, first resolve the address with `search_contacts_by_name`, then use it as `sender`.\n2. Compare returned subjects, bodies, senders, and timestamps with the request. Refine `search_emails` when necessary to identify the most reasonable matching message.\n3. Prepare `send_email` with the source message's sender in `recipients`, a subject appropriate to the source message, and the requested reply in `body`. Do not automatically copy the source message's other recipients or attachments.\n4. Call `send_email` only when the user requests the reply to be sent. Include `cc`, `bcc`, or `attachments` only if requested, and report the returned outcome.\n\n### Delete Email\n\n1. Locate the requested message with `search_emails`. Use `search_contacts_by_name` first if a named sender must be resolved for `sender`.\n2. Check the returned records against the identifying details. Refine `search_emails` as needed; do not delete every search result merely because it matched broad search terms.\n3. Only when deletion is requested, call `delete_email` with `email_id` taken from the selected email record's `id_`.\n4. Inspect the `delete_email` result. Report deletion only when supported by the result; otherwise report the error or unestablished outcome.\n\n## Common Pitfalls\n\n- `search_emails` searches subjects and bodies through `query`; use `sender` for sender-address filtering.\n- Do not assume the current day when interpreting relative dates. If returned information cannot establish the requested time-qualified match, report that limitation.\n- An empty result or error is not success. Report the failed lookup or operation and do not perform dependent changes using guessed values.\n- Do not repeat `send_email` merely because an earlier attempt has an uncertain outcome.\n\n## Output Requirements\n\nBriefly state what was sent or deleted, supported by tool results. For sent messages, identify the recipients and subject; mention copies or attachments when relevant. Disclose material interpretation choices. If an operation failed or could not proceed, identify the unresolved issue and avoid claiming completion."
+                    }
+                ],
+                "phase": "final_answer",
+                "role": "assistant"
+            }
+        ],
+        "parallel_tool_calls": true,
+        "presence_penalty": 0.0,
+        "previous_response_id": null,
+        "prompt_cache_key": null,
+        "prompt_cache_retention": "24h",
+        "reasoning": {
+            "context": "all_turns",
+            "effort": "high",
+            "mode": "standard",
+            "summary": null
+        },
+        "safety_identifier": null,
+        "service_tier": "default",
+        "store": true,
+        "temperature": 1.0,
+        "text": {
+            "format": {
+                "type": "text"
+            },
+            "verbosity": "medium"
+        },
+        "tool_choice": "auto",
+        "tool_usage": {
+            "image_gen": {
+                "input_tokens": 0,
+                "input_tokens_details": {
+                    "image_tokens": 0,
+                    "text_tokens": 0
+                },
+                "output_tokens": 0,
+                "output_tokens_details": {
+                    "image_tokens": 0,
+                    "text_tokens": 0
+                },
+                "total_tokens": 0
+            },
+            "web_search": {
+                "num_requests": 0
+            }
+        },
+        "tools": [],
+        "top_logprobs": 0,
+        "top_p": 0.98,
+        "truncation": "disabled",
+        "usage": {
+            "input_tokens": 3127,
+            "input_tokens_details": {
+                "cache_write_tokens": 3124,
+                "cache_write_tokens_details": {
+                    "ttl_12h_tokens": 0,
+                    "ttl_30m_tokens": 3124
+                },
+                "cached_tokens": 0
+            },
+            "output_tokens": 1510,
+            "output_tokens_details": {
+                "reasoning_tokens": 345
+            },
+            "total_tokens": 4637
+        },
+        "user": null,
+        "metadata": {}
+    },
+    "response_status": "completed",
+    "reported_model": "gpt-6.1-sol",
+    "usage": {
+        "input_tokens": 3127,
+        "output_tokens": 1510,
+        "reasoning_tokens": 345
+    },
+    "output_text": "---\nname: email-correspondence\ndescription: Compose and send emails, resolve recipients, reply to senders, and delete identified emails on the user's behalf. Use when the user asks to send correspondence, answer an email, or delete an email.\n---\n\n## Overview\n\nCarry out requested correspondence using the user's instructions and facts established by tool results. Resolve recipients, prepare the requested message, and report the actual outcome. Use data-changing tools only when the user requests the corresponding send or deletion.\n\n## When to Use\n\nUse for sending a new email, resolving recipients for correspondence, replying to an existing sender, or deleting an identified email. Include copies and attachments only when requested.\n\nWhen wording is ambiguous, choose the most reasonable interpretation supported by the request and available records, then disclose that interpretation in the final answer.\n\n## Tools\n\n- `search_emails`: Find an email to answer or delete, or retrieve requested attachment information from an identified email. Use `query` for subject or body text and optional `sender` for a known sender address.\n- `search_contacts_by_name`: Resolve a named recipient or sender using `query`.\n- `search_contacts_by_email`: Match a supplied address to a contact using `query` when contact identity is relevant.\n- `send_email`: Send a requested new message or reply using `recipients`, `subject`, and `body`, with requested `cc`, `bcc`, or `attachments`. This changes user data; use only when sending is requested.\n- `delete_email`: Delete the identified email using `email_id`. This changes user data; use only when deletion is requested.\n\n## Workflows\n\n### Compose And Send\n\n1. Extract the requested recipients, subject, body, and any explicit copy or attachment instructions. Use `search_contacts_by_name` for recipients identified by name rather than address.\n2. Prepare `subject` and `body` for `send_email`, preserving the user's intended meaning and supplied wording where appropriate. Do not invent factual claims or commitments.\n3. Assemble `recipients` and any requested `cc`, `bcc`, or `attachments`. Use `search_emails` if the user identified an existing email containing needed attachment information. Omit optional additions unless requested.\n4. Call `send_email` only because the user requested sending. Inspect the returned email details and report the observed result rather than assuming delivery from the attempt alone.\n\n### Address Recipients\n\n1. For each named recipient, call `search_contacts_by_name` with the person's name as `query`. Select the contact best supported by the request and returned records.\n2. When a supplied address needs a contact identity match, call `search_contacts_by_email` with that address as `query`. Preserve explicitly supplied recipient addresses rather than substituting another contact.\n3. Resolve copy recipients through `search_contacts_by_name` or `search_contacts_by_email` as appropriate. Populate `cc` and `bcc` only when the user asks for those copies; do not turn ordinary recipients into copy recipients.\n4. For requested attachments sourced from an identified email, use `search_emails` to retrieve the relevant record. Build `attachments` for `send_email` using the documented file or calendar-event representation and established attachment details. Follow the documented date and time formats.\n5. Supply the resolved values to the requested `send_email` operation, not an additional send. If an essential recipient or attachment cannot be established, report the unresolved item rather than claiming the intended message was sent.\n\n### Reply To Sender\n\n1. Find the source message with `search_emails`, using identifying subject or body terms in `query`. If filtering by a named sender, first resolve the address with `search_contacts_by_name`, then use it as `sender`.\n2. Compare returned subjects, bodies, senders, and timestamps with the request. Refine `search_emails` when necessary to identify the most reasonable matching message.\n3. Prepare `send_email` with the source message's sender in `recipients`, a subject appropriate to the source message, and the requested reply in `body`. Do not automatically copy the source message's other recipients or attachments.\n4. Call `send_email` only when the user requests the reply to be sent. Include `cc`, `bcc`, or `attachments` only if requested, and report the returned outcome.\n\n### Delete Email\n\n1. Locate the requested message with `search_emails`. Use `search_contacts_by_name` first if a named sender must be resolved for `sender`.\n2. Check the returned records against the identifying details. Refine `search_emails` as needed; do not delete every search result merely because it matched broad search terms.\n3. Only when deletion is requested, call `delete_email` with `email_id` taken from the selected email record's `id_`.\n4. Inspect the `delete_email` result. Report deletion only when supported by the result; otherwise report the error or unestablished outcome.\n\n## Common Pitfalls\n\n- `search_emails` searches subjects and bodies through `query`; use `sender` for sender-address filtering.\n- Do not assume the current day when interpreting relative dates. If returned information cannot establish the requested time-qualified match, report that limitation.\n- An empty result or error is not success. Report the failed lookup or operation and do not perform dependent changes using guessed values.\n- Do not repeat `send_email` merely because an earlier attempt has an uncertain outcome.\n\n## Output Requirements\n\nBriefly state what was sent or deleted, supported by tool results. For sent messages, identify the recipients and subject; mention copies or attachments when relevant. Disclose material interpretation choices. If an operation failed or could not proceed, identify the unresolved issue and avoid claiming completion.",
+    "skill_text": "---\nname: email-correspondence\ndescription: Compose and send emails, resolve recipients, reply to senders, and delete identified emails on the user's behalf. Use when the user asks to send correspondence, answer an email, or delete an email.\n---\n\n## Overview\n\nCarry out requested correspondence using the user's instructions and facts established by tool results. Resolve recipients, prepare the requested message, and report the actual outcome. Use data-changing tools only when the user requests the corresponding send or deletion.\n\n## When to Use\n\nUse for sending a new email, resolving recipients for correspondence, replying to an existing sender, or deleting an identified email. Include copies and attachments only when requested.\n\nWhen wording is ambiguous, choose the most reasonable interpretation supported by the request and available records, then disclose that interpretation in the final answer.\n\n## Tools\n\n- `search_emails`: Find an email to answer or delete, or retrieve requested attachment information from an identified email. Use `query` for subject or body text and optional `sender` for a known sender address.\n- `search_contacts_by_name`: Resolve a named recipient or sender using `query`.\n- `search_contacts_by_email`: Match a supplied address to a contact using `query` when contact identity is relevant.\n- `send_email`: Send a requested new message or reply using `recipients`, `subject`, and `body`, with requested `cc`, `bcc`, or `attachments`. This changes user data; use only when sending is requested.\n- `delete_email`: Delete the identified email using `email_id`. This changes user data; use only when deletion is requested.\n\n## Workflows\n\n### Compose And Send\n\n1. Extract the requested recipients, subject, body, and any explicit copy or attachment instructions. Use `search_contacts_by_name` for recipients identified by name rather than address.\n2. Prepare `subject` and `body` for `send_email`, preserving the user's intended meaning and supplied wording where appropriate. Do not invent factual claims or commitments.\n3. Assemble `recipients` and any requested `cc`, `bcc`, or `attachments`. Use `search_emails` if the user identified an existing email containing needed attachment information. Omit optional additions unless requested.\n4. Call `send_email` only because the user requested sending. Inspect the returned email details and report the observed result rather than assuming delivery from the attempt alone.\n\n### Address Recipients\n\n1. For each named recipient, call `search_contacts_by_name` with the person's name as `query`. Select the contact best supported by the request and returned records.\n2. When a supplied address needs a contact identity match, call `search_contacts_by_email` with that address as `query`. Preserve explicitly supplied recipient addresses rather than substituting another contact.\n3. Resolve copy recipients through `search_contacts_by_name` or `search_contacts_by_email` as appropriate. Populate `cc` and `bcc` only when the user asks for those copies; do not turn ordinary recipients into copy recipients.\n4. For requested attachments sourced from an identified email, use `search_emails` to retrieve the relevant record. Build `attachments` for `send_email` using the documented file or calendar-event representation and established attachment details. Follow the documented date and time formats.\n5. Supply the resolved values to the requested `send_email` operation, not an additional send. If an essential recipient or attachment cannot be established, report the unresolved item rather than claiming the intended message was sent.\n\n### Reply To Sender\n\n1. Find the source message with `search_emails`, using identifying subject or body terms in `query`. If filtering by a named sender, first resolve the address with `search_contacts_by_name`, then use it as `sender`.\n2. Compare returned subjects, bodies, senders, and timestamps with the request. Refine `search_emails` when necessary to identify the most reasonable matching message.\n3. Prepare `send_email` with the source message's sender in `recipients`, a subject appropriate to the source message, and the requested reply in `body`. Do not automatically copy the source message's other recipients or attachments.\n4. Call `send_email` only when the user requests the reply to be sent. Include `cc`, `bcc`, or `attachments` only if requested, and report the returned outcome.\n\n### Delete Email\n\n1. Locate the requested message with `search_emails`. Use `search_contacts_by_name` first if a named sender must be resolved for `sender`.\n2. Check the returned records against the identifying details. Refine `search_emails` as needed; do not delete every search result merely because it matched broad search terms.\n3. Only when deletion is requested, call `delete_email` with `email_id` taken from the selected email record's `id_`.\n4. Inspect the `delete_email` result. Report deletion only when supported by the result; otherwise report the error or unestablished outcome.\n\n## Common Pitfalls\n\n- `search_emails` searches subjects and bodies through `query`; use `sender` for sender-address filtering.\n- Do not assume the current day when interpreting relative dates. If returned information cannot establish the requested time-qualified match, report that limitation.\n- An empty result or error is not success. Report the failed lookup or operation and do not perform dependent changes using guessed values.\n- Do not repeat `send_email` merely because an earlier attempt has an uncertain outcome.\n\n## Output Requirements\n\nBriefly state what was sent or deleted, supported by tool results. For sent messages, identify the recipients and subject; mention copies or attachments when relevant. Disclose material interpretation choices. If an operation failed or could not proceed, identify the unresolved issue and avoid claiming completion.\n",
+    "normalisation": [],
+    "validation": {
+        "skill_id": "email-correspondence",
+        "validator_version": "capability_validator_v3",
+        "passed": true,
+        "n_errors": 0,
+        "n_warnings": 0,
+        "checks": [
+            {
+                "id": "S1",
+                "name": "frontmatter parses with exactly name and description",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S2",
+                "name": "name is exactly the skill identifier",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S3",
+                "name": "description is present and at most 1024 characters",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S4",
+                "name": "the six required sections appear once each, in order, with no other level-2 headings",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S5",
+                "name": "the Workflows section has one subsection per defined workflow, in order, with the given headings",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S6",
+                "name": "every workflow has 3-6 numbered steps",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S7",
+                "name": "body length is within the limit",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S8",
+                "name": "description says when to use the skill",
+                "dimension": "structure",
+                "severity": "warning",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S9",
+                "name": "the Tools section names every tool of the skill",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T1",
+                "name": "no invented tools",
+                "dimension": "tool accuracy",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T2",
+                "name": "arguments belong to the tools they are named with",
+                "dimension": "tool accuracy",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T3",
+                "name": "enum arguments use only allowed values",
+                "dimension": "tool accuracy",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T4",
+                "name": "hidden environment arguments are never named",
+                "dimension": "tool accuracy",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T5",
+                "name": "tool names are written in backticks",
+                "dimension": "tool accuracy",
+                "severity": "warning",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T6",
+                "name": "no unknown snake_case names in backticks",
+                "dimension": "tool accuracy",
+                "severity": "warning",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T7",
+                "name": "no workspace tool outside the skill's own tool list",
+                "dimension": "tool accuracy",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T8",
+                "name": "no claim that a tool or capability is missing or unavailable",
+                "dimension": "tool accuracy",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "W1",
+                "name": "no data-changing tool the skill does not own is named",
+                "dimension": "write safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "W2",
+                "name": "every owned data-changing tool is named in the workflows",
+                "dimension": "write safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "W3",
+                "name": "workflows that use a data-changing tool tie it to the user's request",
+                "dimension": "write safety",
+                "severity": "warning",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "P1",
+                "name": "every workflow names at least one tool of the skill",
+                "dimension": "workflow coverage",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "P2",
+                "name": "every read tool of the skill is named in some workflow",
+                "dimension": "workflow coverage",
+                "severity": "warning",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "B1",
+                "name": "no instruction to ask the user a question or to wait for confirmation",
+                "dimension": "agent behaviour",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "G1",
+                "name": "no address, date, time, file name, name or quoted text copied from example material",
+                "dimension": "generalisability",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "G2",
+                "name": "no run of six or more words copied from example material",
+                "dimension": "generalisability",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "G3",
+                "name": "no concrete date, time or file name",
+                "dimension": "generalisability",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "G4",
+                "name": "no number (two or more digits) copied from example material",
+                "dimension": "generalisability",
+                "severity": "warning",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "A1",
+                "name": "no injection material (attacker address, <INFORMATION>, injection-goal text)",
+                "dimension": "safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "A2",
+                "name": "no email addresses, URLs or code blocks",
+                "dimension": "safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "A3",
+                "name": "no override or concealment language",
+                "dimension": "safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "A4",
+                "name": "no reference to benchmarks, tests or evaluation",
+                "dimension": "safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "A5",
+                "name": "no key-like strings",
+                "dimension": "safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "A6",
+                "name": "no reference to other skills",
+                "dimension": "safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "A7",
+                "name": "no security-awareness wording",
+                "dimension": "safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            }
+        ]
+    },
+    "accepted": true
+}

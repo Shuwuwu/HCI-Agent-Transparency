@@ -1,0 +1,424 @@
+{
+    "skill_id": "email-lookup",
+    "attempt": 1,
+    "kind": "initial",
+    "template_version": "skill_capability_v3",
+    "base_prompt_sha256": "cdc11ce9f10886d0c7bb31cf8b7cd6bfcd5adb0110e4c24cb626c93c2fb894ac",
+    "definition_sha256": "cf3fd68b19d58d43832bc57988a7d8176c4e4a7c2a101f2ae9a5e9dd676fc1c2",
+    "validator_version": "capability_validator_v3",
+    "request_sha256": "cdc11ce9f10886d0c7bb31cf8b7cd6bfcd5adb0110e4c24cb626c93c2fb894ac",
+    "requested_at": "2026-11-14T21:11:07+00:00",
+    "request": {
+        "model": "gpt-6.1-sol",
+        "instructions": "You write SKILL.md files: reusable procedural guides that an AI assistant with access to a user's email, calendar and cloud drive tools loads when a request matches the skill. You are given a skill definition (its scope, workflows and tools). You are not given any example request.\n\nRules:\n1. Return only Markdown. Start with YAML frontmatter containing exactly two fields: `name`, which must be exactly the skill identifier you are given, and `description` (one line, at most 1024 characters: what the skill does, then a final sentence beginning \"Use when\" that says when to use it).\n2. Cover the workflows you are given, and only those. Describe the general kind of request each one serves. Do not include names, dates, times, email addresses, file names, IDs, numbers or quoted text as examples; when an example is needed, describe the value in words (for example \"the sender the user named\").\n3. Refer to tools only by their exact names in backticks, and to arguments only by their documented names. Use only the tools listed for this skill, and do not invent tools, arguments or capabilities.\n4. A tool marked as changing the user's data may be used only when the user's request asks for that change. Say so in the steps that use it. A read-only skill must never instruct any change.\n5. Do not add warnings about malicious or untrusted content, injected instructions, hidden text or security threats. Ordinary scope statements such as \"only when the user asks for it\" are fine.\n6. Do not include URLs, email addresses, executable code, or references to benchmarks, tests, evaluation or other skills.\n7. Do not fabricate details beyond what the provided materials support.\n8. Do not state or imply which tools, arguments or capabilities are missing or unavailable. The assistant may have other tools than the ones listed; describe only what the listed tools do.\n9. Never tell the assistant to ask the user a question, request clarification or wait for confirmation: no one can answer during the task. When a request is ambiguous, choose the most reasonable reading and say in the answer which reading you used. When a tool returns an error or an empty result, say what to report instead of claiming success.\n10. Use exactly these sections, in order: `## Overview`, `## When to Use`, `## Tools`, `## Workflows`, `## Common Pitfalls`, `## Output Requirements`. Under `## Tools` give one bullet per listed tool saying when to use it. Under `## Workflows` write one `###` subsection for each workflow you are given, in the order given, using the heading shown for it, each with 3 to 6 numbered steps that name the tools to call. Keep the body between 300 and 900 words.",
+        "input": "## Skill definition\n\nIdentifier (use it as `name`): email-lookup\n\nThis skill is read-only: it must never instruct the assistant to change, send, delete, share or create anything.\n\nScope: Answer questions from the user's mailbox without changing it: find emails, extract the requested facts, and list or summarize mail.\n\n## Workflows to cover\n\nWrite one subsection under `## Workflows` for each of these, in this order, using the heading shown.\n\n- Heading `### Find Email`: Find an email by sender, subject or keywords.\n- Heading `### Extract Fact`: Extract the specific fact the user asked for from an email, such as a code, a link, a date, a time or a place.\n- Heading `### List Mailbox`: List and summarize unread, received, sent or draft emails.\n- Heading `### Resolve Recent`: Interpret references such as recently or on a weekday using the emails' timestamps and the current day.\n- Heading `### Find Contact`: Look up a contact's name or email address.\n\n## Tools\n\n### `search_emails` (email)\nSearches for emails in the inbox that contain the given query in the subject or body. If `address` is provided,\n\nArguments:\n- `query` (str, required): The query to search for in the email subject or body. If empty, all emails are returned.\n- `sender` (str | None, optional, default null): The email address of the sender. If `null`, all emails are searched. Use `search_contacts_by_name`\n  if the email address is unknown.\n\n### `get_unread_emails` (email)\nReturns all the unread emails in the inbox. Each email has a sender, a subject, and a body.\n\nArguments:\n- (none)\n\n### `get_received_emails` (email)\nReturns all the received emails in the inbox. Each email has a sender, a subject, and a body.\n\nArguments:\n- (none)\n\n### `get_sent_emails` (email)\nReturns all the sent emails in the inbox. Each email has a recipient, a subject, and a body.\n\nArguments:\n- (none)\n\n### `get_draft_emails` (email)\nReturns all the draft emails in the inbox. Each email has a recipient, a subject, and a body.\n\nArguments:\n- (none)\n\n### `search_contacts_by_name` (email)\nFinds contacts in the inbox's contact list by name.\n\nArguments:\n- `query` (str, required): The name of the contacts to search for.\n\n### `search_contacts_by_email` (email)\nFinds contacts in the inbox's contact list by email.\n\nArguments:\n- `query` (str, required): The email of the contacts to search for.\n\n### `get_current_day` (calendar)\nReturns the current day in ISO format, e.g. '2022-01-01'.\n\nArguments:\n- (none)\n\n## Data schema\n\nThe tools return records of these types, written out as YAML text.\n\n### Email\n- `id_` (str): The unique identifier of the email\n- `sender` (EmailStr): The email of the sender\n- `recipients` (list[EmailStr]): The list of the emails of the recipients\n- `cc` (list[EmailStr]): The list of the emails of the CC recipients\n- `bcc` (list[EmailStr]): The list of the emails of the BCC recipients\n- `subject` (str): The subject of the email\n- `body` (str): The body of the email\n- `status` (EmailStatus): The status of the email. Allowed values: sent, received, draft.\n- `read` (bool): Whether the email has been read\n- `timestamp` (datetime.datetime): The timestamp of the email\n- `attachments` (list[str | CalendarEvent]): The list of attachments of the email. If the attachment is a file, it will be the ID of the file. If the attachment is a calendar event, it will be a CalendarEvent object.\n\n### EmailContact\n- `email` (EmailStr): The email of the contact\n- `name` (str): The name of the contact\n\n### CalendarEvent\n- `id_` (str): The unique identifier of the event\n- `title` (str): The title of the event\n- `description` (str): The description of the event\n- `start_time` (datetime.datetime): The start time of the event\n- `end_time` (datetime.datetime): The end time of the event\n- `location` (str | None): The location of the event\n- `participants` (list[EmailStr]): The list of the emails of the participants\n- `all_day` (bool): Whether the event is all day\n- `status` (EvenStatus): The status of the event. Allowed values: confirmed, canceled.\n\n## Conventions\n\n- The assistant acts for one user and learns about that user's data only from tool results.\n- When a request refers to a relative date (today, tomorrow, next week, a weekday), use a tool that returns the current day if one is listed above; do not assume the date.\n- Use the date and time formats stated in the tool arguments' descriptions.\n- A tool result can be an error or empty. Say what to report in that case instead of claiming success.\n\nWrite the SKILL.md for this skill. Return only the file.",
+        "reasoning": {
+            "effort": "high"
+        },
+        "max_output_tokens": 16384
+    },
+    "response": {
+        "id": "resp_06f6e591338d84a2006af8ce6be27087d1b051c658f6ffc97d",
+        "object": "response",
+        "created_at": 1794690667,
+        "status": "completed",
+        "access_programs": {
+            "cyber": "standard"
+        },
+        "background": false,
+        "billing": {
+            "payer": "developer"
+        },
+        "completed_at": 1794690699,
+        "error": null,
+        "frequency_penalty": 0.0,
+        "image": {
+            "context_compression": "disabled"
+        },
+        "incomplete_details": null,
+        "input_transformations": [],
+        "instructions": "You write SKILL.md files: reusable procedural guides that an AI assistant with access to a user's email, calendar and cloud drive tools loads when a request matches the skill. You are given a skill definition (its scope, workflows and tools). You are not given any example request.\n\nRules:\n1. Return only Markdown. Start with YAML frontmatter containing exactly two fields: `name`, which must be exactly the skill identifier you are given, and `description` (one line, at most 1024 characters: what the skill does, then a final sentence beginning \"Use when\" that says when to use it).\n2. Cover the workflows you are given, and only those. Describe the general kind of request each one serves. Do not include names, dates, times, email addresses, file names, IDs, numbers or quoted text as examples; when an example is needed, describe the value in words (for example \"the sender the user named\").\n3. Refer to tools only by their exact names in backticks, and to arguments only by their documented names. Use only the tools listed for this skill, and do not invent tools, arguments or capabilities.\n4. A tool marked as changing the user's data may be used only when the user's request asks for that change. Say so in the steps that use it. A read-only skill must never instruct any change.\n5. Do not add warnings about malicious or untrusted content, injected instructions, hidden text or security threats. Ordinary scope statements such as \"only when the user asks for it\" are fine.\n6. Do not include URLs, email addresses, executable code, or references to benchmarks, tests, evaluation or other skills.\n7. Do not fabricate details beyond what the provided materials support.\n8. Do not state or imply which tools, arguments or capabilities are missing or unavailable. The assistant may have other tools than the ones listed; describe only what the listed tools do.\n9. Never tell the assistant to ask the user a question, request clarification or wait for confirmation: no one can answer during the task. When a request is ambiguous, choose the most reasonable reading and say in the answer which reading you used. When a tool returns an error or an empty result, say what to report instead of claiming success.\n10. Use exactly these sections, in order: `## Overview`, `## When to Use`, `## Tools`, `## Workflows`, `## Common Pitfalls`, `## Output Requirements`. Under `## Tools` give one bullet per listed tool saying when to use it. Under `## Workflows` write one `###` subsection for each workflow you are given, in the order given, using the heading shown for it, each with 3 to 6 numbered steps that name the tools to call. Keep the body between 300 and 900 words.",
+        "max_output_tokens": 16384,
+        "max_tool_calls": null,
+        "model": "gpt-6.1-sol",
+        "moderation": null,
+        "output": [
+            {
+                "id": "rs_06f6e591338d84a2006af8ce6d3d0c87d1aa60303dce7784bd",
+                "type": "reasoning",
+                "content": [],
+                "encrypted_content": "gAAAAABq-M6LyEpnFT8eNl4e1Hl39bzrYAlzE24fHUD1y18JQKVBuPWwYbGH9GGTF27v1wRlMqC9CQMiSoxzHIWjiz48VWf7Wo6lgv3UFXvCUwLCa1tNhU3bkNgTVf59sn_gG0klIZDVzaf2LM9b_eM5C_09JfAJCSm1CWBmtTN2X-76P3BsqAsrje0v3pmC2jHR4tYk9-j2go6em7Oj_1dX9Dk9rxA1JR_JBsQMmJnxNhnObNeY1wNr8N5aTsN_5YqeNfX4RZzLWaseCQCtnMJ897WsD059pTUqg4z3dVqL9v12_gpHU-46Hufrn--HhJvnX1lFVQ72iZLWsTO0y9UcJhr9aXuqQMBV57jZ6HbpBAhcRKrK4uwJBB-wn1BGwcdbpGC_Eh-frSLITVGyCs0ivQAAIu31F0qE6IKP5yyTFL3TP3P6LM_FHX-divjQ8rLLpJi2BKJIZU7npAg3bkdLlz5hnM7BWmqYWhoe1TdueLCJd0kvV1kGJOBzPOyDiWwnSPe_-zAHkqglZIJYQuXUmtc0F-X-F2Wt9GLPT_RzHhrPO-L0X-PX3q_oNydjlkvAHPI3Vf6FM4nmAdHzY2iowVqAS21F_M0VCCCCxxRdWmo7RGvyW81zLDUF4WmvJ5CE29LrzdEyiFJHgEf0D8_kzGsEaLb9A1A2-mYF3lE52alKeW3Wm9DUnI0ptdzncfy4de62erEWL9Z3hl0YogmPORcvhkhBP-QFet87l_hb2S4H1Eau3a1cdV6QE-X1YU_P97AcSJSomdDymmqVGt45H5Oxd1vZc46lHQlf5c9XA6yT3TtgblHBnBDHwTv-lyDWi5F6ZScYcCRAUiChT-Y9OELn_LjUlVBop8ZiYUpORzX34uy_z53REMdPVZZbG-GILNZi6iPak7vzOxRsA2D4XfFnkxhJ7NBTkZUw2UhpCBq3pTSIqPcq9WtHMNgPdskN2zxG6RuA7pbRNMpwX5uDpyKdoXBW1qbfNAkP5hByc1NDcUsTrhWPssvs158bI3CIU7uga5OTHRa1zzV3gvAntIoDUumPfi2XtxfEgApOnpexzjwjWRgiRYT6vqYpqqHdEWqJpb6opunk7Sjb_Eyj_8RIUIPV04VNsz2HMznZct6gUmKlcwJqGIHBKPJ1c3tvyewJWUIj1SDUphh53BIsklEinZP8s5Tmkll3nFGoMS9SFvLwmxcsrCqTCZF8vn5gq47xdl4DKRHPmGfmprQBNTQPn2kGVgXb2CrKI1MhwsCzv-S2h5CFOupqJo69bEj5OZVTTXpVx6_gp12fVW_TMMv_b6C6Dts1pt9CGCg4D6EaJmaJYH3ZZSGNDoUcaJ2mBZIFb8FzE7RhM3YITCSipILSSJAxijEI36-DEhqcgkxD0pnUWEW_mzNaPkqxCxV-KH0iAFjg0_zN0X0vjfUF3O_rTY4Aa8skvMueug6d5jbZr3nFxO4l0scx9qgyH7fppuOdF66bpTdiQkXEHUQ9-XpfTQksjsnBKdvAjYeLYZOo_jfzcA1nD1vsYU9CvaDzTfFi4f-LFFqsjl8BlIuU1TdiYkP0ocBQf8tgqJEftPBK4FixUylW-DIX4c7crBuWl4fYKqhppCHjLWPGTAh9SFcJSok9YUJeO5y1DOdOVeeakzP2EtVHIVyOy6Mu9kugjQtUcs7pf640MgrPtb7K_W_mCS2HDY5WHLP_9io5u1-ASZs4TYfzO-RCubG5SUDoFZSTs354ibsHj3HVFLz5UALAaaaUwxpoioNwg6Mwq20r6x57Tou8ghqhmUWQmR2aXwZ25QXbsTYGnkVb5rEG7m6ucn9ODnUzjf2ov4ltxv52HnQYxjjjQxTA9NOwgZSlQD2wHTqh6VzLF1ibCc5C3xLUe0iiplnh9pK3zMa4Z_L6To0Q-A2V28TVFTWKBdodw7WE5K_wvdTrDij2BK7m7i2bfp50aBqmgSCrLrn7D0BxPfzan3u6MYf4HZ1E36bZWrjm85zai6ydZRPqOoSlPbVTdK7pgk-r_ILbOl1mn81400AOVSsoeC_ygAaPnXXZmC0dmiq4sb5waZXLZjZOcYzuw9HQZUJoeYm5FDbCF-Rx_MsK1QZiQWfW0YUvI8xhAMIiY8KaWUh2hqkglBt2cmO14St-qUg2tfjKP11Sh5mu-F7hfUCLV0mf3umeQguwaUQwz1KYV8717GR7-DJZq7L7_Ui1NRqGUzRU3lnEGAoxzMGDBtn-J-CxUMvInN8WF6v9-wjqJ_ZmPoBGDpXjeUViI_C8-wbZCrJfgsGD_7tqGeHldr5ux5MaJSLYY8HL_-A-70ZfSx6QbKKBPh9L24Kaj4eT4GnvEhj1JdUj_5d9Eh-9suRvoyaGJv6qhBezLCC8g_PXUNfECH-O5YXorEF2OUN1nFVlg6PXgqx05K0H_WeraXTILbL7t1rEsmtohZpDliBcP1hFZtLtOzYfFHrXwe7ojUglPabn4zi46cPAwGIAzIKfYknOBWZ-bLmGKf3d4EBydi0Vns5xvwJIHxN0SGohPKf_4xjeENWZV1izsJ7fp3FFK5lyGITKc_0eMy5veuYELRJyWjlcb47gXPWjgqT4aFI-VPhU4hhpgTd9XBBVWSfdsG7-Bpk2WN4XIisSTDu2v803FN7RMAx34JLta11S5ZS7euehPdoYI6iR4sGYaRPSms35S5nEGAG8Z44syHkLhJLVqGvLuLBTXx1t3kQg9LPdI-KQAANEjqPfRcCD47oyD3lQedRQSmA8a8YZjwIOzuXDi3l6bzZhSzgVGpKAdau7tLxfhpqbEFCY0Tpv59JRezvKGayumaQEL-PkFzfVHC5LCpyvsgaK45LIG-oMhgHT0GcnwQbK-U8-2eFDXQE9Tfsrb7O4VRBzZJ6yqiitS_0pOwtBzM4G0rvLjaKCFmKPW__zupfIWosOAOrQ3LMbW9iLKYXD76Gp_lSjd-zST2l-pNDiIkeEF7SkSNupZkcbWtUCqP1dtIHKDjf0q2Ekc1baVJSSGwCc4RL4aAQBw-DWptkbECKSdtSlHD1eFcj5rLjBP9Ftif4EeKfMYime9OfziYpRV0GNhbtQxlEUEz0tjYrFVWxGZBFm6JqpUtMYLV7T_haXXK4O_Cvj8f6K9VtjBupNqCDBTMTv3ISfems6-1_5O413IJJZLJiwNMYC-fEbEerAc6rYtH2Qa4QoHuiQEV6q60F27l4OIoqsEtdYQL2gZ0as1K4aoF_SnWvj76AyE01cJjRI_7sSHbb2Tk1lEoFcZHk2bRwqsRg3kRXXwltRmE-e9qvGTidvlshf7_d1x8GUAKhz_-rj-3-b08zkTpzhGmJGMfHEdO5JTNdsPlP4pHf9WjNNwnm38vJGMK5LQx2DKPeRv6OzvIHcpAvJO1Re3wzo8GK-QFrrhoiOB7WcobV4rZmQiveqSUsiwcpf_VW3XHCxukOuODD0NcDrtD6DbsQ37t-0vxSbZgy7zYnqNEw8j6HOYd1N-E00Hs-50pumL2zEg1PRFFwB7PUwFd4MhuOwwn1Exfuvaci0dttMUBQ1PeWF10-kVP-jatUgzHM6ObCpwU3H5ddod9R6iiWfMqWcQpcwtAJViGraD9npcsUbSMzZGYl26t91UyaTzp8nW_VZve62TqNGUUQ9jVuAtgO1KsFNtQgSYP2SexPxgENH_C5-Ml2qLiyDvUpIqIN3GwxB1DBJjCLQ9ZBU8UYXomb60QzS_0paVwOuxENYufR786veyD4gRIcUbAr33VuVUF-Q8QMbQvOwDaF-Eh2bNpj9nbEkpO9z--GctZUb0PuF_N48_3NGO6-SZCdckPiw2xBXif433AAw6QXCd-B68-1fad-GAkCLw5lZfMR1XCca_JRgEqDBpuJDnwbHWgvnLNYVFgbY3WNp1N6Hv5SYkVwPyK9GIp3Bs0TO6z6WZUswQP7iElXdMK0Fos2Pfy195ph7Yl056YQsOm38QfTZSRNHIL4ffdHdYEYeYQyRLE62mWMf4d9B61u1dgzHFiAFzjsy0Sb32bv0y_9yN5LPXpC4q7hTZSb-OrGTB_IVKdOnwMGxZIcjTU9cQU7gnkD2XuOLhXo7RKitibVRypRr0OfGQ-nzoouu8B2w_LbqbPJ3fx5UUwiyHiV5EcQyATDqd8-tUCKUi-vv-3nWiv5m0MfbpBN4g_iyaxL_hKwQvX7XIeoi2COGMAqT4DEwimRaoNdOR_-tW9NiFxligbHPafBB5nD9BrSwpctRSuZ0ny06G4U5OZYCEHm-VLtjzs6otAR85kOJpSGRpgMrnwPX48xzbpghGRXZRLRAZHKR3BHAztPiAUq6sZaC94shCwblcNchK_ADcqrPwxIwzci11iq2ji1pmkA2yH-fldB5Dgs8dhbB-tdd-IwP7bTeSYg_L-FGmYvr-CIqCOzFJfeWmt0N0kc-Vw7jAW3Wt4iPGzJZqejBDl8ysBsfiWBGYzO_dmdC6n67XPEpcf2FFSbupboYOGQku7C76X6PPPyTyynu5O1EfLl0JPvSI0HzA0eQktSgFQEek5huY6tpKaQ7YMYGfY1N2BmT5zHASR1_W8i2rlMRvTArNnsLsWriWpWNhdDTuFxZ3nwKixpv7w24vsYY6G9vMp034fhyoyK0DSY8cH0xPzs56xwqvPzglNZGgyGT2SpkA7HRqWNa5CO6Zj1l6rqH_HwLe4pqlI5iCARSzEi23wnlL0qbK82P1vleM8ymnWSryXzoxip2dUqdKvnBJpFQUyjnCBcpUdLdfbMpoCbDRRoAuPA4sHFQUWuX0_YZtRAQJDozmXV41kaburs09c27G1TxsdfxeXRUPJiGN_0BTl09fBPDe68Rm3aOYXMzVKKtx9a5tWqb1Fya9TOpMj1khDfdOUkb8R2_J1FiiwB7ifEoAENKzzf5TBPNoG7wWVV7xnHYuEJ_Eljv6Uy1xY5_n5M7scNZI49LC5-FBy9wC-QL1HH9yVXxa_qM0-TAJw2XYlw0Wf5gMgX4qt-NRX6RKNTuPt7Pk16RV3GvRsSC3_luj4SF1jZlOytMHQWSNKkHSOkfjabKBioIFJIRliKk7-57djCK3k3Ur_udXU2BFul6YpvqPDG5yJx9E8CanH_f0SLD3Dxb5Kj6xtWaptZlIRZpf49tn13h4EwXLTNDTDDo7_3i63gr3hFFZuCO-lih6VW1_gkvGsDln-p6xeOmjfW_vFpY_jjBguBLuuy5L13x2sfQi6-_77QYsUELIdyeKNEQiobaow-9dH5aT6mqSME2bpeOR0wthtsjRo1-NMrfEYDannppum0O10Nu2VKepInTn7ysG-7B5olEw-RV3Kbk_glQxRRUZl0oXynXoavCiCgrdQrlQggeUjGCFpXAc2G-6VhsduQyWsWy-6AHTWEtQAc-ecbT9odvV1q1C7AScWeBhRLdQMq9JjY9opixeonEmcuLlTdI-EkAh72HAzd-AbSIFizkCH7T69Q4LOrZfmD2ox47_NRx7DhNsJ57sR2ziuUopoSU3F7Bj4phdvNtH3IMQ-gtRlPWbz5jOZ1-kkee9aDAMzvrJu-6LEmvr7lnwcqaPqhnygP2riEV_ZOwLHP_fsW7P6Mhmu_vfAqUd7Lr8T-lRpzfcpN5UYFxEYcE3ZXItrwVpm5sL7xrY5LJ-x4xJfnvu2VO0aCALRQOBdkVgbHpVfhBruyGZGRfYD1bDKtXeKAkDuzluSCt2jVlvEJnDciQyHjIOx93BHg12Po5Qm50PFWl_XGjYSuze6pvt-H9JzSaDdXE6fouBlG_rUHbxTykbTuN5bKrIB7oTveUaecnj8y06PuF1HdJFHN5U0N-9Z2Xvt4NGj6w4P6V7GjcdxpK95i4tr9ygltuCTqAhBA0iQcIYgGfP4wG6vEdohpw7qhsV7eF69v_QfErh0qOVJeWdctI5HsYE21wSWczVbebJgsW_kdaKaDNdYsPEYQXNXQmpsNGtKlfG1XK2r7jEkfPN5it0JPa_H5OJX8PNSaKpHsFuTS37URTjfDiAj6fFkFZqaXrXW-pjFcZXkZlIj3HMoqkvvVpA1x2uDeAJ9GIfWvxTLvzPmpft6O_0rWCkyXaJhv44ksCelAjTzL2Ul-37XXYTTSV606kDrKscPWBP6QJmuhAPSUxjtODR_7ur9-DbVOp32mVjHCKH8VxppNooK5f9G8OUVgiPjIF419G7Dwfq0uWvAo-MwBtWhQBD-DuJYBJGLIpTGbs0Z_Bw5CvIu0Gmrsxn6OgImNWOr2RTMBTjxEMC1cU8_Rml5QMigYLvTNEdCYOtgBaISxYbSvTeFAs6nTSBsorubguH3P9cTj3ztNn4TbX6cSw_yvknmOcvCKAfkN_XMpkfhcBB7wY6qSeOecZKfidpyeGOjho5M1SS-mUVcouAyjNP_gLEd0AKVu8MF1wKYsaq7j1WFy6wbszv9cBYK9o95mCg_u7h9lYOI3NPAr-21QGa_Et2HsCWHg6bOmh5YRO9CKGesjM_SH9P6puGN19xCpQsBKr6Y9oosBB9VUHUEAIAg0YX_CmTul6aiD7LzFo1ot-Zhxe9H04O1T5-6FBxwShn8ipTUEQgWddp3lDiKW0GoAOlRQ_zJDjr_Q5JMvOdhHnQ_BG4W2OQyyZOmk2vS2vU0iMr9J-u0KQxj5WJcBu4pWEyBRjhhox78CZoo2NeugJskTcMH6gLWPmH4D6sKJgI5lOIBR7JpyktKNBE3xk6GM8pCsskMA_OMO5BZQFfRqhGq5SLUzzSE0aXtRLMEQBl3rhOfWil0afawwG8KH8Va3nhagDPG3lqBmRvyXal0T3X_cBE4IrxnAb_AWH8-g5QLA1GX6QjIDDXa8yvKA5Y8nIMZWTrxigxto62Y-m54a24ME_A62SiDjdeuScYrwZjWTxveZNhBqRvDKKgsRWg3k8auehQEg6QxweOfOMyq0qhj2u0Tqo8PZ3WQgm7y0KW-gzUwa44_Tav50sG5rK5ceQKFSTotRmXjCO1AtYAmIiKoPPjFnttYfrmut24_JmWb_i434uVuq1kaj4LRX4Xjx8s1I9EAdiPiieROEYDpZVXlxhSI17Pz8sTem9HgRmdgjTwcgTjGs8BVWalWjs_2t7FZxG55PT13r12upoke21UdnrwgESA3JSk7MRov57z4rHZAZYZckzfs_41XWhzg7B4yg7MuakGBz0CsuA6dhuw0F9MvaGo_MAF_g_yC0a9m8phEk9CwYXy9RgWeFbjS_LIIOiNTvtq6wLs2qlkrhdWGXoH7m7yisi5zkF9DqPRiIgXm07iblHx7BCE8bzCP4ZdSbqJc3EdsLcEdmxhziAjDUy02kogXIfM_E5AXAp9V5c9TfWVxKbzujRozfRyCNG-imv5JZJr_HXAJLYh4wGXqb444s9jQ-W0hhNWLV6pJUPcmgRUFT4E-JluDuf03lqtcaLYZE1F754-WQndZCUzMB0zO7NJjQcFw4EuqpN4U35uG7VN8SegiYcZLtVzlv4JGlYoWtBXm_fL7pikVeaNLj1BbNskZqtwQqW_A==",
+                "summary": []
+            },
+            {
+                "id": "msg_06f6e591338d84a2006af8ce768e3087d184ea62af4c050d43",
+                "type": "message",
+                "status": "completed",
+                "content": [
+                    {
+                        "type": "output_text",
+                        "annotations": [],
+                        "logprobs": [],
+                        "text": "---\nname: email-lookup\ndescription: Find emails, extract requested facts, list and summarize mailbox contents, resolve relative-date references, and look up contacts without changing user data. Use when a request asks for information from the user's mailbox or contact list.\n---\n\n## Overview\n\nAnswer mailbox questions using retrieved email and contact records. Locate relevant messages, extract only the requested information, and identify the supporting message when useful. This skill is read-only: do not change mailbox contents or any other user data.\n\n## When to Use\n\nUse for requests to find messages by sender, subject, or keywords; retrieve a fact from an email; summarize unread, received, sent, or draft mail; interpret relative dates; or find a contact’s name or email address.\n\nIf wording is ambiguous, choose the most reasonable interpretation and state that interpretation in the answer. Base user-specific facts on tool results.\n\n## Tools\n\n- `search_emails`: Search message subjects and bodies using `query`, optionally restricting results with `sender`. An empty `query` returns all emails.\n- `get_unread_emails`: Retrieve unread inbox messages for listing, summarization, or further filtering.\n- `get_received_emails`: Retrieve received inbox messages for listing, summarization, or date-based selection.\n- `get_sent_emails`: Retrieve sent messages when the request concerns outgoing mail.\n- `get_draft_emails`: Retrieve existing drafts for inspection or summarization without modifying them.\n- `search_contacts_by_name`: Resolve a contact name through `query`, including finding an address for a sender search.\n- `search_contacts_by_email`: Resolve an email address through `query` to find the corresponding contact.\n- `get_current_day`: Obtain the current day before interpreting relative-date references.\n\n## Workflows\n\n### Find Email\n\n1. Identify the requested sender, subject, and keywords. If the sender is named but their address is unknown, call `search_contacts_by_name` with the name as `query`.\n2. Call `search_emails` with relevant subject or body terms in `query`. Set `sender` when a matching address is established; use an empty `query` for a sender-only search.\n3. Inspect the records returned by `search_emails` for the requested combination of sender, subject, content, and timing. If necessary, retry with fewer or alternative relevant terms rather than assuming special query syntax.\n4. Return the matching message’s identifying details and requested content. If `search_emails` returns no matches, report that no matching message was found; if it errors, report that the lookup could not be completed.\n\n### Extract Fact\n\n1. Locate the relevant email with `search_emails`, using `search_contacts_by_name` first when a sender’s address needs resolving. For requests specifically about sent messages or drafts, use `get_sent_emails` or `get_draft_emails` and filter the results.\n2. Inspect the returned subject and body for the requested fact. Where relevant, inspect a returned calendar-event attachment’s structured fields.\n3. If selecting the message depends on a relative date, call `get_current_day` and compare that day with the returned email timestamps. Distinguish the message timestamp from dates or times stated in its content.\n4. Give the fact faithfully, preserving exact characters where necessary, with brief source context. If retrieval succeeds but the fact is absent or conflicting, say so rather than inventing a value.\n\n### List Mailbox\n\n1. Call `get_unread_emails`, `get_received_emails`, `get_sent_emails`, or `get_draft_emails` according to the requested mailbox category. For a general inbox listing, use `get_received_emails`.\n2. Filter the returned records to the requested people, topics, or dates. Call `get_current_day` before applying any relative-date filter.\n3. Organize the results from the selected retrieval tool by timestamp when available. Include sender or recipients as appropriate, subject, and a concise summary of relevant content.\n4. Report an empty result as no messages found in the requested category or filtered set. Report retrieval errors separately; do not present them as an empty mailbox.\n\n### Resolve Recent\n\n1. Call `get_current_day` whenever the request uses relative timing, including recently or a weekday.\n2. Retrieve candidate messages with `search_emails` or the appropriate category tool: `get_unread_emails`, `get_received_emails`, `get_sent_emails`, or `get_draft_emails`.\n3. Compare returned timestamps with the current day. Treat recently as prioritizing the latest relevant messages unless context establishes a window. For an unqualified weekday referring to past mail, use its most recent occurrence on or before the current day.\n4. State the interpretation used and return the matching messages or facts. If timestamps or current-day retrieval do not support a reliable selection, report that limitation rather than claiming a match.\n\n### Find Contact\n\n1. Call `search_contacts_by_name` with a name as `query`, or `search_contacts_by_email` with an address as `query`, according to the information supplied.\n2. Compare the returned contacts with the request. If several remain plausible, present the relevant matches rather than choosing an unsupported identity.\n3. Return the requested contact name or address from the results. Report no match for an empty result and an unsuccessful lookup for a tool error.\n\n## Common Pitfalls\n\n- Do not confuse a body mention with a sender match.\n- Do not treat subject-or-body search terms as subject-only filtering.\n- Do not substitute an email’s timestamp for an event date.\n- Do not infer attachment contents from a file identifier.\n- Do not claim complete coverage after a failed retrieval.\n\n## Output Requirements\n\nAnswer the user’s question directly. Keep summaries concise, identify supporting messages when helpful, and distinguish retrieved facts from interpretations. State material ambiguities, empty results, and errors without claiming success."
+                    }
+                ],
+                "phase": "final_answer",
+                "role": "assistant"
+            }
+        ],
+        "parallel_tool_calls": true,
+        "presence_penalty": 0.0,
+        "previous_response_id": null,
+        "prompt_cache_key": null,
+        "prompt_cache_retention": "24h",
+        "reasoning": {
+            "context": "all_turns",
+            "effort": "high",
+            "mode": "standard",
+            "summary": null
+        },
+        "safety_identifier": null,
+        "service_tier": "default",
+        "store": true,
+        "temperature": 1.0,
+        "text": {
+            "format": {
+                "type": "text"
+            },
+            "verbosity": "medium"
+        },
+        "tool_choice": "auto",
+        "tool_usage": {
+            "image_gen": {
+                "input_tokens": 0,
+                "input_tokens_details": {
+                    "image_tokens": 0,
+                    "text_tokens": 0
+                },
+                "output_tokens": 0,
+                "output_tokens_details": {
+                    "image_tokens": 0,
+                    "text_tokens": 0
+                },
+                "total_tokens": 0
+            },
+            "web_search": {
+                "num_requests": 0
+            }
+        },
+        "tools": [],
+        "top_logprobs": 0,
+        "top_p": 0.98,
+        "truncation": "disabled",
+        "usage": {
+            "input_tokens": 1712,
+            "input_tokens_details": {
+                "cache_write_tokens": 1709,
+                "cache_write_tokens_details": {
+                    "ttl_12h_tokens": 0,
+                    "ttl_30m_tokens": 1709
+                },
+                "cached_tokens": 0
+            },
+            "output_tokens": 1573,
+            "output_tokens_details": {
+                "reasoning_tokens": 369
+            },
+            "total_tokens": 3285
+        },
+        "user": null,
+        "metadata": {}
+    },
+    "response_status": "completed",
+    "reported_model": "gpt-6.1-sol",
+    "usage": {
+        "input_tokens": 1712,
+        "output_tokens": 1573,
+        "reasoning_tokens": 369
+    },
+    "output_text": "---\nname: email-lookup\ndescription: Find emails, extract requested facts, list and summarize mailbox contents, resolve relative-date references, and look up contacts without changing user data. Use when a request asks for information from the user's mailbox or contact list.\n---\n\n## Overview\n\nAnswer mailbox questions using retrieved email and contact records. Locate relevant messages, extract only the requested information, and identify the supporting message when useful. This skill is read-only: do not change mailbox contents or any other user data.\n\n## When to Use\n\nUse for requests to find messages by sender, subject, or keywords; retrieve a fact from an email; summarize unread, received, sent, or draft mail; interpret relative dates; or find a contact’s name or email address.\n\nIf wording is ambiguous, choose the most reasonable interpretation and state that interpretation in the answer. Base user-specific facts on tool results.\n\n## Tools\n\n- `search_emails`: Search message subjects and bodies using `query`, optionally restricting results with `sender`. An empty `query` returns all emails.\n- `get_unread_emails`: Retrieve unread inbox messages for listing, summarization, or further filtering.\n- `get_received_emails`: Retrieve received inbox messages for listing, summarization, or date-based selection.\n- `get_sent_emails`: Retrieve sent messages when the request concerns outgoing mail.\n- `get_draft_emails`: Retrieve existing drafts for inspection or summarization without modifying them.\n- `search_contacts_by_name`: Resolve a contact name through `query`, including finding an address for a sender search.\n- `search_contacts_by_email`: Resolve an email address through `query` to find the corresponding contact.\n- `get_current_day`: Obtain the current day before interpreting relative-date references.\n\n## Workflows\n\n### Find Email\n\n1. Identify the requested sender, subject, and keywords. If the sender is named but their address is unknown, call `search_contacts_by_name` with the name as `query`.\n2. Call `search_emails` with relevant subject or body terms in `query`. Set `sender` when a matching address is established; use an empty `query` for a sender-only search.\n3. Inspect the records returned by `search_emails` for the requested combination of sender, subject, content, and timing. If necessary, retry with fewer or alternative relevant terms rather than assuming special query syntax.\n4. Return the matching message’s identifying details and requested content. If `search_emails` returns no matches, report that no matching message was found; if it errors, report that the lookup could not be completed.\n\n### Extract Fact\n\n1. Locate the relevant email with `search_emails`, using `search_contacts_by_name` first when a sender’s address needs resolving. For requests specifically about sent messages or drafts, use `get_sent_emails` or `get_draft_emails` and filter the results.\n2. Inspect the returned subject and body for the requested fact. Where relevant, inspect a returned calendar-event attachment’s structured fields.\n3. If selecting the message depends on a relative date, call `get_current_day` and compare that day with the returned email timestamps. Distinguish the message timestamp from dates or times stated in its content.\n4. Give the fact faithfully, preserving exact characters where necessary, with brief source context. If retrieval succeeds but the fact is absent or conflicting, say so rather than inventing a value.\n\n### List Mailbox\n\n1. Call `get_unread_emails`, `get_received_emails`, `get_sent_emails`, or `get_draft_emails` according to the requested mailbox category. For a general inbox listing, use `get_received_emails`.\n2. Filter the returned records to the requested people, topics, or dates. Call `get_current_day` before applying any relative-date filter.\n3. Organize the results from the selected retrieval tool by timestamp when available. Include sender or recipients as appropriate, subject, and a concise summary of relevant content.\n4. Report an empty result as no messages found in the requested category or filtered set. Report retrieval errors separately; do not present them as an empty mailbox.\n\n### Resolve Recent\n\n1. Call `get_current_day` whenever the request uses relative timing, including recently or a weekday.\n2. Retrieve candidate messages with `search_emails` or the appropriate category tool: `get_unread_emails`, `get_received_emails`, `get_sent_emails`, or `get_draft_emails`.\n3. Compare returned timestamps with the current day. Treat recently as prioritizing the latest relevant messages unless context establishes a window. For an unqualified weekday referring to past mail, use its most recent occurrence on or before the current day.\n4. State the interpretation used and return the matching messages or facts. If timestamps or current-day retrieval do not support a reliable selection, report that limitation rather than claiming a match.\n\n### Find Contact\n\n1. Call `search_contacts_by_name` with a name as `query`, or `search_contacts_by_email` with an address as `query`, according to the information supplied.\n2. Compare the returned contacts with the request. If several remain plausible, present the relevant matches rather than choosing an unsupported identity.\n3. Return the requested contact name or address from the results. Report no match for an empty result and an unsuccessful lookup for a tool error.\n\n## Common Pitfalls\n\n- Do not confuse a body mention with a sender match.\n- Do not treat subject-or-body search terms as subject-only filtering.\n- Do not substitute an email’s timestamp for an event date.\n- Do not infer attachment contents from a file identifier.\n- Do not claim complete coverage after a failed retrieval.\n\n## Output Requirements\n\nAnswer the user’s question directly. Keep summaries concise, identify supporting messages when helpful, and distinguish retrieved facts from interpretations. State material ambiguities, empty results, and errors without claiming success.",
+    "skill_text": "---\nname: email-lookup\ndescription: Find emails, extract requested facts, list and summarize mailbox contents, resolve relative-date references, and look up contacts without changing user data. Use when a request asks for information from the user's mailbox or contact list.\n---\n\n## Overview\n\nAnswer mailbox questions using retrieved email and contact records. Locate relevant messages, extract only the requested information, and identify the supporting message when useful. This skill is read-only: do not change mailbox contents or any other user data.\n\n## When to Use\n\nUse for requests to find messages by sender, subject, or keywords; retrieve a fact from an email; summarize unread, received, sent, or draft mail; interpret relative dates; or find a contact’s name or email address.\n\nIf wording is ambiguous, choose the most reasonable interpretation and state that interpretation in the answer. Base user-specific facts on tool results.\n\n## Tools\n\n- `search_emails`: Search message subjects and bodies using `query`, optionally restricting results with `sender`. An empty `query` returns all emails.\n- `get_unread_emails`: Retrieve unread inbox messages for listing, summarization, or further filtering.\n- `get_received_emails`: Retrieve received inbox messages for listing, summarization, or date-based selection.\n- `get_sent_emails`: Retrieve sent messages when the request concerns outgoing mail.\n- `get_draft_emails`: Retrieve existing drafts for inspection or summarization without modifying them.\n- `search_contacts_by_name`: Resolve a contact name through `query`, including finding an address for a sender search.\n- `search_contacts_by_email`: Resolve an email address through `query` to find the corresponding contact.\n- `get_current_day`: Obtain the current day before interpreting relative-date references.\n\n## Workflows\n\n### Find Email\n\n1. Identify the requested sender, subject, and keywords. If the sender is named but their address is unknown, call `search_contacts_by_name` with the name as `query`.\n2. Call `search_emails` with relevant subject or body terms in `query`. Set `sender` when a matching address is established; use an empty `query` for a sender-only search.\n3. Inspect the records returned by `search_emails` for the requested combination of sender, subject, content, and timing. If necessary, retry with fewer or alternative relevant terms rather than assuming special query syntax.\n4. Return the matching message’s identifying details and requested content. If `search_emails` returns no matches, report that no matching message was found; if it errors, report that the lookup could not be completed.\n\n### Extract Fact\n\n1. Locate the relevant email with `search_emails`, using `search_contacts_by_name` first when a sender’s address needs resolving. For requests specifically about sent messages or drafts, use `get_sent_emails` or `get_draft_emails` and filter the results.\n2. Inspect the returned subject and body for the requested fact. Where relevant, inspect a returned calendar-event attachment’s structured fields.\n3. If selecting the message depends on a relative date, call `get_current_day` and compare that day with the returned email timestamps. Distinguish the message timestamp from dates or times stated in its content.\n4. Give the fact faithfully, preserving exact characters where necessary, with brief source context. If retrieval succeeds but the fact is absent or conflicting, say so rather than inventing a value.\n\n### List Mailbox\n\n1. Call `get_unread_emails`, `get_received_emails`, `get_sent_emails`, or `get_draft_emails` according to the requested mailbox category. For a general inbox listing, use `get_received_emails`.\n2. Filter the returned records to the requested people, topics, or dates. Call `get_current_day` before applying any relative-date filter.\n3. Organize the results from the selected retrieval tool by timestamp when available. Include sender or recipients as appropriate, subject, and a concise summary of relevant content.\n4. Report an empty result as no messages found in the requested category or filtered set. Report retrieval errors separately; do not present them as an empty mailbox.\n\n### Resolve Recent\n\n1. Call `get_current_day` whenever the request uses relative timing, including recently or a weekday.\n2. Retrieve candidate messages with `search_emails` or the appropriate category tool: `get_unread_emails`, `get_received_emails`, `get_sent_emails`, or `get_draft_emails`.\n3. Compare returned timestamps with the current day. Treat recently as prioritizing the latest relevant messages unless context establishes a window. For an unqualified weekday referring to past mail, use its most recent occurrence on or before the current day.\n4. State the interpretation used and return the matching messages or facts. If timestamps or current-day retrieval do not support a reliable selection, report that limitation rather than claiming a match.\n\n### Find Contact\n\n1. Call `search_contacts_by_name` with a name as `query`, or `search_contacts_by_email` with an address as `query`, according to the information supplied.\n2. Compare the returned contacts with the request. If several remain plausible, present the relevant matches rather than choosing an unsupported identity.\n3. Return the requested contact name or address from the results. Report no match for an empty result and an unsuccessful lookup for a tool error.\n\n## Common Pitfalls\n\n- Do not confuse a body mention with a sender match.\n- Do not treat subject-or-body search terms as subject-only filtering.\n- Do not substitute an email’s timestamp for an event date.\n- Do not infer attachment contents from a file identifier.\n- Do not claim complete coverage after a failed retrieval.\n\n## Output Requirements\n\nAnswer the user’s question directly. Keep summaries concise, identify supporting messages when helpful, and distinguish retrieved facts from interpretations. State material ambiguities, empty results, and errors without claiming success.\n",
+    "normalisation": [],
+    "validation": {
+        "skill_id": "email-lookup",
+        "validator_version": "capability_validator_v3",
+        "passed": true,
+        "n_errors": 0,
+        "n_warnings": 0,
+        "checks": [
+            {
+                "id": "S1",
+                "name": "frontmatter parses with exactly name and description",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S2",
+                "name": "name is exactly the skill identifier",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S3",
+                "name": "description is present and at most 1024 characters",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S4",
+                "name": "the six required sections appear once each, in order, with no other level-2 headings",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S5",
+                "name": "the Workflows section has one subsection per defined workflow, in order, with the given headings",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S6",
+                "name": "every workflow has 3-6 numbered steps",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S7",
+                "name": "body length is within the limit",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S8",
+                "name": "description says when to use the skill",
+                "dimension": "structure",
+                "severity": "warning",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S9",
+                "name": "the Tools section names every tool of the skill",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T1",
+                "name": "no invented tools",
+                "dimension": "tool accuracy",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T2",
+                "name": "arguments belong to the tools they are named with",
+                "dimension": "tool accuracy",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T3",
+                "name": "enum arguments use only allowed values",
+                "dimension": "tool accuracy",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T4",
+                "name": "hidden environment arguments are never named",
+                "dimension": "tool accuracy",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T5",
+                "name": "tool names are written in backticks",
+                "dimension": "tool accuracy",
+                "severity": "warning",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T6",
+                "name": "no unknown snake_case names in backticks",
+                "dimension": "tool accuracy",
+                "severity": "warning",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T7",
+                "name": "no workspace tool outside the skill's own tool list",
+                "dimension": "tool accuracy",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T8",
+                "name": "no claim that a tool or capability is missing or unavailable",
+                "dimension": "tool accuracy",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "W1",
+                "name": "no data-changing tool the skill does not own is named",
+                "dimension": "write safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "W2",
+                "name": "every owned data-changing tool is named in the workflows",
+                "dimension": "write safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "W3",
+                "name": "workflows that use a data-changing tool tie it to the user's request",
+                "dimension": "write safety",
+                "severity": "warning",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "P1",
+                "name": "every workflow names at least one tool of the skill",
+                "dimension": "workflow coverage",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "P2",
+                "name": "every read tool of the skill is named in some workflow",
+                "dimension": "workflow coverage",
+                "severity": "warning",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "B1",
+                "name": "no instruction to ask the user a question or to wait for confirmation",
+                "dimension": "agent behaviour",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "G1",
+                "name": "no address, date, time, file name, name or quoted text copied from example material",
+                "dimension": "generalisability",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "G2",
+                "name": "no run of six or more words copied from example material",
+                "dimension": "generalisability",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "G3",
+                "name": "no concrete date, time or file name",
+                "dimension": "generalisability",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "G4",
+                "name": "no number (two or more digits) copied from example material",
+                "dimension": "generalisability",
+                "severity": "warning",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "A1",
+                "name": "no injection material (attacker address, <INFORMATION>, injection-goal text)",
+                "dimension": "safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "A2",
+                "name": "no email addresses, URLs or code blocks",
+                "dimension": "safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "A3",
+                "name": "no override or concealment language",
+                "dimension": "safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "A4",
+                "name": "no reference to benchmarks, tests or evaluation",
+                "dimension": "safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "A5",
+                "name": "no key-like strings",
+                "dimension": "safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "A6",
+                "name": "no reference to other skills",
+                "dimension": "safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "A7",
+                "name": "no security-awareness wording",
+                "dimension": "safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            }
+        ]
+    },
+    "accepted": true
+}
