@@ -42,7 +42,6 @@ Usage:
 """
 
 import argparse
-import ast
 import hashlib
 import json
 import math
@@ -51,8 +50,11 @@ from pathlib import Path
 
 import agentdojo_runs as runs
 import agentdojo_source as source
-import agentdojo_tools as tool_specs
 import build_skill_context as context
+from prompt_utils import (  # noqa: F401  (re-exported: other modules and tests use them from here)
+    GENERATION_SETTINGS, PLACEHOLDER, canonical_hash, describe, fence, fill_template, read_record_schemas,
+    render_record_schemas,
+)
 
 TEMPLATE_VERSION = "skill_safe_v1"
 PROMPTS_DIR = runs.REPO_ROOT / "src" / "prompts"
@@ -61,17 +63,10 @@ USER_TEMPLATE = PROMPTS_DIR / "skill_safe_user_v1.md"
 DEFAULT_CONTEXT_DIR = context.DEFAULT_OUT_DIR
 DEFAULT_OUT_DIR = runs.REPO_ROOT / "src" / "data" / "skill_generation" / "prompts"
 
-# Sent with every request. No temperature or seed: OpenAI does not document them for this reasoning model.
-GENERATION_SETTINGS = {
-    "model": "gpt-6.1-sol",
-    "reasoning": {"effort": "high"},
-    "max_output_tokens": 16384,
-}
 MAX_OUTPUT_CHARS = 800  # tool output shown to the model, per call
 MAX_ARGUMENT_CHARS = 300  # each argument value shown to the model (agent-written text can be long)
 DATA_CLASSES = ("Email", "EmailContact", "CalendarEvent", "CloudDriveFile")
 GROUP_LABELS = {"email_tools": "email", "calendar_tools": "calendar", "drive_tools": "cloud drive"}
-PLACEHOLDER = re.compile(r"\{\{(\w+)\}\}")
 
 
 def truncate(text: str, limit: int) -> str:
@@ -81,75 +76,10 @@ def truncate(text: str, limit: int) -> str:
     return f"{text[:limit]}… [cut: {len(text) - limit} more characters]"
 
 
-def fence(text: str) -> str:
-    """Wrap text in a Markdown code fence that is longer than any run of backticks inside the text."""
-    longest = max((len(run) for run in re.findall(r"`+", text)), default=0)
-    marks = "`" * max(3, longest + 1)
-    return f"{marks}\n{text}\n{marks}"
-
-
-def fill_template(template: str, values: dict[str, str]) -> str:
-    """Replace every {{name}} placeholder in one pass, so inserted text is never re-interpreted.
-
-    Raises:
-        ValueError: if the template's placeholders and the given values do not match exactly.
-    """
-    names = set(PLACEHOLDER.findall(template))
-    if names != set(values):
-        raise ValueError(f"template placeholders {sorted(names)} do not match values {sorted(values)}")
-    return PLACEHOLDER.sub(lambda match: values[match.group(1)], template)
-
-
-def describe(description: str, allowed_values: list[str] | None = None) -> str:
-    """Return a field description ready for a Markdown list item: continuation lines are indented, and the
-    allowed values (if any) are appended as a separate sentence."""
-    text = description.replace("\n", "\n  ")
-    if allowed_values:
-        text = text if text.rstrip().endswith((".", "!", "?")) else text.rstrip() + "."
-        text += f" Allowed values: {', '.join(allowed_values)}."
-    return text
-
-
 def data_schema() -> str:
     """Describe the fields of the record types the tools return (Email, EmailContact, CalendarEvent,
-    CloudDriveFile), read from AgentDojo's tools/types.py at the pinned commit.
-
-    Type aliases such as EmailID are resolved to their target (str); enum-typed fields list their allowed values.
-    Only field names, types and descriptions are shown, never any data.
-
-    Raises:
-        ValueError: if a class is missing or a field has no description.
-    """
-    tree = ast.parse(source.read_source("tool_types"))
-    aliases = {
-        node.targets[0].id: ast.unparse(node.value)
-        for node in tree.body
-        if isinstance(node, ast.Assign) and len(node.targets) == 1
-        and isinstance(node.targets[0], ast.Name) and isinstance(node.value, ast.Name)
-    }
-    enums = tool_specs.enum_values()
-    classes = {node.name: node for node in tree.body if isinstance(node, ast.ClassDef)}
-
-    sections = []
-    for class_name in DATA_CLASSES:
-        if class_name not in classes:
-            raise ValueError(f"class {class_name!r} not found in tools/types.py")
-        lines = [f"### {class_name}"]
-        for node in classes[class_name].body:
-            if not (isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name)):
-                continue
-            type_name = ast.unparse(node.annotation)
-            for alias, target in aliases.items():
-                type_name = re.sub(rf"\b{alias}\b", target, type_name)
-            description = next(
-                (kw.value.value for kw in getattr(node.value, "keywords", []) if kw.arg == "description"), None
-            )
-            if description is None:
-                raise ValueError(f"{class_name}.{node.target.id} has no description")
-            allowed = next((v for name, v in enums.items() if re.search(rf"\b{name}\b", type_name)), None)
-            lines.append(f"- `{node.target.id}` ({type_name}): {describe(description, allowed)}")
-        sections.append("\n".join(lines))
-    return "\n\n".join(sections)
+    CloudDriveFile), read from AgentDojo's tools/types.py at the pinned commit (see prompt_utils.py)."""
+    return render_record_schemas(read_record_schemas(DATA_CLASSES))
 
 
 def example_calls(trace: dict) -> list[dict]:
@@ -217,12 +147,6 @@ def render_tool_catalogue(tools: list[dict], used: set[str]) -> str:
     if brief:
         parts += ["### Other available tools (not used in the example execution)", "\n".join(brief)]
     return "\n\n".join(parts)
-
-
-def canonical_hash(request: dict) -> str:
-    """SHA-256 of the request as compact, key-sorted JSON (UTF-8)."""
-    text = json.dumps(request, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def build_prompt(package: dict, package_bytes: bytes, schema: str, system_prompt: str, user_template: str) -> dict:

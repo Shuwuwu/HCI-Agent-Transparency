@@ -1,0 +1,313 @@
+{
+    "skill_id": "email-lookup",
+    "kind": "read",
+    "summary": "Answer questions from the user's mailbox without changing it: find emails, extract the requested facts, and list or summarize mail.",
+    "yang": [
+        {
+            "subtopic": "Email Management",
+            "tasks": [
+                "Search/filter emails",
+                "Summarize/analyze emails"
+            ]
+        }
+    ],
+    "workflows": [
+        {
+            "id": "find-email",
+            "description": "Find an email by sender, subject or keywords."
+        },
+        {
+            "id": "extract-fact",
+            "description": "Extract the specific fact the user asked for from an email, such as a code, a link, a date, a time or a place."
+        },
+        {
+            "id": "list-mailbox",
+            "description": "List and summarize unread, received, sent or draft emails."
+        },
+        {
+            "id": "resolve-recent",
+            "description": "Interpret references such as recently or on a weekday using the emails' timestamps and the current day."
+        },
+        {
+            "id": "find-contact",
+            "description": "Look up a contact's name or email address."
+        }
+    ],
+    "owned_write_tools": [],
+    "tools": [
+        {
+            "name": "search_emails",
+            "group": "email_tools",
+            "description": "Searches for emails in the inbox that contain the given query in the subject or body. If `address` is provided,",
+            "changes_data": false,
+            "parameters": [
+                {
+                    "name": "query",
+                    "type": "str",
+                    "required": true,
+                    "default": null,
+                    "enum": null,
+                    "description": "The query to search for in the email subject or body. If empty, all emails are returned."
+                },
+                {
+                    "name": "sender",
+                    "type": "str | None",
+                    "required": false,
+                    "default": null,
+                    "enum": null,
+                    "description": "The email address of the sender. If `null`, all emails are searched. Use `search_contacts_by_name`\nif the email address is unknown."
+                }
+            ]
+        },
+        {
+            "name": "get_unread_emails",
+            "group": "email_tools",
+            "description": "Returns all the unread emails in the inbox. Each email has a sender, a subject, and a body.",
+            "changes_data": false,
+            "parameters": []
+        },
+        {
+            "name": "get_received_emails",
+            "group": "email_tools",
+            "description": "Returns all the received emails in the inbox. Each email has a sender, a subject, and a body.",
+            "changes_data": false,
+            "parameters": []
+        },
+        {
+            "name": "get_sent_emails",
+            "group": "email_tools",
+            "description": "Returns all the sent emails in the inbox. Each email has a recipient, a subject, and a body.",
+            "changes_data": false,
+            "parameters": []
+        },
+        {
+            "name": "get_draft_emails",
+            "group": "email_tools",
+            "description": "Returns all the draft emails in the inbox. Each email has a recipient, a subject, and a body.",
+            "changes_data": false,
+            "parameters": []
+        },
+        {
+            "name": "search_contacts_by_name",
+            "group": "email_tools",
+            "description": "Finds contacts in the inbox's contact list by name.",
+            "changes_data": false,
+            "parameters": [
+                {
+                    "name": "query",
+                    "type": "str",
+                    "required": true,
+                    "default": null,
+                    "enum": null,
+                    "description": "The name of the contacts to search for."
+                }
+            ]
+        },
+        {
+            "name": "search_contacts_by_email",
+            "group": "email_tools",
+            "description": "Finds contacts in the inbox's contact list by email.",
+            "changes_data": false,
+            "parameters": [
+                {
+                    "name": "query",
+                    "type": "str",
+                    "required": true,
+                    "default": null,
+                    "enum": null,
+                    "description": "The email of the contacts to search for."
+                }
+            ]
+        },
+        {
+            "name": "get_current_day",
+            "group": "calendar_tools",
+            "description": "Returns the current day in ISO format, e.g. '2022-01-01'.",
+            "changes_data": false,
+            "parameters": []
+        }
+    ],
+    "records": [
+        {
+            "name": "Email",
+            "fields": [
+                {
+                    "name": "id_",
+                    "type": "str",
+                    "description": "The unique identifier of the email",
+                    "allowed_values": null
+                },
+                {
+                    "name": "sender",
+                    "type": "EmailStr",
+                    "description": "The email of the sender",
+                    "allowed_values": null
+                },
+                {
+                    "name": "recipients",
+                    "type": "list[EmailStr]",
+                    "description": "The list of the emails of the recipients",
+                    "allowed_values": null
+                },
+                {
+                    "name": "cc",
+                    "type": "list[EmailStr]",
+                    "description": "The list of the emails of the CC recipients",
+                    "allowed_values": null
+                },
+                {
+                    "name": "bcc",
+                    "type": "list[EmailStr]",
+                    "description": "The list of the emails of the BCC recipients",
+                    "allowed_values": null
+                },
+                {
+                    "name": "subject",
+                    "type": "str",
+                    "description": "The subject of the email",
+                    "allowed_values": null
+                },
+                {
+                    "name": "body",
+                    "type": "str",
+                    "description": "The body of the email",
+                    "allowed_values": null
+                },
+                {
+                    "name": "status",
+                    "type": "EmailStatus",
+                    "description": "The status of the email",
+                    "allowed_values": [
+                        "sent",
+                        "received",
+                        "draft"
+                    ]
+                },
+                {
+                    "name": "read",
+                    "type": "bool",
+                    "description": "Whether the email has been read",
+                    "allowed_values": null
+                },
+                {
+                    "name": "timestamp",
+                    "type": "datetime.datetime",
+                    "description": "The timestamp of the email",
+                    "allowed_values": null
+                },
+                {
+                    "name": "attachments",
+                    "type": "list[str | CalendarEvent]",
+                    "description": "The list of attachments of the email. If the attachment is a file, it will be the ID of the file. If the attachment is a calendar event, it will be a CalendarEvent object.",
+                    "allowed_values": null
+                }
+            ]
+        },
+        {
+            "name": "EmailContact",
+            "fields": [
+                {
+                    "name": "email",
+                    "type": "EmailStr",
+                    "description": "The email of the contact",
+                    "allowed_values": null
+                },
+                {
+                    "name": "name",
+                    "type": "str",
+                    "description": "The name of the contact",
+                    "allowed_values": null
+                }
+            ]
+        },
+        {
+            "name": "CalendarEvent",
+            "fields": [
+                {
+                    "name": "id_",
+                    "type": "str",
+                    "description": "The unique identifier of the event",
+                    "allowed_values": null
+                },
+                {
+                    "name": "title",
+                    "type": "str",
+                    "description": "The title of the event",
+                    "allowed_values": null
+                },
+                {
+                    "name": "description",
+                    "type": "str",
+                    "description": "The description of the event",
+                    "allowed_values": null
+                },
+                {
+                    "name": "start_time",
+                    "type": "datetime.datetime",
+                    "description": "The start time of the event",
+                    "allowed_values": null
+                },
+                {
+                    "name": "end_time",
+                    "type": "datetime.datetime",
+                    "description": "The end time of the event",
+                    "allowed_values": null
+                },
+                {
+                    "name": "location",
+                    "type": "str | None",
+                    "description": "The location of the event",
+                    "allowed_values": null
+                },
+                {
+                    "name": "participants",
+                    "type": "list[EmailStr]",
+                    "description": "The list of the emails of the participants",
+                    "allowed_values": null
+                },
+                {
+                    "name": "all_day",
+                    "type": "bool",
+                    "description": "Whether the event is all day",
+                    "allowed_values": null
+                },
+                {
+                    "name": "status",
+                    "type": "EvenStatus",
+                    "description": "The status of the event",
+                    "allowed_values": [
+                        "confirmed",
+                        "canceled"
+                    ]
+                }
+            ]
+        }
+    ],
+    "provenance": {
+        "definition_sha256": "cf3fd68b19d58d43832bc57988a7d8176c4e4a7c2a101f2ae9a5e9dd676fc1c2",
+        "repo": "https://github.com/ethz-spylab/agentdojo",
+        "commit": "af7266303c748a9cf0442d71ceabc9d2488d7188",
+        "source_files": {
+            "tool_calendar_client": {
+                "path": "src/function_calling_pi/tools/calendar_client.py",
+                "git_blob": "75d1074e031147a4eaa12a2351102a68b8bc6166"
+            },
+            "tool_cloud_drive_client": {
+                "path": "src/function_calling_pi/tools/cloud_drive_client.py",
+                "git_blob": "93efdd40895a37a1d70f5363c6c8d72389bab4fc"
+            },
+            "tool_email_client": {
+                "path": "src/function_calling_pi/tools/email_client.py",
+                "git_blob": "f0add168f875a80d7940ad2667c1c7b9821c9c00"
+            },
+            "tool_types": {
+                "path": "src/function_calling_pi/tools/types.py",
+                "git_blob": "e0ee2d4facaf8fbf2715c573c6187ea070dea1da"
+            },
+            "workspace_task_suite": {
+                "path": "src/function_calling_pi/task_suites/workspace/task_suite.py",
+                "git_blob": "b3943129dc70adfff5769d1e778c9f3f618d12c9"
+            }
+        }
+    }
+}

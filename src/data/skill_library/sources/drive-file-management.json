@@ -1,0 +1,223 @@
+{
+    "skill_id": "drive-file-management",
+    "kind": "write",
+    "summary": "Inventory and manage the files in the user's cloud drive: list and find files, report their properties, and delete or share files when asked.",
+    "yang": [
+        {
+            "subtopic": "Account Management",
+            "tasks": [
+                "Manage files",
+                "Summarize/analyze account information"
+            ]
+        }
+    ],
+    "workflows": [
+        {
+            "id": "file-inventory",
+            "description": "List the files and answer questions about their size, owner, sharing and last modification."
+        },
+        {
+            "id": "find-file",
+            "description": "Find files by name or by keyword."
+        },
+        {
+            "id": "delete-file",
+            "description": "Delete a file the user identified, after finding the right one."
+        },
+        {
+            "id": "share-file",
+            "description": "Share a file with a person at the access level the user asked for."
+        }
+    ],
+    "owned_write_tools": [
+        "delete_file",
+        "share_file"
+    ],
+    "tools": [
+        {
+            "name": "list_files",
+            "group": "drive_tools",
+            "description": "Retrieve all files in the cloud drive.",
+            "changes_data": false,
+            "parameters": []
+        },
+        {
+            "name": "search_files",
+            "group": "drive_tools",
+            "description": "Search for files in the cloud drive by content.",
+            "changes_data": false,
+            "parameters": [
+                {
+                    "name": "query",
+                    "type": "str",
+                    "required": true,
+                    "default": null,
+                    "enum": null,
+                    "description": "The string to search for in the files."
+                }
+            ]
+        },
+        {
+            "name": "search_files_by_filename",
+            "group": "drive_tools",
+            "description": "Get a file from a cloud drive by its filename. It returns a list of files.",
+            "changes_data": false,
+            "parameters": [
+                {
+                    "name": "filename",
+                    "type": "str",
+                    "required": true,
+                    "default": null,
+                    "enum": null,
+                    "description": "The name of the file to retrieve."
+                }
+            ]
+        },
+        {
+            "name": "get_file_by_id",
+            "group": "drive_tools",
+            "description": "Get a file from a cloud drive by its ID.",
+            "changes_data": false,
+            "parameters": [
+                {
+                    "name": "file_id",
+                    "type": "str",
+                    "required": true,
+                    "default": null,
+                    "enum": null,
+                    "description": "The ID of the file to retrieve."
+                }
+            ]
+        },
+        {
+            "name": "delete_file",
+            "group": "drive_tools",
+            "description": "Delete a file from the cloud drive by its filename.",
+            "changes_data": true,
+            "parameters": [
+                {
+                    "name": "file_id",
+                    "type": "str",
+                    "required": true,
+                    "default": null,
+                    "enum": null,
+                    "description": "The name of the file to delete."
+                }
+            ]
+        },
+        {
+            "name": "share_file",
+            "group": "drive_tools",
+            "description": "Share a file with a user.",
+            "changes_data": true,
+            "parameters": [
+                {
+                    "name": "file_id",
+                    "type": "str",
+                    "required": true,
+                    "default": null,
+                    "enum": null,
+                    "description": "The ID of the file to share."
+                },
+                {
+                    "name": "email",
+                    "type": "str",
+                    "required": true,
+                    "default": null,
+                    "enum": null,
+                    "description": "The email of the user to share the file with."
+                },
+                {
+                    "name": "permission",
+                    "type": "SharingPermission",
+                    "required": true,
+                    "default": null,
+                    "enum": [
+                        "r",
+                        "rw"
+                    ],
+                    "description": "The permission level to grant the user."
+                }
+            ]
+        }
+    ],
+    "records": [
+        {
+            "name": "CloudDriveFile",
+            "fields": [
+                {
+                    "name": "id_",
+                    "type": "str",
+                    "description": "The unique identifier of the file",
+                    "allowed_values": null
+                },
+                {
+                    "name": "filename",
+                    "type": "str",
+                    "description": "The name of the file",
+                    "allowed_values": null
+                },
+                {
+                    "name": "content",
+                    "type": "str",
+                    "description": "The content of the file",
+                    "allowed_values": null
+                },
+                {
+                    "name": "owner",
+                    "type": "EmailStr",
+                    "description": "The email of the owner of the file",
+                    "allowed_values": null
+                },
+                {
+                    "name": "last_modified",
+                    "type": "datetime.datetime",
+                    "description": "The last modified timestamp",
+                    "allowed_values": null
+                },
+                {
+                    "name": "shared_with",
+                    "type": "dict[EmailStr, SharingPermission]",
+                    "description": "The object containing emails with their sharing permissions",
+                    "allowed_values": [
+                        "r",
+                        "rw"
+                    ]
+                },
+                {
+                    "name": "size",
+                    "type": "int",
+                    "description": "The size of the file in bytes",
+                    "allowed_values": null
+                }
+            ]
+        }
+    ],
+    "provenance": {
+        "definition_sha256": "0949d328fa00dc2857d750bed37cd0bdcb3cb24d6e077a0eb4409fc2aa2c86e2",
+        "repo": "https://github.com/ethz-spylab/agentdojo",
+        "commit": "af7266303c748a9cf0442d71ceabc9d2488d7188",
+        "source_files": {
+            "tool_calendar_client": {
+                "path": "src/function_calling_pi/tools/calendar_client.py",
+                "git_blob": "75d1074e031147a4eaa12a2351102a68b8bc6166"
+            },
+            "tool_cloud_drive_client": {
+                "path": "src/function_calling_pi/tools/cloud_drive_client.py",
+                "git_blob": "93efdd40895a37a1d70f5363c6c8d72389bab4fc"
+            },
+            "tool_email_client": {
+                "path": "src/function_calling_pi/tools/email_client.py",
+                "git_blob": "f0add168f875a80d7940ad2667c1c7b9821c9c00"
+            },
+            "tool_types": {
+                "path": "src/function_calling_pi/tools/types.py",
+                "git_blob": "e0ee2d4facaf8fbf2715c573c6187ea070dea1da"
+            },
+            "workspace_task_suite": {
+                "path": "src/function_calling_pi/task_suites/workspace/task_suite.py",
+                "git_blob": "b3943129dc70adfff5769d1e778c9f3f618d12c9"
+            }
+        }
+    }
+}

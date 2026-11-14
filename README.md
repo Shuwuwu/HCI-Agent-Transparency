@@ -16,6 +16,7 @@ documents the agent is said to have followed.
 | `src/data/gpt4o_unsafe_candidates.json` | The pool of 116 attacked runs that completed the task and achieved the injection goal. |
 | `src/data/agentdojo_source_manifest.json` | Paths and git hashes of the AgentDojo files and traces used (provenance). |
 | `src/data/skill_taxonomy.json` | The capability skill library: 6 skills, the Yang et al. subtopics they cover, their workflows, and the map from the 25 scenarios to skills. |
+| `src/data/skill_library/` | Inputs of the capability skills: `sources/<skill>.json` (definition, tool specs, record schemas, provenance) and `prompts/<skill>.json` (the exact request to send to the skill-writing model). |
 | `src/data/experiment/user_task_N/` | Stimuli of each of the 25 safe-candidate scenarios: `metadata.json`, `no_attack_execution_trace.json`, `skills.json`, `action_log.json` (placeholder). |
 | `archive/` | Superseded research outputs kept as provenance (not read by any script). |
 | `Skills collection/` | Original and prompt-injected skill examples from SkillJect (see `Option_A/description.txt`). |
@@ -43,6 +44,9 @@ Capability skills:
 | Script | What it does |
 |---|---|
 | `check_skill_map.py` | Checks the taxonomy: write-tool ownership, scenario map against each recorded trace, and that the skill definitions contain nothing taken from the scenarios. |
+| `build_skill_sources.py` | Builds the source package of each skill (definition, full tool specs, record schemas) from the taxonomy's `skills` section and AgentDojo's tool code. Never reads the scenario map. |
+| `build_capability_prompts.py` | Builds the exact request for each skill from its source package and the templates in `src/prompts/skill_capability_*_v2.md`. Needs neither the clone nor the network. |
+| `prompt_utils.py` | Helpers shared by both prompt builders (settings, hashing, templates, record schemas). |
 
 Superseded (the first, one-skill-per-scenario pipeline; each file's docstring says so): `build_skill_context.py`,
 `build_skill_prompts.py`, `validate_skills.py`, `generate_safe_skills.py`. Their data lives in `src/data/skill_context/`,
@@ -57,11 +61,12 @@ categories come from Yang et al. 2025 (arXiv 2512.07828, Table 1, topic Producti
 generated one skill per scenario and was found to produce task-shaped skills that leak scenario content; see
 `archive/2026-11-14_per_scenario_pilot/README.md`.
 
-Done: taxonomy, scenario map and checker; scenario stimuli folders with `skills.json`.
+Done: taxonomy, scenario map and checker; scenario stimuli folders with `skills.json`; per-skill source packages and
+generation prompts. The prompts are task-agnostic: the generator is shown a skill's scope, workflows, tool
+specifications and record schemas, and no scenario, example request, trace or answer.
 
-Not implemented yet (planned, in order): source packages and prompts for the capability skills that do not show the
-generator any scenario; a per-skill static validator; the generator (OpenAI `gpt-6.1-sol`, with logging and repair
-rounds); a manual review sheet; execution-based evaluation in AgentDojo; injected skill variants.
+Not implemented yet (planned, in order): a per-skill static validator; the generator (OpenAI `gpt-6.1-sol`, with
+logging and repair rounds); a manual review sheet; execution-based evaluation in AgentDojo; injected skill variants.
 
 ## Running things
 
@@ -69,6 +74,8 @@ rounds); a manual review sheet; execution-based evaluation in AgentDojo; injecte
 python3 -B -m unittest discover -s tests          # all tests (some skip without the AgentDojo clone)
 python3 -B src/scripts/check_skill_map.py          # check the skill taxonomy against the 25 recorded runs
 python3 -B src/scripts/build_experiment_stimuli.py # rebuild src/data/experiment/
+python3 -B src/scripts/build_skill_sources.py      # rebuild src/data/skill_library/sources/ (needs the clone)
+python3 -B src/scripts/build_capability_prompts.py # rebuild src/data/skill_library/prompts/
 ```
 
 Use `python3 -B` so that no `__pycache__` folders are created. Scripts that call the OpenAI API read the key from the

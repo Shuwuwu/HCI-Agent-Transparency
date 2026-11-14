@@ -1,0 +1,350 @@
+{
+    "skill_id": "email-correspondence",
+    "kind": "write",
+    "summary": "Write to other people on the user's behalf when asked: compose and send emails and delete emails.",
+    "yang": [
+        {
+            "subtopic": "Email Management",
+            "tasks": [
+                "Create/edit emails",
+                "Send emails",
+                "Delete/unsubscribe emails"
+            ]
+        }
+    ],
+    "workflows": [
+        {
+            "id": "compose-and-send",
+            "description": "Write an email with the recipients, subject and body the user asked for, and send it."
+        },
+        {
+            "id": "address-recipients",
+            "description": "Look up a recipient's email address when the user names a person, and add copies or attachments only when the user asks for them."
+        },
+        {
+            "id": "reply-to-sender",
+            "description": "Find the email being answered and reply to its sender."
+        },
+        {
+            "id": "delete-email",
+            "description": "Find an email the user identified and delete it."
+        }
+    ],
+    "owned_write_tools": [
+        "send_email",
+        "delete_email"
+    ],
+    "tools": [
+        {
+            "name": "search_emails",
+            "group": "email_tools",
+            "description": "Searches for emails in the inbox that contain the given query in the subject or body. If `address` is provided,",
+            "changes_data": false,
+            "parameters": [
+                {
+                    "name": "query",
+                    "type": "str",
+                    "required": true,
+                    "default": null,
+                    "enum": null,
+                    "description": "The query to search for in the email subject or body. If empty, all emails are returned."
+                },
+                {
+                    "name": "sender",
+                    "type": "str | None",
+                    "required": false,
+                    "default": null,
+                    "enum": null,
+                    "description": "The email address of the sender. If `null`, all emails are searched. Use `search_contacts_by_name`\nif the email address is unknown."
+                }
+            ]
+        },
+        {
+            "name": "search_contacts_by_name",
+            "group": "email_tools",
+            "description": "Finds contacts in the inbox's contact list by name.",
+            "changes_data": false,
+            "parameters": [
+                {
+                    "name": "query",
+                    "type": "str",
+                    "required": true,
+                    "default": null,
+                    "enum": null,
+                    "description": "The name of the contacts to search for."
+                }
+            ]
+        },
+        {
+            "name": "search_contacts_by_email",
+            "group": "email_tools",
+            "description": "Finds contacts in the inbox's contact list by email.",
+            "changes_data": false,
+            "parameters": [
+                {
+                    "name": "query",
+                    "type": "str",
+                    "required": true,
+                    "default": null,
+                    "enum": null,
+                    "description": "The email of the contacts to search for."
+                }
+            ]
+        },
+        {
+            "name": "send_email",
+            "group": "email_tools",
+            "description": "Sends an email with the given `body` to the given `address`. Returns a dictionary with the email details.",
+            "changes_data": true,
+            "parameters": [
+                {
+                    "name": "recipients",
+                    "type": "list[str]",
+                    "required": true,
+                    "default": null,
+                    "enum": null,
+                    "description": "The list with the email addresses of the recipients."
+                },
+                {
+                    "name": "subject",
+                    "type": "str",
+                    "required": true,
+                    "default": null,
+                    "enum": null,
+                    "description": "The subject of the email."
+                },
+                {
+                    "name": "body",
+                    "type": "str",
+                    "required": true,
+                    "default": null,
+                    "enum": null,
+                    "description": "The body of the email."
+                },
+                {
+                    "name": "attachments",
+                    "type": "list[dict] | None",
+                    "required": false,
+                    "default": null,
+                    "enum": null,
+                    "description": "The list of attachments to include in the email. If `null`, no attachments are included.\nIf the attachment has as \"type\" \"file\", then it is expected to have a field \"file_id\", with the ID of the file in the\ncloud drive. If the attachment has as \"type\" \"event\", then it is expected to be a calendar event in the field \"event_details\".\nA calendar event has the following fields: `title`, `description`, `start_time` (in ISO format), `end_time`\n(in ISO format), `location`, and participants (a list of emails)."
+                },
+                {
+                    "name": "cc",
+                    "type": "list[str] | None",
+                    "required": false,
+                    "default": null,
+                    "enum": null,
+                    "description": "The list of email addresses to include in the CC field. If `null`, no email addresses are included."
+                },
+                {
+                    "name": "bcc",
+                    "type": "list[str] | None",
+                    "required": false,
+                    "default": null,
+                    "enum": null,
+                    "description": "The list of email addresses to include in the BCC field. If `null`, no email addresses are included."
+                }
+            ]
+        },
+        {
+            "name": "delete_email",
+            "group": "email_tools",
+            "description": "Deletes the email with the given `email_id` from the inbox.",
+            "changes_data": true,
+            "parameters": [
+                {
+                    "name": "email_id",
+                    "type": "str",
+                    "required": true,
+                    "default": null,
+                    "enum": null,
+                    "description": "The id of the email to delete."
+                }
+            ]
+        }
+    ],
+    "records": [
+        {
+            "name": "Email",
+            "fields": [
+                {
+                    "name": "id_",
+                    "type": "str",
+                    "description": "The unique identifier of the email",
+                    "allowed_values": null
+                },
+                {
+                    "name": "sender",
+                    "type": "EmailStr",
+                    "description": "The email of the sender",
+                    "allowed_values": null
+                },
+                {
+                    "name": "recipients",
+                    "type": "list[EmailStr]",
+                    "description": "The list of the emails of the recipients",
+                    "allowed_values": null
+                },
+                {
+                    "name": "cc",
+                    "type": "list[EmailStr]",
+                    "description": "The list of the emails of the CC recipients",
+                    "allowed_values": null
+                },
+                {
+                    "name": "bcc",
+                    "type": "list[EmailStr]",
+                    "description": "The list of the emails of the BCC recipients",
+                    "allowed_values": null
+                },
+                {
+                    "name": "subject",
+                    "type": "str",
+                    "description": "The subject of the email",
+                    "allowed_values": null
+                },
+                {
+                    "name": "body",
+                    "type": "str",
+                    "description": "The body of the email",
+                    "allowed_values": null
+                },
+                {
+                    "name": "status",
+                    "type": "EmailStatus",
+                    "description": "The status of the email",
+                    "allowed_values": [
+                        "sent",
+                        "received",
+                        "draft"
+                    ]
+                },
+                {
+                    "name": "read",
+                    "type": "bool",
+                    "description": "Whether the email has been read",
+                    "allowed_values": null
+                },
+                {
+                    "name": "timestamp",
+                    "type": "datetime.datetime",
+                    "description": "The timestamp of the email",
+                    "allowed_values": null
+                },
+                {
+                    "name": "attachments",
+                    "type": "list[str | CalendarEvent]",
+                    "description": "The list of attachments of the email. If the attachment is a file, it will be the ID of the file. If the attachment is a calendar event, it will be a CalendarEvent object.",
+                    "allowed_values": null
+                }
+            ]
+        },
+        {
+            "name": "EmailContact",
+            "fields": [
+                {
+                    "name": "email",
+                    "type": "EmailStr",
+                    "description": "The email of the contact",
+                    "allowed_values": null
+                },
+                {
+                    "name": "name",
+                    "type": "str",
+                    "description": "The name of the contact",
+                    "allowed_values": null
+                }
+            ]
+        },
+        {
+            "name": "CalendarEvent",
+            "fields": [
+                {
+                    "name": "id_",
+                    "type": "str",
+                    "description": "The unique identifier of the event",
+                    "allowed_values": null
+                },
+                {
+                    "name": "title",
+                    "type": "str",
+                    "description": "The title of the event",
+                    "allowed_values": null
+                },
+                {
+                    "name": "description",
+                    "type": "str",
+                    "description": "The description of the event",
+                    "allowed_values": null
+                },
+                {
+                    "name": "start_time",
+                    "type": "datetime.datetime",
+                    "description": "The start time of the event",
+                    "allowed_values": null
+                },
+                {
+                    "name": "end_time",
+                    "type": "datetime.datetime",
+                    "description": "The end time of the event",
+                    "allowed_values": null
+                },
+                {
+                    "name": "location",
+                    "type": "str | None",
+                    "description": "The location of the event",
+                    "allowed_values": null
+                },
+                {
+                    "name": "participants",
+                    "type": "list[EmailStr]",
+                    "description": "The list of the emails of the participants",
+                    "allowed_values": null
+                },
+                {
+                    "name": "all_day",
+                    "type": "bool",
+                    "description": "Whether the event is all day",
+                    "allowed_values": null
+                },
+                {
+                    "name": "status",
+                    "type": "EvenStatus",
+                    "description": "The status of the event",
+                    "allowed_values": [
+                        "confirmed",
+                        "canceled"
+                    ]
+                }
+            ]
+        }
+    ],
+    "provenance": {
+        "definition_sha256": "14b721caeb9523d4206266aefe3aa73b6fe76742f8f561e48e3d748473abc544",
+        "repo": "https://github.com/ethz-spylab/agentdojo",
+        "commit": "af7266303c748a9cf0442d71ceabc9d2488d7188",
+        "source_files": {
+            "tool_calendar_client": {
+                "path": "src/function_calling_pi/tools/calendar_client.py",
+                "git_blob": "75d1074e031147a4eaa12a2351102a68b8bc6166"
+            },
+            "tool_cloud_drive_client": {
+                "path": "src/function_calling_pi/tools/cloud_drive_client.py",
+                "git_blob": "93efdd40895a37a1d70f5363c6c8d72389bab4fc"
+            },
+            "tool_email_client": {
+                "path": "src/function_calling_pi/tools/email_client.py",
+                "git_blob": "f0add168f875a80d7940ad2667c1c7b9821c9c00"
+            },
+            "tool_types": {
+                "path": "src/function_calling_pi/tools/types.py",
+                "git_blob": "e0ee2d4facaf8fbf2715c573c6187ea070dea1da"
+            },
+            "workspace_task_suite": {
+                "path": "src/function_calling_pi/task_suites/workspace/task_suite.py",
+                "git_blob": "b3943129dc70adfff5769d1e778c9f3f618d12c9"
+            }
+        }
+    }
+}

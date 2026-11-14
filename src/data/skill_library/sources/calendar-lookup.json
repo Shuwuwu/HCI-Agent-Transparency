@@ -1,0 +1,177 @@
+{
+    "skill_id": "calendar-lookup",
+    "kind": "read",
+    "summary": "Answer questions about the user's calendar without changing it: find events, report their details, and count or summarize the events of a day.",
+    "yang": [
+        {
+            "subtopic": "Calendar Management",
+            "tasks": [
+                "Search/filter events",
+                "Summarize/analyze events"
+            ]
+        }
+    ],
+    "workflows": [
+        {
+            "id": "resolve-dates",
+            "description": "Turn a relative or partial date in a request (today, next week, a weekday, a date without a year) into an exact calendar date, using the current day when needed."
+        },
+        {
+            "id": "day-overview",
+            "description": "List, count and summarize the events on a given day."
+        },
+        {
+            "id": "find-event",
+            "description": "Find an event by title or keyword, optionally on a given date, and report its details: participants, place, time and description."
+        },
+        {
+            "id": "next-occurrence",
+            "description": "Find the next upcoming occurrence of a repeated event, looking forward from the current day."
+        },
+        {
+            "id": "time-between-events",
+            "description": "Work out the time between two events, or between a given time and an event, from the events listed for a day."
+        }
+    ],
+    "owned_write_tools": [],
+    "tools": [
+        {
+            "name": "get_current_day",
+            "group": "calendar_tools",
+            "description": "Returns the current day in ISO format, e.g. '2022-01-01'.",
+            "changes_data": false,
+            "parameters": []
+        },
+        {
+            "name": "search_calendar_events",
+            "group": "calendar_tools",
+            "description": "Searches calendar events that match the given query in the tile or the description. If provided, filters events by date.",
+            "changes_data": false,
+            "parameters": [
+                {
+                    "name": "query",
+                    "type": "str",
+                    "required": true,
+                    "default": null,
+                    "enum": null,
+                    "description": "The query string to search for in event titles and descriptions."
+                },
+                {
+                    "name": "date",
+                    "type": "str | None",
+                    "required": false,
+                    "default": null,
+                    "enum": null,
+                    "description": "The date for which to search events. Must be in format YYYY-MM-DD. If `null`, searches all events."
+                }
+            ]
+        },
+        {
+            "name": "get_day_calendar_events",
+            "group": "calendar_tools",
+            "description": "Returns the appointments for the given `day`. Returns a list of dictionaries with informations about each meeting.",
+            "changes_data": false,
+            "parameters": [
+                {
+                    "name": "day",
+                    "type": "str",
+                    "required": true,
+                    "default": null,
+                    "enum": null,
+                    "description": "The day for which to return the appointments. Must be in format YYYY-MM-DD."
+                }
+            ]
+        }
+    ],
+    "records": [
+        {
+            "name": "CalendarEvent",
+            "fields": [
+                {
+                    "name": "id_",
+                    "type": "str",
+                    "description": "The unique identifier of the event",
+                    "allowed_values": null
+                },
+                {
+                    "name": "title",
+                    "type": "str",
+                    "description": "The title of the event",
+                    "allowed_values": null
+                },
+                {
+                    "name": "description",
+                    "type": "str",
+                    "description": "The description of the event",
+                    "allowed_values": null
+                },
+                {
+                    "name": "start_time",
+                    "type": "datetime.datetime",
+                    "description": "The start time of the event",
+                    "allowed_values": null
+                },
+                {
+                    "name": "end_time",
+                    "type": "datetime.datetime",
+                    "description": "The end time of the event",
+                    "allowed_values": null
+                },
+                {
+                    "name": "location",
+                    "type": "str | None",
+                    "description": "The location of the event",
+                    "allowed_values": null
+                },
+                {
+                    "name": "participants",
+                    "type": "list[EmailStr]",
+                    "description": "The list of the emails of the participants",
+                    "allowed_values": null
+                },
+                {
+                    "name": "all_day",
+                    "type": "bool",
+                    "description": "Whether the event is all day",
+                    "allowed_values": null
+                },
+                {
+                    "name": "status",
+                    "type": "EvenStatus",
+                    "description": "The status of the event",
+                    "allowed_values": [
+                        "confirmed",
+                        "canceled"
+                    ]
+                }
+            ]
+        }
+    ],
+    "provenance": {
+        "definition_sha256": "3af9323b6269b5ccccf7a37f6bc3e7f0edc625ba4cbb9a12c7f4b8309b4d3113",
+        "repo": "https://github.com/ethz-spylab/agentdojo",
+        "commit": "af7266303c748a9cf0442d71ceabc9d2488d7188",
+        "source_files": {
+            "tool_calendar_client": {
+                "path": "src/function_calling_pi/tools/calendar_client.py",
+                "git_blob": "75d1074e031147a4eaa12a2351102a68b8bc6166"
+            },
+            "tool_cloud_drive_client": {
+                "path": "src/function_calling_pi/tools/cloud_drive_client.py",
+                "git_blob": "93efdd40895a37a1d70f5363c6c8d72389bab4fc"
+            },
+            "tool_email_client": {
+                "path": "src/function_calling_pi/tools/email_client.py",
+                "git_blob": "f0add168f875a80d7940ad2667c1c7b9821c9c00"
+            },
+            "tool_types": {
+                "path": "src/function_calling_pi/tools/types.py",
+                "git_blob": "e0ee2d4facaf8fbf2715c573c6187ea070dea1da"
+            },
+            "workspace_task_suite": {
+                "path": "src/function_calling_pi/task_suites/workspace/task_suite.py",
+                "git_blob": "b3943129dc70adfff5769d1e778c9f3f618d12c9"
+            }
+        }
+    }
+}

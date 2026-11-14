@@ -1,0 +1,314 @@
+{
+    "skill_id": "calendar-scheduling",
+    "kind": "write",
+    "summary": "Change the user's calendar when asked: check whether a time is free, then create events, add participants, reschedule or cancel.",
+    "yang": [
+        {
+            "subtopic": "Calendar Management",
+            "tasks": [
+                "Check availability",
+                "Create/edit events"
+            ]
+        }
+    ],
+    "workflows": [
+        {
+            "id": "check-availability",
+            "description": "Decide whether a time slot is free by comparing it with the events already on that day, and use an alternative slot given by the user when the first one is busy."
+        },
+        {
+            "id": "create-event",
+            "description": "Create an event from the title, start and end time, description, participants and location that the user supplies."
+        },
+        {
+            "id": "copy-participants",
+            "description": "Reuse the participants of an existing event for a new event."
+        },
+        {
+            "id": "add-participants",
+            "description": "Add further participants to an existing event."
+        },
+        {
+            "id": "reschedule-event",
+            "description": "Move an existing event to a new start and end time."
+        },
+        {
+            "id": "cancel-event",
+            "description": "Cancel an existing event."
+        }
+    ],
+    "owned_write_tools": [
+        "create_calendar_event",
+        "add_calendar_event_participants",
+        "reschedule_calendar_event",
+        "cancel_calendar_event"
+    ],
+    "tools": [
+        {
+            "name": "get_current_day",
+            "group": "calendar_tools",
+            "description": "Returns the current day in ISO format, e.g. '2022-01-01'.",
+            "changes_data": false,
+            "parameters": []
+        },
+        {
+            "name": "search_calendar_events",
+            "group": "calendar_tools",
+            "description": "Searches calendar events that match the given query in the tile or the description. If provided, filters events by date.",
+            "changes_data": false,
+            "parameters": [
+                {
+                    "name": "query",
+                    "type": "str",
+                    "required": true,
+                    "default": null,
+                    "enum": null,
+                    "description": "The query string to search for in event titles and descriptions."
+                },
+                {
+                    "name": "date",
+                    "type": "str | None",
+                    "required": false,
+                    "default": null,
+                    "enum": null,
+                    "description": "The date for which to search events. Must be in format YYYY-MM-DD. If `null`, searches all events."
+                }
+            ]
+        },
+        {
+            "name": "get_day_calendar_events",
+            "group": "calendar_tools",
+            "description": "Returns the appointments for the given `day`. Returns a list of dictionaries with informations about each meeting.",
+            "changes_data": false,
+            "parameters": [
+                {
+                    "name": "day",
+                    "type": "str",
+                    "required": true,
+                    "default": null,
+                    "enum": null,
+                    "description": "The day for which to return the appointments. Must be in format YYYY-MM-DD."
+                }
+            ]
+        },
+        {
+            "name": "create_calendar_event",
+            "group": "calendar_tools",
+            "description": "Creates a new calendar event with the given details and adds it to the calendar.",
+            "changes_data": true,
+            "parameters": [
+                {
+                    "name": "title",
+                    "type": "str",
+                    "required": true,
+                    "default": null,
+                    "enum": null,
+                    "description": "The title of the event."
+                },
+                {
+                    "name": "start_time",
+                    "type": "str",
+                    "required": true,
+                    "default": null,
+                    "enum": null,
+                    "description": "The start time of the event. Must be in format YYYY-MM-DD HH:MM."
+                },
+                {
+                    "name": "end_time",
+                    "type": "str",
+                    "required": true,
+                    "default": null,
+                    "enum": null,
+                    "description": "The end time of the event. Must be in format YYYY-MM-DD HH:MM."
+                },
+                {
+                    "name": "description",
+                    "type": "str",
+                    "required": false,
+                    "default": "",
+                    "enum": null,
+                    "description": "The description of the event."
+                },
+                {
+                    "name": "participants",
+                    "type": "list[str] | None",
+                    "required": false,
+                    "default": null,
+                    "enum": null,
+                    "description": "The list of participants' email addresses. If `null`, no participants are set. The calendar owner's email address is always included.."
+                },
+                {
+                    "name": "location",
+                    "type": "str | None",
+                    "required": false,
+                    "default": null,
+                    "enum": null,
+                    "description": "The location of the event. If `null`, no location is set."
+                }
+            ]
+        },
+        {
+            "name": "add_calendar_event_participants",
+            "group": "calendar_tools",
+            "description": "Adds the given `participants` to the event with the given `event_id`.",
+            "changes_data": true,
+            "parameters": [
+                {
+                    "name": "event_id",
+                    "type": "str",
+                    "required": true,
+                    "default": null,
+                    "enum": null,
+                    "description": "The ID of the event to add participants to."
+                },
+                {
+                    "name": "participants",
+                    "type": "list[str]",
+                    "required": true,
+                    "default": null,
+                    "enum": null,
+                    "description": "The list of participants' email addresses to add to the event."
+                }
+            ]
+        },
+        {
+            "name": "reschedule_calendar_event",
+            "group": "calendar_tools",
+            "description": "Reschedules the event with the given `event_id` to the new start and end times.",
+            "changes_data": true,
+            "parameters": [
+                {
+                    "name": "event_id",
+                    "type": "str",
+                    "required": true,
+                    "default": null,
+                    "enum": null,
+                    "description": "The ID of the event to reschedule."
+                },
+                {
+                    "name": "new_start_time",
+                    "type": "str",
+                    "required": true,
+                    "default": null,
+                    "enum": null,
+                    "description": "The new start time of the event. Must be in format YYYY-MM-DD HH:MM."
+                },
+                {
+                    "name": "new_end_time",
+                    "type": "str | None",
+                    "required": false,
+                    "default": null,
+                    "enum": null,
+                    "description": "The new end time of the event. Must be in format YYYY-MM-DD HH:MM.\nIf `null`, the end time will be computed based on the new start time to keep the event duration the same."
+                }
+            ]
+        },
+        {
+            "name": "cancel_calendar_event",
+            "group": "calendar_tools",
+            "description": "Cancels the event with the given `event_id`. The event will be marked as canceled and no longer appear in the calendar.",
+            "changes_data": true,
+            "parameters": [
+                {
+                    "name": "event_id",
+                    "type": "str",
+                    "required": true,
+                    "default": null,
+                    "enum": null,
+                    "description": "The ID of the event to cancel."
+                }
+            ]
+        }
+    ],
+    "records": [
+        {
+            "name": "CalendarEvent",
+            "fields": [
+                {
+                    "name": "id_",
+                    "type": "str",
+                    "description": "The unique identifier of the event",
+                    "allowed_values": null
+                },
+                {
+                    "name": "title",
+                    "type": "str",
+                    "description": "The title of the event",
+                    "allowed_values": null
+                },
+                {
+                    "name": "description",
+                    "type": "str",
+                    "description": "The description of the event",
+                    "allowed_values": null
+                },
+                {
+                    "name": "start_time",
+                    "type": "datetime.datetime",
+                    "description": "The start time of the event",
+                    "allowed_values": null
+                },
+                {
+                    "name": "end_time",
+                    "type": "datetime.datetime",
+                    "description": "The end time of the event",
+                    "allowed_values": null
+                },
+                {
+                    "name": "location",
+                    "type": "str | None",
+                    "description": "The location of the event",
+                    "allowed_values": null
+                },
+                {
+                    "name": "participants",
+                    "type": "list[EmailStr]",
+                    "description": "The list of the emails of the participants",
+                    "allowed_values": null
+                },
+                {
+                    "name": "all_day",
+                    "type": "bool",
+                    "description": "Whether the event is all day",
+                    "allowed_values": null
+                },
+                {
+                    "name": "status",
+                    "type": "EvenStatus",
+                    "description": "The status of the event",
+                    "allowed_values": [
+                        "confirmed",
+                        "canceled"
+                    ]
+                }
+            ]
+        }
+    ],
+    "provenance": {
+        "definition_sha256": "3e1a81b6b8b07c91824b5f1f84d755a54504aad5a501fb680ff0af03ce297623",
+        "repo": "https://github.com/ethz-spylab/agentdojo",
+        "commit": "af7266303c748a9cf0442d71ceabc9d2488d7188",
+        "source_files": {
+            "tool_calendar_client": {
+                "path": "src/function_calling_pi/tools/calendar_client.py",
+                "git_blob": "75d1074e031147a4eaa12a2351102a68b8bc6166"
+            },
+            "tool_cloud_drive_client": {
+                "path": "src/function_calling_pi/tools/cloud_drive_client.py",
+                "git_blob": "93efdd40895a37a1d70f5363c6c8d72389bab4fc"
+            },
+            "tool_email_client": {
+                "path": "src/function_calling_pi/tools/email_client.py",
+                "git_blob": "f0add168f875a80d7940ad2667c1c7b9821c9c00"
+            },
+            "tool_types": {
+                "path": "src/function_calling_pi/tools/types.py",
+                "git_blob": "e0ee2d4facaf8fbf2715c573c6187ea070dea1da"
+            },
+            "workspace_task_suite": {
+                "path": "src/function_calling_pi/task_suites/workspace/task_suite.py",
+                "git_blob": "b3943129dc70adfff5769d1e778c9f3f618d12c9"
+            }
+        }
+    }
+}

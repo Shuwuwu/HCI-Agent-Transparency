@@ -1,0 +1,226 @@
+{
+    "skill_id": "document-content",
+    "kind": "write",
+    "summary": "Work with the content of documents and spreadsheets in the cloud drive: read them, extract values, summarize, add to them or create new files.",
+    "yang": [
+        {
+            "subtopic": "Document & Form Editing",
+            "tasks": [
+                "Create/edit documents",
+                "Search/filter documents",
+                "Summarize/analyze documents"
+            ]
+        },
+        {
+            "subtopic": "Spreadsheet & Data Editing",
+            "tasks": [
+                "Create/edit spreadsheets",
+                "Search/filter spreadsheets",
+                "Summarize/analyze spreadsheets"
+            ]
+        }
+    ],
+    "workflows": [
+        {
+            "id": "read-document",
+            "description": "Retrieve a document or spreadsheet and read its content."
+        },
+        {
+            "id": "extract-records",
+            "description": "Extract specific values or records from a document or table, such as the entries belonging to named people."
+        },
+        {
+            "id": "summarize-document",
+            "description": "Summarize the content of a document."
+        },
+        {
+            "id": "extend-document",
+            "description": "Add new content to the end of an existing file."
+        },
+        {
+            "id": "create-document",
+            "description": "Create a new file with the content the user asked for."
+        }
+    ],
+    "owned_write_tools": [
+        "append_to_file",
+        "create_file"
+    ],
+    "tools": [
+        {
+            "name": "search_files_by_filename",
+            "group": "drive_tools",
+            "description": "Get a file from a cloud drive by its filename. It returns a list of files.",
+            "changes_data": false,
+            "parameters": [
+                {
+                    "name": "filename",
+                    "type": "str",
+                    "required": true,
+                    "default": null,
+                    "enum": null,
+                    "description": "The name of the file to retrieve."
+                }
+            ]
+        },
+        {
+            "name": "search_files",
+            "group": "drive_tools",
+            "description": "Search for files in the cloud drive by content.",
+            "changes_data": false,
+            "parameters": [
+                {
+                    "name": "query",
+                    "type": "str",
+                    "required": true,
+                    "default": null,
+                    "enum": null,
+                    "description": "The string to search for in the files."
+                }
+            ]
+        },
+        {
+            "name": "get_file_by_id",
+            "group": "drive_tools",
+            "description": "Get a file from a cloud drive by its ID.",
+            "changes_data": false,
+            "parameters": [
+                {
+                    "name": "file_id",
+                    "type": "str",
+                    "required": true,
+                    "default": null,
+                    "enum": null,
+                    "description": "The ID of the file to retrieve."
+                }
+            ]
+        },
+        {
+            "name": "append_to_file",
+            "group": "drive_tools",
+            "description": "Append content to a file in the cloud drive.",
+            "changes_data": true,
+            "parameters": [
+                {
+                    "name": "file_id",
+                    "type": "str",
+                    "required": true,
+                    "default": null,
+                    "enum": null,
+                    "description": "The ID of the file to append content to."
+                },
+                {
+                    "name": "content",
+                    "type": "str",
+                    "required": true,
+                    "default": null,
+                    "enum": null,
+                    "description": "The content to append to the file."
+                }
+            ]
+        },
+        {
+            "name": "create_file",
+            "group": "drive_tools",
+            "description": "Create a new file in the cloud drive.",
+            "changes_data": true,
+            "parameters": [
+                {
+                    "name": "filename",
+                    "type": "str",
+                    "required": true,
+                    "default": null,
+                    "enum": null,
+                    "description": "The name of the file to create."
+                },
+                {
+                    "name": "content",
+                    "type": "str",
+                    "required": true,
+                    "default": null,
+                    "enum": null,
+                    "description": "The content of the file to create."
+                }
+            ]
+        }
+    ],
+    "records": [
+        {
+            "name": "CloudDriveFile",
+            "fields": [
+                {
+                    "name": "id_",
+                    "type": "str",
+                    "description": "The unique identifier of the file",
+                    "allowed_values": null
+                },
+                {
+                    "name": "filename",
+                    "type": "str",
+                    "description": "The name of the file",
+                    "allowed_values": null
+                },
+                {
+                    "name": "content",
+                    "type": "str",
+                    "description": "The content of the file",
+                    "allowed_values": null
+                },
+                {
+                    "name": "owner",
+                    "type": "EmailStr",
+                    "description": "The email of the owner of the file",
+                    "allowed_values": null
+                },
+                {
+                    "name": "last_modified",
+                    "type": "datetime.datetime",
+                    "description": "The last modified timestamp",
+                    "allowed_values": null
+                },
+                {
+                    "name": "shared_with",
+                    "type": "dict[EmailStr, SharingPermission]",
+                    "description": "The object containing emails with their sharing permissions",
+                    "allowed_values": [
+                        "r",
+                        "rw"
+                    ]
+                },
+                {
+                    "name": "size",
+                    "type": "int",
+                    "description": "The size of the file in bytes",
+                    "allowed_values": null
+                }
+            ]
+        }
+    ],
+    "provenance": {
+        "definition_sha256": "5c19aaa2ddb1199499e5177e98a0b94d97241dfdd47b88d3aaf232073da600ed",
+        "repo": "https://github.com/ethz-spylab/agentdojo",
+        "commit": "af7266303c748a9cf0442d71ceabc9d2488d7188",
+        "source_files": {
+            "tool_calendar_client": {
+                "path": "src/function_calling_pi/tools/calendar_client.py",
+                "git_blob": "75d1074e031147a4eaa12a2351102a68b8bc6166"
+            },
+            "tool_cloud_drive_client": {
+                "path": "src/function_calling_pi/tools/cloud_drive_client.py",
+                "git_blob": "93efdd40895a37a1d70f5363c6c8d72389bab4fc"
+            },
+            "tool_email_client": {
+                "path": "src/function_calling_pi/tools/email_client.py",
+                "git_blob": "f0add168f875a80d7940ad2667c1c7b9821c9c00"
+            },
+            "tool_types": {
+                "path": "src/function_calling_pi/tools/types.py",
+                "git_blob": "e0ee2d4facaf8fbf2715c573c6187ea070dea1da"
+            },
+            "workspace_task_suite": {
+                "path": "src/function_calling_pi/task_suites/workspace/task_suite.py",
+                "git_blob": "b3943129dc70adfff5769d1e778c9f3f618d12c9"
+            }
+        }
+    }
+}
