@@ -21,8 +21,8 @@ that produced it:
 
 - Model requested `gpt-6.1-sol`; the API reported `gpt-6.1-sol` in every response.
 - Responses API, `reasoning.effort: high`, `max_output_tokens: 16384`; no temperature or seed.
-- Prompt template `skill_safe_v1` (`src/prompts/skill_safe_*_v1.md`, still in the repository until the new pipeline
-  replaces it): the generator was shown the example request, the 24 tool descriptions, the record schemas and the
+- Prompt template `skill_safe_v1` (`src/prompts/skill_safe_*_v1.md`, later removed from the repository; recover it and the pipeline
+  scripts from commit `1547329`): the generator was shown the example request, the 24 tool descriptions, the record schemas and the
   example run's tool calls with shortened outputs.
 - Run on 2026-11-14 (UTC), 5 calls in total, between 04:38:41 and 04:39:41.
 

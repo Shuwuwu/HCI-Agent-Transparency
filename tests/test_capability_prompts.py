@@ -14,7 +14,7 @@ Outputs:
 
 Dependencies:
     src/scripts/build_capability_prompts.py, build_skill_sources.py, prompt_utils.py, check_skill_map.py,
-    validate_skills.py, agentdojo_runs.py.
+    skill_text.py, agentdojo_runs.py.
 
 Usage:
     python3 -B -m unittest discover -s tests -v

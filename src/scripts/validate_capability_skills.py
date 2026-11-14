@@ -50,7 +50,7 @@ import build_capability_prompts as cp
 import check_skill_map as cm
 import skill_text as st
 
-VALIDATOR_VERSION = "capability_validator_v1"
+VALIDATOR_VERSION = "capability_validator_v2"  # v2: person-name extraction finds names after a capitalised first word
 DEFAULT_SKILLS_DIR = runs.REPO_ROOT / "src" / "data" / "skills"
 SECTIONS = ["Overview", "When to Use", "Tools", "Workflows", "Common Pitfalls", "Output Requirements"]
 OVERLAP_WORDS = 15  # two skills sharing a run of this many words are reported as overlapping

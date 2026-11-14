@@ -1,6 +1,6 @@
 """
 Purpose:
-    Small helpers shared by the scripts that build requests for the skill-writing model: the fixed generation
+    Small helpers shared by the scripts that build and send requests for the skill-writing model: the fixed generation
     settings, canonical hashing of a request, Markdown code fences, single-pass template filling, field
     descriptions, and the field schema of AgentDojo's record types (Email, CalendarEvent, ...).
 
@@ -19,7 +19,7 @@ Dependencies:
     agentdojo_source.py and agentdojo_tools.py (enum values). Standard library only.
 
 Usage:
-    Imported by build_skill_prompts.py (per-scenario requests) and build_capability_prompts.py (capability skills).
+    Imported by build_skill_sources.py, build_capability_prompts.py and generate_skills.py.
 """
 
 import ast

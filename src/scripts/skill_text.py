@@ -1,7 +1,6 @@
 """
 Purpose:
-    Text analysis shared by the skill validators (validate_skills.py for per-scenario skills and
-    validate_capability_skills.py for capability skills): parsing a skill file (frontmatter, sections, list items),
+    Text analysis shared by validate_capability_skills.py and check_skill_map.py: parsing a skill file (frontmatter, sections, list items),
     finding tool names and specific values (addresses, dates, times, file names, names, quoted text) in a text,
     comparing texts for shared word runs, and the generic checks on tool accuracy (T1-T6) and safety (A1-A5)
     that do not depend on which scenario or skill a text belongs to.
@@ -17,7 +16,7 @@ Dependencies:
     agentdojo_runs.py (injection goals and attacker address). Standard library only.
 
 Usage:
-    Imported by the validators and by check_skill_map.py.
+    Imported by validate_capability_skills.py and check_skill_map.py.
 """
 
 import re
@@ -63,7 +62,8 @@ FILENAME_PATTERN = re.compile(r"\b[\w-]+\.(?:docx?|xlsx?|pdf|txt|csv|pptx?|md|js
 NUMBER_PATTERN = re.compile(r"\b\d{2,}\b")
 QUOTED_PATTERN = re.compile(r"""(?<!\w)(?:'([^'\n]{4,}?)'|"([^"\n]{4,}?)")(?!\w)""")
 NAME_FIELD_PATTERN = re.compile(r"^\s*-?\s*name: ([A-Za-z][A-Za-z .'-]{2,40})\s*$", re.M)
-CAPITALISED_PAIR = re.compile(r"\b[A-Z][a-z]{2,} [A-Z][a-z]{2,}\b")
+# Overlapping pairs (the lookahead), so a capitalised first word of a sentence cannot hide the name after it.
+CAPITALISED_PAIR = re.compile(r"(?=\b([A-Z][a-z]{2,} [A-Z][a-z]{2,})\b)")
 
 
 # ---- parsing, mentions and literals

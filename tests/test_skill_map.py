@@ -11,7 +11,7 @@ Outputs:
     Pass/fail results from unittest.
 
 Dependencies:
-    src/scripts/check_skill_map.py, agentdojo_runs.py, validate_skills.py.
+    src/scripts/check_skill_map.py, agentdojo_runs.py, skill_text.py.
 
 Usage:
     python3 -B -m unittest discover -s tests -v
