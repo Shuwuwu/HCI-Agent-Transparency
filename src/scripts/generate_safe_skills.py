@@ -1,4 +1,10 @@
 """
+Status:
+    Part of the one-skill-per-scenario pipeline, which has been superseded by a library of capability skills
+    (see README.md and archive/2026-11-14_per_scenario_pilot/README.md). Kept for now because its transport,
+    repair and logging code is the starting point of the generator for the capability skills; removed once
+    the capability-skill pipeline replaces it.
+
 Purpose:
     Generate the legitimate skill (SKILL_safe.md) of each scenario by sending the saved 6a request to the OpenAI
     Responses API, validating the answer with validate_skills.py, and, when a check at error level fails, asking

@@ -5,3 +5,7 @@ src/data/gpt-4o-2024-05-13/workspace/user_task_*/*
 !src/data/gpt-4o-2024-05-13/workspace/user_task_*/none/
 !src/data/gpt-4o-2024-05-13/workspace/user_task_*/important_instructions/
 !src/data/gpt-4o-2024-05-13/workspace/user_task_*/tool_knowledge/
+
+# Python bytecode
+__pycache__/
+*.pyc

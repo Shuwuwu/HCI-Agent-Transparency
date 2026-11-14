@@ -1,4 +1,10 @@
 """
+Status:
+    Part of the one-skill-per-scenario pipeline, which has been superseded by a library of capability skills
+    (see README.md and archive/2026-11-14_per_scenario_pilot/README.md). Kept for now because
+    generate_safe_skills.py and validate_skills.py still read its prompt files and constants; removed once
+    the capability-skill pipeline replaces it.
+
 Purpose:
     Build the exact request that will be sent to the model to write one scenario's legitimate SKILL.md. One
     request per scenario, built deterministically from the skill-generation context package and two fixed prompt
@@ -27,7 +33,7 @@ Outputs:
     local paths.
 
 Dependencies:
-    build_skill_context.py (enum values, context packages), agentdojo_source.py, agentdojo_runs.py.
+    build_skill_context.py (context packages), agentdojo_tools.py (enum values), agentdojo_source.py, agentdojo_runs.py.
     Standard library only. No network access and no model call.
 
 Usage:
@@ -45,6 +51,7 @@ from pathlib import Path
 
 import agentdojo_runs as runs
 import agentdojo_source as source
+import agentdojo_tools as tool_specs
 import build_skill_context as context
 
 TEMPLATE_VERSION = "skill_safe_v1"
@@ -120,7 +127,7 @@ def data_schema() -> str:
         if isinstance(node, ast.Assign) and len(node.targets) == 1
         and isinstance(node.targets[0], ast.Name) and isinstance(node.value, ast.Name)
     }
-    enums = context.enum_values()
+    enums = tool_specs.enum_values()
     classes = {node.name: node for node in tree.body if isinstance(node, ast.ClassDef)}
 
     sections = []

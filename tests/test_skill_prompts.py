@@ -32,7 +32,7 @@ sys.path.insert(0, str(REPO_ROOT / "src" / "scripts"))
 
 import agentdojo_runs as runs  # noqa: E402
 import agentdojo_source as source  # noqa: E402
-import build_skill_context as context  # noqa: E402
+import agentdojo_tools as tool_specs  # noqa: E402
 import build_skill_prompts as prompts  # noqa: E402
 
 PROMPT_FILES = sorted(prompts.DEFAULT_OUT_DIR.glob("user_task_*.json"), key=lambda p: runs.task_number(p.stem))
@@ -167,7 +167,7 @@ class CommittedPromptsTest(unittest.TestCase):
             self.assertIn(package["environment"]["current_day"], text)
 
     def test_every_prompt_lists_all_24_tools(self):
-        names = [t["name"] for t in context.build_tools()] if clone_available() else None
+        names = [t["name"] for t in tool_specs.build_tools()] if clone_available() else None
         for path in PROMPT_FILES:
             package = load(prompts.DEFAULT_CONTEXT_DIR / path.name)
             text = load(path)["request"]["input"]

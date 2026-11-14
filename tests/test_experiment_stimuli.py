@@ -1,12 +1,13 @@
 """
 Purpose:
     Check that build_experiment_stimuli.py produces the right stimuli folders: one per safe-candidate task,
-    with metadata and a faithful no-attack trace, empty placeholders for the files still to be designed,
-    and a re-run that never overwrites work done in those placeholders.
+    with metadata, a faithful no-attack trace, the list of capability skills the task uses (from the skill
+    taxonomy), an empty placeholder for the action log still to be designed, and a re-run that never overwrites
+    work done in that placeholder.
 
 Inputs:
-    The committed src/data/experiment/ folder, src/data/gpt4o_workspace_scenarios.json, the vendored run
-    files, and (optionally) the AgentDojo clone for a hash comparison with AgentDojo's own files.
+    The committed src/data/experiment/ folder, src/data/gpt4o_workspace_scenarios.json,
+    src/data/skill_taxonomy.json, the vendored run files, and (optionally) the AgentDojo clone for a hash comparison with AgentDojo's own files.
 
 Outputs:
     Pass/fail results from unittest.
@@ -35,7 +36,9 @@ import build_experiment_stimuli as stimuli  # noqa: E402
 # Tasks whose no-attack run failed the task (utility false); they are not safe candidates, so no folder.
 UTILITY_FALSE = {7, 11, 14, 18, 19, 20, 25, 30, 31, 32, 33, 34, 36, 37, 38}
 SAFE_TASKS = sorted(set(range(40)) - UTILITY_FALSE)
-EXPECTED_FILES = {stimuli.METADATA_FILENAME, stimuli.TRACE_FILENAME, *stimuli.PLACEHOLDER_FILENAMES}
+DERIVED_FILENAMES = (stimuli.METADATA_FILENAME, stimuli.TRACE_FILENAME, stimuli.SKILLS_FILENAME)
+EXPECTED_FILES = {*DERIVED_FILENAMES, *stimuli.PLACEHOLDER_FILENAMES}
+TAXONOMY = json.loads(stimuli.DEFAULT_TAXONOMY.read_text(encoding="utf-8"))
 
 
 def folder_for(number: int, root: Path = stimuli.DEFAULT_OUT_DIR) -> Path:
@@ -43,11 +46,11 @@ def folder_for(number: int, root: Path = stimuli.DEFAULT_OUT_DIR) -> Path:
 
 
 def derived_files(root: Path) -> dict:
-    """Map 'task/file' -> bytes for the files the script derives (metadata and trace) under `root`."""
+    """Map 'task/file' -> bytes for the files the script derives (metadata, trace, skills) under `root`."""
     return {
         f"{d.name}/{name}": (d / name).read_bytes()
         for d in sorted(root.glob("user_task_*"))
-        for name in (stimuli.METADATA_FILENAME, stimuli.TRACE_FILENAME)
+        for name in DERIVED_FILENAMES
     }
 
 
@@ -61,7 +64,7 @@ class CommittedStimuliTest(unittest.TestCase):
         for number in UTILITY_FALSE:
             self.assertFalse(folder_for(number).exists(), number)
 
-    def test_every_folder_has_exactly_the_five_files(self):
+    def test_every_folder_has_exactly_the_four_files(self):
         for number in SAFE_TASKS:
             names = {p.name for p in folder_for(number).iterdir()}
             self.assertEqual(names, EXPECTED_FILES, number)
@@ -103,6 +106,17 @@ class CommittedStimuliTest(unittest.TestCase):
             self.assertNotIn("<INFORMATION>", text, number)
             self.assertNotIn(runs.ATTACKER_EMAIL, text, number)
 
+    def test_skills_json_lists_the_skills_of_the_scenario_map(self):
+        for number in SAFE_TASKS:
+            skills = json.loads((folder_for(number) / stimuli.SKILLS_FILENAME).read_text(encoding="utf-8"))
+            self.assertEqual(skills, {"taxonomy_version": TAXONOMY["version"],
+                                      "skills": TAXONOMY["scenario_map"][f"user_task_{number}"]["skills"]}, number)
+            self.assertTrue(skills["skills"], number)
+
+    def test_the_skills_are_not_copied_into_the_task_folders(self):
+        for number in SAFE_TASKS:
+            self.assertEqual(list(folder_for(number).glob("SKILL*")), [], number)
+
     def test_placeholders_are_still_empty(self):
         """Fails once a placeholder is filled in, as a reminder to replace this test with real content checks."""
         for number in SAFE_TASKS:
@@ -135,7 +149,7 @@ class BuilderBehaviourTest(unittest.TestCase):
             _, created_first = stimuli.build_all(out_dir=out)
             before = derived_files(out)
             _, created_second = stimuli.build_all(out_dir=out)
-            self.assertEqual(len(created_first), 75)
+            self.assertEqual(len(created_first), 25)
             self.assertEqual(created_second, [])
             self.assertEqual(derived_files(out), before)
 
@@ -143,11 +157,7 @@ class BuilderBehaviourTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp)
             stimuli.build_all(out_dir=out)
-            filled = {
-                "action_log.json": '[{"step": 1}]',
-                "SKILL_safe.md": "# Safe skill\n",
-                "SKILL_injected.md": "# Injected skill\n",
-            }
+            filled = {"action_log.json": '[{"step": 1}]'}
             for name, text in filled.items():
                 (folder_for(0, out) / name).write_text(text, encoding="utf-8")
             stimuli.build_all(out_dir=out)
@@ -160,12 +170,22 @@ class BuilderBehaviourTest(unittest.TestCase):
             stimuli.build_all(out_dir=out)
             (folder_for(0, out) / stimuli.METADATA_FILENAME).write_text("tampered", encoding="utf-8")
             (folder_for(0, out) / stimuli.TRACE_FILENAME).write_text("tampered", encoding="utf-8")
+            (folder_for(0, out) / stimuli.SKILLS_FILENAME).write_text("tampered", encoding="utf-8")
             stimuli.build_all(out_dir=out)
             self.assertEqual(derived_files(out), derived_files(stimuli.DEFAULT_OUT_DIR))
 
     def test_only_safe_candidates_are_selected(self):
         scenarios = stimuli.safe_scenarios(stimuli.DEFAULT_SCENARIOS)
         self.assertEqual([runs.task_number(s["user_task_id"]) for s in scenarios], SAFE_TASKS)
+
+    def test_a_task_missing_from_the_scenario_map_is_an_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            broken = json.loads(json.dumps(TAXONOMY))
+            del broken["scenario_map"]["user_task_24"]
+            path = Path(tmp) / "taxonomy.json"
+            path.write_text(json.dumps(broken), encoding="utf-8")
+            with self.assertRaises(ValueError):
+                stimuli.build_all(out_dir=Path(tmp) / "out", taxonomy_path=path)
 
     def test_script_does_not_use_the_network(self):
         self.assertNotIn("urllib", Path(stimuli.__file__).read_text(encoding="utf-8"))
