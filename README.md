@@ -17,6 +17,7 @@ documents the agent is said to have followed.
 | `src/data/agentdojo_source_manifest.json` | Paths and git hashes of the AgentDojo files and traces used (provenance). |
 | `src/data/skill_taxonomy.json` | The capability skill library: 6 skills, the Yang et al. subtopics they cover, their workflows, and the map from the 25 scenarios to skills. |
 | `src/data/skill_library/` | Inputs of the capability skills: `sources/<skill>.json` (definition, tool specs, record schemas, provenance) and `prompts/<skill>.json` (the exact request to send to the skill-writing model). |
+| `src/data/skill_library/review/` | The manual review sheet for the six skills (CSV files for two raters and a guide); see `review_guide.md`. |
 | `src/data/skills/<skill>/SKILL.md` | The generated capability skills (empty until generated), with `manifest.json` tying each file to the request, response and validator version that produced it. Attempt logs are in `src/data/skill_library/runs/`. |
 | `src/data/experiment/user_task_N/` | Stimuli of each of the 25 safe-candidate scenarios: `metadata.json`, `no_attack_execution_trace.json`, `skills.json`, `action_log.json` (placeholder). |
 | `archive/` | Superseded research outputs kept as provenance (not read by any script). |
@@ -51,6 +52,7 @@ Capability skills:
 | `skill_text.py` | Text analysis shared by the validator and the taxonomy checker: parsing a skill file, finding tool names and specific values, comparing texts, and the generic tool-accuracy and safety checks. |
 | `generate_skills.py` | Sends each skill's saved request to the OpenAI Responses API (`gpt-6.1-sol`), validates the answer, repairs it up to twice, logs every call, and writes `SKILL.md`, the manifest and a summary. Needs `OPENAI_API_KEY`; has `--dry-run` and `--check-access`. |
 | `validate_capability_skills.py` | Static validator for generated capability skills: 34 checks (structure, tool accuracy, write safety, workflow coverage, agent behaviour, generalisability, safety) plus library-level coverage and overlap checks. Versioned (`VALIDATOR_VERSION`). |
+| `build_review_sheet.py` | Builds the manual review sheet (`src/data/skill_library/review/`): 13 criteria per skill (instruction accuracy, tool coverage, generalizability, safety) and one row per scenario and mapped skill, with the recorded run's calls and empty rater columns. |
 
 The first, one-skill-per-scenario pipeline was removed once the capability pipeline replaced it; its pilot outputs are kept in
 `archive/2026-11-14_per_scenario_pilot/`, and its code can be recovered from commit `1547329`.
@@ -68,7 +70,7 @@ Done: taxonomy, scenario map and checker; scenario stimuli folders with `skills.
 generation prompts; the per-skill static validator; the generator. The prompts are task-agnostic: the generator is shown a skill's scope, workflows, tool
 specifications and record schemas, and no scenario, example request, trace or answer.
 
-Not run yet: the generator has never called the API (needs your key). Not implemented yet (planned, in order): a manual review sheet; execution-based evaluation in AgentDojo; injected skill variants.
+All six skills are generated and pass the validator (`capability_validator_v4`). The review sheet is built and waiting for the two raters. Not implemented yet (planned, in order): execution-based evaluation in AgentDojo; injected skill variants.
 
 ## Running things
 
@@ -79,6 +81,7 @@ python3 -B src/scripts/build_experiment_stimuli.py # rebuild src/data/experiment
 python3 -B src/scripts/build_skill_sources.py      # rebuild src/data/skill_library/sources/ (needs the clone)
 python3 -B src/scripts/build_capability_prompts.py # rebuild src/data/skill_library/prompts/
 python3 -B src/scripts/validate_capability_skills.py # validate src/data/skills/*/SKILL.md (skips skills not written yet)
+python3 -B src/scripts/build_review_sheet.py         # rebuild the review sheet (needs all six skills)
 python3 -B src/scripts/generate_skills.py --dry-run  # show what would be sent (sends nothing, needs no key)
 OPENAI_API_KEY=... python3 -B src/scripts/generate_skills.py --skills calendar-lookup email-correspondence  # pilot run
 ```
