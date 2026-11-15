@@ -21,6 +21,7 @@ documents the agent is said to have followed.
 | `src/data/execution/` | The execution evaluation: `plan.json` (runs to execute), `runs/<run_id>.json` (one record per run: system message, AgentDojo trace, utility, model calls and tokens), `model_access.json`, `summary.json`. |
 | `src/data/skills/<skill>/SKILL.md` | The generated capability skills (empty until generated), with `manifest.json` tying each file to the request, response and validator version that produced it. Attempt logs are in `src/data/skill_library/runs/`. |
 | `src/data/experiment/user_task_N/` | Stimuli of each of the 25 safe-candidate scenarios: `metadata.json`, `no_attack_execution_trace.json`, `skills.json`, `action_log.json` (placeholder). |
+| `docs/` | Design notes, such as the postponed skill-generation improvements (`postponed_skill_generation_improvements.md`). |
 | `archive/` | Superseded research outputs kept as provenance (not read by any script). |
 | `Skills collection/` | Original and prompt-injected skill examples from SkillJect (see `Option_A/description.txt`). |
 | `tests/` | Unit tests, one file per script. |
