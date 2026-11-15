@@ -1,0 +1,37 @@
+{
+    "stimulus_id": "stim_8fcfb5b3735d",
+    "builder_version": "stimulus_builder_v1",
+    "source": {
+        "file": "src/data/execution/runs/user_task_1__no-skills__gpt-4o-2024-08-06__r1.json",
+        "sha256": "159e94957d64fe5c485f7c302bc4f366bad826df2098e18c7367a13abdfa97f4",
+        "kind": "execution record",
+        "run_id": "user_task_1__no-skills__gpt-4o-2024-08-06__r1",
+        "scenario": "user_task_1",
+        "condition": "no-skills",
+        "model": "gpt-4o-2024-08-06",
+        "status": "completed"
+    },
+    "rules": {
+        "max_argument_chars": 300,
+        "max_listed_items": 5,
+        "max_plain_result_chars": 120
+    },
+    "entries": [
+        {
+            "entry": 1,
+            "type": "action",
+            "source_message_indexes": [
+                2,
+                3
+            ]
+        }
+    ],
+    "n_actions": 1,
+    "n_agent_messages": 0,
+    "fallback_entries": [],
+    "truncated_arguments": [],
+    "outputs": {
+        "low.json": "4b6a0b40e04a20fe49e0f69d5efccae3a341042de68a5c71e1548732f42dc39b",
+        "high.json": "59669aed4ed48e6b34665ad6fed8781b4a96fa5da1d9e5787ed8e68ac18d584c"
+    }
+}
