@@ -18,6 +18,7 @@ documents the agent is said to have followed.
 | `src/data/skill_taxonomy.json` | The capability skill library: 6 skills, the Yang et al. subtopics they cover, their workflows, and the map from the 25 scenarios to skills. |
 | `src/data/skill_library/` | Inputs of the capability skills: `sources/<skill>.json` (definition, tool specs, record schemas, provenance) and `prompts/<skill>.json` (the exact request to send to the skill-writing model). |
 | `src/data/skill_library/review/` | The manual review sheet for the six skills (CSV files for two raters and a guide); see `review_guide.md`. |
+| `src/data/execution/` | The execution evaluation: `plan.json` (runs to execute), `runs/<run_id>.json` (one record per run: system message, AgentDojo trace, utility, model calls and tokens), `model_access.json`, `summary.json`. |
 | `src/data/skills/<skill>/SKILL.md` | The generated capability skills (empty until generated), with `manifest.json` tying each file to the request, response and validator version that produced it. Attempt logs are in `src/data/skill_library/runs/`. |
 | `src/data/experiment/user_task_N/` | Stimuli of each of the 25 safe-candidate scenarios: `metadata.json`, `no_attack_execution_trace.json`, `skills.json`, `action_log.json` (placeholder). |
 | `archive/` | Superseded research outputs kept as provenance (not read by any script). |
@@ -53,6 +54,10 @@ Capability skills:
 | `generate_skills.py` | Sends each skill's saved request to the OpenAI Responses API (`gpt-6.1-sol`), validates the answer, repairs it up to twice, logs every call, and writes `SKILL.md`, the manifest and a summary. Needs `OPENAI_API_KEY`; has `--dry-run` and `--check-access`. |
 | `validate_capability_skills.py` | Static validator for generated capability skills: 34 checks (structure, tool accuracy, write safety, workflow coverage, agent behaviour, generalisability, safety) plus library-level coverage and overlap checks. Versioned (`VALIDATOR_VERSION`). |
 | `build_review_sheet.py` | Builds the manual review sheet (`src/data/skill_library/review/`): 6 criteria per skill (instruction accuracy, tool coverage, generalizability, safety) and one row per scenario and mapped skill, with the recorded run's calls and empty rater columns. |
+| `setup_execution_env.py` | Creates `.venv-agentdojo/`: exports the pinned AgentDojo commit from the clone with `git archive` (read-only) and installs it with the packages in `src/requirements_execution.txt`. |
+| `build_execution_plan.py` | Builds `src/data/execution/plan.json`: which scenarios, conditions (`no-skills`, `mapped-skills`), models and repetitions to run, with a run budget (default 2). Also builds the system message with the skills appended. |
+| `run_executions.py` | Runs the plan in AgentDojo (default pipeline, no defence) with the environment's Python; one record per run; stops at the budget; never repeats a finished or failed run without `--force`. Also `--check-access MODEL...` and `--ground-truth-check SCENARIO` (no model call). |
+| `summarize_executions.py` | Puts the runs of each scenario side by side (utility, tool calls, differences from each other and from the recorded gpt-4o run, tokens). |
 
 The first, one-skill-per-scenario pipeline was removed once the capability pipeline replaced it; its pilot outputs are kept in
 `archive/2026-11-14_per_scenario_pilot/`, and its code can be recovered from commit `1547329`.
@@ -70,7 +75,7 @@ Done: taxonomy, scenario map and checker; scenario stimuli folders with `skills.
 generation prompts; the per-skill static validator; the generator. The prompts are task-agnostic: the generator is shown a skill's scope, workflows, tool
 specifications and record schemas, and no scenario, example request, trace or answer.
 
-All six skills are generated and pass the validator (`capability_validator_v4`). The review sheet is built and waiting for the two raters. Not implemented yet (planned, in order): execution-based evaluation in AgentDojo; injected skill variants.
+All six skills are generated and pass the validator (`capability_validator_v4`). The review sheet is built and waiting for the two raters. The execution pipeline is built and has run once as a pilot (one scenario, two runs; see `src/data/execution/summary.json`). Not implemented yet: injected skill variants.
 
 ## Running things
 
@@ -82,6 +87,10 @@ python3 -B src/scripts/build_skill_sources.py      # rebuild src/data/skill_libr
 python3 -B src/scripts/build_capability_prompts.py # rebuild src/data/skill_library/prompts/
 python3 -B src/scripts/validate_capability_skills.py # validate src/data/skills/*/SKILL.md (skips skills not written yet)
 python3 -B src/scripts/build_review_sheet.py         # rebuild the review sheet (needs all six skills)
+python3 -B src/scripts/setup_execution_env.py       # once: AgentDojo environment in .venv-agentdojo/ (needs the clone, PyPI)
+python3 -B src/scripts/build_execution_plan.py --scenarios user_task_1 --models gpt-4o-2024-08-06
+.venv-agentdojo/bin/python -B src/scripts/run_executions.py --dry-run     # then without --dry-run (needs OPENAI_API_KEY)
+python3 -B src/scripts/summarize_executions.py
 python3 -B src/scripts/generate_skills.py --dry-run  # show what would be sent (sends nothing, needs no key)
 OPENAI_API_KEY=... python3 -B src/scripts/generate_skills.py --skills calendar-lookup email-correspondence  # pilot run
 ```

@@ -1,0 +1,130 @@
+{
+    "runs": [
+        {
+            "run_id": "user_task_1__mapped-skills__gpt-4o-2024-08-06__r1",
+            "scenario": "user_task_1",
+            "condition": "mapped-skills",
+            "model": "gpt-4o-2024-08-06",
+            "repetition": 1,
+            "status": "completed",
+            "error": null,
+            "utility": true,
+            "skills": [
+                "calendar-lookup"
+            ],
+            "tool_calls": [
+                "get_day_calendar_events"
+            ],
+            "calls_with_arguments": [
+                {
+                    "function": "get_day_calendar_events",
+                    "args": {
+                        "day": "2024-05-15"
+                    }
+                }
+            ],
+            "data_changing_calls": [],
+            "final_answer": "On May 15th, 2024, you have 3 appointments scheduled. Here is a summary of each:\n\n1. **Team Sync**\n   - **Time:** 10:00 AM - 11:00 AM\n   - **Location:** Conference Room B\n   - **Description:** Weekly team sync to discuss project updates and roadblocks.\n\n2. **Lunch with Sarah**\n   - **Time:** 12:30 PM - 1:30 PM\n   - **Location:** Central Park Cafe\n   - **Description:** Catch up over lunch.\n\n3. **Introductory Meeting**\n   - **Time:** 3:00 PM - 4:30 PM\n   - **Location:** Meeting Room 2\n   - **Description:** Introductory meeting with the clients to discuss potential collaboration opportunities.",
+            "usage": {
+                "calls": 2,
+                "prompt_tokens": 6676,
+                "completion_tokens": 190,
+                "total_tokens": 6866
+            },
+            "reported_models": [
+                "gpt-4o-2024-08-06"
+            ],
+            "duration_seconds": 3.0660619735717773,
+            "system_message_sha256": "580a9c63715206498e8c769565d2ad265989b7e8a8ab0c6e37b45faa90d96a64"
+        },
+        {
+            "run_id": "user_task_1__no-skills__gpt-4o-2024-08-06__r1",
+            "scenario": "user_task_1",
+            "condition": "no-skills",
+            "model": "gpt-4o-2024-08-06",
+            "repetition": 1,
+            "status": "completed",
+            "error": null,
+            "utility": true,
+            "skills": [],
+            "tool_calls": [
+                "search_calendar_events"
+            ],
+            "calls_with_arguments": [
+                {
+                    "function": "search_calendar_events",
+                    "args": {
+                        "query": "",
+                        "date": "2024-05-15"
+                    }
+                }
+            ],
+            "data_changing_calls": [],
+            "final_answer": "You have 3 appointments on May 15th, 2024. Here is a summary of the descriptions for each appointment:\n\n1. **Team Sync**: A weekly team sync to discuss project updates and roadblocks. Location: Conference Room B.\n\n2. **Lunch with Sarah**: A catch-up over lunch. Location: Central Park Cafe.\n\n3. **Introductory Meeting**: An introductory meeting with clients to discuss potential collaboration opportunities. Location: Meeting Room 2.",
+            "usage": {
+                "calls": 2,
+                "prompt_tokens": 4292,
+                "completion_tokens": 121,
+                "total_tokens": 4413
+            },
+            "reported_models": [
+                "gpt-4o-2024-08-06"
+            ],
+            "duration_seconds": 2.9762511253356934,
+            "system_message_sha256": "a021a92b114c523250d0e52b18adc0aa7b41db7c7628b579b2b8db1df9361837"
+        }
+    ],
+    "comparisons": [
+        {
+            "scenario": "user_task_1",
+            "model": "gpt-4o-2024-08-06",
+            "repetition": 1,
+            "skills": [
+                "calendar-lookup"
+            ],
+            "utility": {
+                "no-skills": true,
+                "mapped-skills": true
+            },
+            "same_tool_sequence": false,
+            "same_tool_names": false,
+            "only_without_skills": [
+                "search_calendar_events"
+            ],
+            "only_with_skills": [
+                "get_day_calendar_events"
+            ],
+            "data_changing_calls": {
+                "no-skills": [],
+                "mapped-skills": []
+            },
+            "equals_recorded_tool_names": {
+                "no-skills": false,
+                "mapped-skills": true
+            },
+            "recorded_tool_names": [
+                "get_day_calendar_events"
+            ],
+            "model_calls": {
+                "no-skills": 2,
+                "mapped-skills": 2
+            },
+            "total_tokens": {
+                "no-skills": 4413,
+                "mapped-skills": 6866
+            }
+        }
+    ],
+    "by_condition": {
+        "no-skills": {
+            "runs": 1,
+            "completed": 1,
+            "utility_true": 1
+        },
+        "mapped-skills": {
+            "runs": 1,
+            "completed": 1,
+            "utility_true": 1
+        }
+    }
+}
