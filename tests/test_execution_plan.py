@@ -78,13 +78,17 @@ class PlanTest(unittest.TestCase):
             self.assertEqual(first.read_bytes(), second.read_bytes())
             self.assertEqual(json.loads(first.read_text())["plan_version"], bp.PLAN_VERSION)
 
-    def test_committed_plan_matches_its_skill_files(self):
+    def test_committed_plan_skills_are_recoverable_from_the_generation_logs(self):
+        """The plan records the skills the pilot ran with. Skills may be regenerated later (the file then differs), so
+        the recorded hash must match an accepted attempt in the logs, which keep every generated text."""
+        import hashlib
         plan = json.loads(bp.DEFAULT_PLAN.read_text(encoding="utf-8"))
         for run in plan["runs"]:
             for entry in run["skills"]:
-                import hashlib
-                self.assertEqual(hashlib.sha256((bp.runs.REPO_ROOT / entry["file"]).read_bytes()).hexdigest(),
-                                 entry["sha256"])
+                logs = (bp.runs.REPO_ROOT / "src" / "data" / "skill_library" / "runs" / entry["id"]).glob("attempt_*.json")
+                accepted = {hashlib.sha256(json.loads(path.read_text(encoding="utf-8"))["skill_text"].encode("utf-8")).hexdigest()
+                            for path in logs if json.loads(path.read_text(encoding="utf-8"))["accepted"]}
+                self.assertIn(entry["sha256"], accepted, f"{entry['id']} in {run['run_id']}")
 
 
 if __name__ == "__main__":

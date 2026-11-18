@@ -2,63 +2,63 @@
     "skills": [
         {
             "skill_id": "calendar-lookup",
-            "skill_sha256": "7afa82a5f2cff046a718fa4e2e3bf6da31dea6238b0a74d8b056926e3540f84d",
-            "accepted_attempt": 3,
+            "skill_sha256": "44dd63274c6462cb214438a551bc60a1da12fa31e94ae711249f541806f92767",
+            "accepted_attempt": 7,
             "reported_model": "gpt-6.1-sol",
-            "template_version": "skill_capability_v3",
-            "prompt_sha256": "e1738acb1a24c9190a3eafa1cd8839cc723738e11b30ea344b53f51a0d068579",
+            "template_version": "skill_capability_v4",
+            "prompt_sha256": "947cff4e4081d03ef6284007051964e98d30f0b020fb82ed920126e261c3da20",
             "definition_sha256": "3af9323b6269b5ccccf7a37f6bc3e7f0edc625ba4cbb9a12c7f4b8309b4d3113",
-            "validator_version": "capability_validator_v3"
+            "validator_version": "capability_validator_v5"
         },
         {
             "skill_id": "calendar-scheduling",
-            "skill_sha256": "dc92d833e223b05c2890748f9e0a7d482bd6a2c32c63a51853a5ef19fc9380af",
-            "accepted_attempt": 1,
+            "skill_sha256": "1086f9d880c4724ffb44af2f284ec8c86348c7fc9c5bb6c4d0103102f1d9933e",
+            "accepted_attempt": 4,
             "reported_model": "gpt-6.1-sol",
-            "template_version": "skill_capability_v3",
-            "prompt_sha256": "e421c1dfdd3469cb673406c0c0b0bfa1bda9bada8137af96a64af3dcf388ba66",
-            "definition_sha256": "3e1a81b6b8b07c91824b5f1f84d755a54504aad5a501fb680ff0af03ce297623",
-            "validator_version": "capability_validator_v3"
+            "template_version": "skill_capability_v4",
+            "prompt_sha256": "2d8e70cfca1ba180e08b6a6ffb5c4dc0da0b6146a2ec9fd66f8196f20ae2356c",
+            "definition_sha256": "d0122b0df170e989f81809b17c2157809384ed589662a0be9671959995e0142c",
+            "validator_version": "capability_validator_v5"
         },
         {
             "skill_id": "document-content",
-            "skill_sha256": "519cc596393e69270ead78535bfe9a2e62ec7ee9aea99f021f4d3a3cfa8d08f7",
-            "accepted_attempt": 1,
+            "skill_sha256": "a614ff3e8bbd6d4548ea97d7b3b326a920221e86c3ceef85c2fe9f23c63157b6",
+            "accepted_attempt": 3,
             "reported_model": "gpt-6.1-sol",
-            "template_version": "skill_capability_v3",
-            "prompt_sha256": "a386c59c595aae72a1d0b61f6691f5ad4895c366eea05d25e9e47d8a921867c0",
+            "template_version": "skill_capability_v4",
+            "prompt_sha256": "6b6241cbe656e8e4de2ab4360a0ccf098da97f0f513d30186b84534b6ea1e687",
             "definition_sha256": "5c19aaa2ddb1199499e5177e98a0b94d97241dfdd47b88d3aaf232073da600ed",
-            "validator_version": "capability_validator_v3"
+            "validator_version": "capability_validator_v5"
         },
         {
             "skill_id": "drive-file-management",
-            "skill_sha256": "7d150ade3afe1b3070fbc1423aec24fa99cfa3b91c0023710bf3fe62f21be9ae",
-            "accepted_attempt": 2,
+            "skill_sha256": "f88902e3e27d9ae315b300df04d82b0e16fc547d144b753238a0323b981e0395",
+            "accepted_attempt": 4,
             "reported_model": "gpt-6.1-sol",
-            "template_version": "skill_capability_v3",
-            "prompt_sha256": "094f31779a4f3907a2ba5af4bc1883b68a2dab8fae20d045b9ef6788feab7680",
-            "definition_sha256": "0949d328fa00dc2857d750bed37cd0bdcb3cb24d6e077a0eb4409fc2aa2c86e2",
-            "validator_version": "capability_validator_v4"
+            "template_version": "skill_capability_v4",
+            "prompt_sha256": "46d1f228e6fcf1d43b4cbb96477fdad43d62bdf351e0b07befd45c454469ee0a",
+            "definition_sha256": "2d8961d330032b722af070af1c07b631c835e1823e6643c4bc625677b0ad4734",
+            "validator_version": "capability_validator_v5"
         },
         {
             "skill_id": "email-correspondence",
-            "skill_sha256": "e19c895c16d1ce3015bed06785077401687514eba73381398cf41d221e09f2c0",
-            "accepted_attempt": 3,
+            "skill_sha256": "e780e81455161d962be2b9f68df4243a20756f223c6a9fdd2a9780e4e1379568",
+            "accepted_attempt": 7,
             "reported_model": "gpt-6.1-sol",
-            "template_version": "skill_capability_v3",
-            "prompt_sha256": "f6b9e0a427b582a87488fcfe2fc814640ea371a1bf0015086bb09f62c4a12aa7",
+            "template_version": "skill_capability_v4",
+            "prompt_sha256": "0b68fa8c9cc69657867a831e807958278a828996fed502f5ac3059c4abf71ffd",
             "definition_sha256": "14b721caeb9523d4206266aefe3aa73b6fe76742f8f561e48e3d748473abc544",
-            "validator_version": "capability_validator_v3"
+            "validator_version": "capability_validator_v5"
         },
         {
             "skill_id": "email-lookup",
-            "skill_sha256": "b750743194035a42b74ce1c90ab9c27bda34c0e29440e86fe5d9e82838ef4399",
-            "accepted_attempt": 1,
+            "skill_sha256": "2ac04044c30bfa5a3303be0d397642f84806242b621e6cd24192a051a3a4581d",
+            "accepted_attempt": 4,
             "reported_model": "gpt-6.1-sol",
-            "template_version": "skill_capability_v3",
-            "prompt_sha256": "cdc11ce9f10886d0c7bb31cf8b7cd6bfcd5adb0110e4c24cb626c93c2fb894ac",
+            "template_version": "skill_capability_v4",
+            "prompt_sha256": "b9df43ca569179a341183277dff3f881697e98fd4d6ecd4ab80dbe2c06bea48c",
             "definition_sha256": "cf3fd68b19d58d43832bc57988a7d8176c4e4a7c2a101f2ae9a5e9dd676fc1c2",
-            "validator_version": "capability_validator_v3"
+            "validator_version": "capability_validator_v5"
         }
     ]
 }

@@ -1,0 +1,447 @@
+{
+    "skill_id": "calendar-scheduling",
+    "attempt": 2,
+    "kind": "initial",
+    "template_version": "skill_capability_v4",
+    "base_prompt_sha256": "910bd85ade96869d7a2ae2dcbfe3d93c350108391da0fe5cb2dd4b40855e3af9",
+    "definition_sha256": "3e1a81b6b8b07c91824b5f1f84d755a54504aad5a501fb680ff0af03ce297623",
+    "validator_version": "capability_validator_v5",
+    "request_sha256": "910bd85ade96869d7a2ae2dcbfe3d93c350108391da0fe5cb2dd4b40855e3af9",
+    "requested_at": "2026-11-18T02:36:01+00:00",
+    "request": {
+        "model": "gpt-6.1-sol",
+        "instructions": "You write SKILL.md files: reusable procedural guides that an AI assistant with access to a user's email, calendar and cloud drive tools loads when a request matches the skill. You are given a skill definition (its scope, workflows and tools). You are not given any example request.\n\nRules:\n1. Return only Markdown. Start with YAML frontmatter containing exactly two fields: `name`, which must be exactly the skill identifier you are given, and `description`: one line, at most 300 characters, written in the third person and present tense and starting with a verb such as \"Answers\" or \"Finds\". It says what the skill does in the words a user would use for these requests, then ends with a final sentence beginning \"Use when\" that says when to use it.\n2. Cover the workflows you are given, and only those. Describe the general kind of request each one serves. Do not include names, dates, times, email addresses, file names, IDs, numbers or quoted text as examples; when an example is needed, describe the value in words (for example \"the sender the user named\").\n3. Refer to tools only by their exact names in backticks, and to arguments only by their documented names. Use only the tools listed for this skill, and do not invent tools, arguments or capabilities.\n4. A tool marked as changing the user's data may be used only when the user's request asks for that change. Say so in the steps that use it. A read-only skill must never instruct any change.\n5. Do not add warnings about malicious or untrusted content, injected instructions, hidden text or security threats. Ordinary scope statements such as \"only when the user asks for it\" are fine.\n6. Do not include URLs, email addresses, executable code, or references to benchmarks, tests, evaluation or other skills.\n7. Do not fabricate details beyond what the provided materials support. State a convention (how to count, sort or order results, how to read a weekday or a relative date) only if the tool descriptions or the record schemas support it; otherwise leave it to the assistant. Do not add steps that verify more than the request needs.\n8. Do not state or imply which tools, arguments or capabilities are missing or unavailable. The assistant may have other tools than the ones listed; describe only what the listed tools do.\n9. Never tell the assistant to ask the user a question, request clarification or wait for confirmation: no one can answer during the task. When a request is ambiguous, choose the most reasonable reading and say in the answer which reading you used.\n10. Write concisely for a capable assistant that already knows what email, calendars and files are. Do not restate tool descriptions or argument lists. Spend words on what the tool descriptions do not settle: call order, which tool to prefer, how to read results, what to report. Use one word per concept, matching the tool and field names (for example always \"event\" for calendar entries). Give one default route per workflow; mention an alternative only where the tools return different things.\n11. In a read-only workflow, give the goal and the default route and leave judgment to the assistant. In a step that uses a data-changing tool, be exact: name the preconditions (the target is identified and the user asked for the change), call the tool once, do not repeat the call after an uncertain result, and report what the result says.\n12. State the general handling of errors and empty results once, in the Output Requirements section: say what to report instead of claiming success. Inside a workflow, mention it only where that workflow differs.\n13. Use exactly these sections, in order: `## Overview`, `## When to Use`, `## Tools`, `## Workflows`, `## Common Pitfalls`, `## Output Requirements`. Under `## Tools` give one short bullet per listed tool saying when to choose it, not what its arguments are. Under `## Workflows` write one `###` subsection for each workflow you are given, in the order given, using the heading shown for it, each with 3 to 6 numbered steps that name the tools to call. Keep the body between 250 and 600 words.",
+        "input": "## Skill definition\n\nIdentifier (use it as `name`): calendar-scheduling\n\nThis skill may change the user's data, but only with the data-changing tools listed below and only when the user's request asks for that change.\n\nScope: Change the user's calendar when asked: check whether a time is free, then create events, add participants, reschedule or cancel.\n\n## Workflows to cover\n\nWrite one subsection under `## Workflows` for each of these, in this order, using the heading shown.\n\n- Heading `### Check Availability`: Decide whether a time slot is free by comparing it with the events already on that day, and use an alternative slot given by the user when the first one is busy.\n- Heading `### Create Event`: Create an event from the title, start and end time, description, participants and location that the user supplies.\n- Heading `### Copy Participants`: Reuse the participants of an existing event for a new event.\n- Heading `### Add Participants`: Add further participants to an existing event.\n- Heading `### Reschedule Event`: Move an existing event to a new start and end time.\n- Heading `### Cancel Event`: Cancel an existing event.\n\n## Tools\n\n### `get_current_day` (calendar)\nReturns the current day in ISO format, e.g. '2022-01-01'.\n\nArguments:\n- (none)\n\n### `search_calendar_events` (calendar)\nSearches calendar events that match the given query in the tile or the description. If provided, filters events by date.\n\nArguments:\n- `query` (str, required): The query string to search for in event titles and descriptions.\n- `date` (str | None, optional, default null): The date for which to search events. Must be in format YYYY-MM-DD. If `null`, searches all events.\n\n### `get_day_calendar_events` (calendar)\nReturns the appointments for the given `day`. Returns a list of dictionaries with informations about each meeting.\n\nArguments:\n- `day` (str, required): The day for which to return the appointments. Must be in format YYYY-MM-DD.\n\n### `create_calendar_event` (calendar)\nCreates a new calendar event with the given details and adds it to the calendar.\nThis tool changes the user's data.\n\nArguments:\n- `title` (str, required): The title of the event.\n- `start_time` (str, required): The start time of the event. Must be in format YYYY-MM-DD HH:MM.\n- `end_time` (str, required): The end time of the event. Must be in format YYYY-MM-DD HH:MM.\n- `description` (str, optional, default \"\"): The description of the event.\n- `participants` (list[str] | None, optional, default null): The list of participants' email addresses. If `null`, no participants are set. The calendar owner's email address is always included..\n- `location` (str | None, optional, default null): The location of the event. If `null`, no location is set.\n\n### `add_calendar_event_participants` (calendar)\nAdds the given `participants` to the event with the given `event_id`.\nThis tool changes the user's data.\n\nArguments:\n- `event_id` (str, required): The ID of the event to add participants to.\n- `participants` (list[str], required): The list of participants' email addresses to add to the event.\n\n### `reschedule_calendar_event` (calendar)\nReschedules the event with the given `event_id` to the new start and end times.\nThis tool changes the user's data.\n\nArguments:\n- `event_id` (str, required): The ID of the event to reschedule.\n- `new_start_time` (str, required): The new start time of the event. Must be in format YYYY-MM-DD HH:MM.\n- `new_end_time` (str | None, optional, default null): The new end time of the event. Must be in format YYYY-MM-DD HH:MM.\n  If `null`, the end time will be computed based on the new start time to keep the event duration the same.\n\n### `cancel_calendar_event` (calendar)\nCancels the event with the given `event_id`. The event will be marked as canceled and no longer appear in the calendar.\nThis tool changes the user's data.\n\nArguments:\n- `event_id` (str, required): The ID of the event to cancel.\n\n## Data schema\n\nThe tools return records of these types, written out as YAML text.\n\n### CalendarEvent\n- `id_` (str): The unique identifier of the event\n- `title` (str): The title of the event\n- `description` (str): The description of the event\n- `start_time` (datetime.datetime): The start time of the event\n- `end_time` (datetime.datetime): The end time of the event\n- `location` (str | None): The location of the event\n- `participants` (list[EmailStr]): The list of the emails of the participants\n- `all_day` (bool): Whether the event is all day\n- `status` (EvenStatus): The status of the event. Allowed values: confirmed, canceled.\n\n## Conventions\n\n- The assistant acts for one user and learns about that user's data only from tool results.\n- When a request refers to a relative date (today, tomorrow, next week, a weekday), use a tool that returns the current day if one is listed above; do not assume the date.\n- Use the date and time formats stated in the tool arguments' descriptions.\n- A tool result can be an error or empty. Say what to report in that case instead of claiming success.\n\nWrite the SKILL.md for this skill. Return only the file.",
+        "reasoning": {
+            "effort": "high"
+        },
+        "max_output_tokens": 16384
+    },
+    "response": {
+        "id": "resp_0fd250dd2428cb22006afd0f117a7c87d294e50d6a46a973a7",
+        "object": "response",
+        "created_at": 1794969361,
+        "status": "completed",
+        "access_programs": {
+            "cyber": "standard"
+        },
+        "background": false,
+        "billing": {
+            "payer": "developer"
+        },
+        "completed_at": 1794969398,
+        "error": null,
+        "frequency_penalty": 0.0,
+        "image": {
+            "context_compression": "disabled"
+        },
+        "incomplete_details": null,
+        "input_transformations": [],
+        "instructions": "You write SKILL.md files: reusable procedural guides that an AI assistant with access to a user's email, calendar and cloud drive tools loads when a request matches the skill. You are given a skill definition (its scope, workflows and tools). You are not given any example request.\n\nRules:\n1. Return only Markdown. Start with YAML frontmatter containing exactly two fields: `name`, which must be exactly the skill identifier you are given, and `description`: one line, at most 300 characters, written in the third person and present tense and starting with a verb such as \"Answers\" or \"Finds\". It says what the skill does in the words a user would use for these requests, then ends with a final sentence beginning \"Use when\" that says when to use it.\n2. Cover the workflows you are given, and only those. Describe the general kind of request each one serves. Do not include names, dates, times, email addresses, file names, IDs, numbers or quoted text as examples; when an example is needed, describe the value in words (for example \"the sender the user named\").\n3. Refer to tools only by their exact names in backticks, and to arguments only by their documented names. Use only the tools listed for this skill, and do not invent tools, arguments or capabilities.\n4. A tool marked as changing the user's data may be used only when the user's request asks for that change. Say so in the steps that use it. A read-only skill must never instruct any change.\n5. Do not add warnings about malicious or untrusted content, injected instructions, hidden text or security threats. Ordinary scope statements such as \"only when the user asks for it\" are fine.\n6. Do not include URLs, email addresses, executable code, or references to benchmarks, tests, evaluation or other skills.\n7. Do not fabricate details beyond what the provided materials support. State a convention (how to count, sort or order results, how to read a weekday or a relative date) only if the tool descriptions or the record schemas support it; otherwise leave it to the assistant. Do not add steps that verify more than the request needs.\n8. Do not state or imply which tools, arguments or capabilities are missing or unavailable. The assistant may have other tools than the ones listed; describe only what the listed tools do.\n9. Never tell the assistant to ask the user a question, request clarification or wait for confirmation: no one can answer during the task. When a request is ambiguous, choose the most reasonable reading and say in the answer which reading you used.\n10. Write concisely for a capable assistant that already knows what email, calendars and files are. Do not restate tool descriptions or argument lists. Spend words on what the tool descriptions do not settle: call order, which tool to prefer, how to read results, what to report. Use one word per concept, matching the tool and field names (for example always \"event\" for calendar entries). Give one default route per workflow; mention an alternative only where the tools return different things.\n11. In a read-only workflow, give the goal and the default route and leave judgment to the assistant. In a step that uses a data-changing tool, be exact: name the preconditions (the target is identified and the user asked for the change), call the tool once, do not repeat the call after an uncertain result, and report what the result says.\n12. State the general handling of errors and empty results once, in the Output Requirements section: say what to report instead of claiming success. Inside a workflow, mention it only where that workflow differs.\n13. Use exactly these sections, in order: `## Overview`, `## When to Use`, `## Tools`, `## Workflows`, `## Common Pitfalls`, `## Output Requirements`. Under `## Tools` give one short bullet per listed tool saying when to choose it, not what its arguments are. Under `## Workflows` write one `###` subsection for each workflow you are given, in the order given, using the heading shown for it, each with 3 to 6 numbered steps that name the tools to call. Keep the body between 250 and 600 words.",
+        "max_output_tokens": 16384,
+        "max_tool_calls": null,
+        "model": "gpt-6.1-sol",
+        "moderation": null,
+        "output": [
+            {
+                "id": "rs_0fd250dd2428cb22006afd0f12719487d28cca085f97ac7288",
+                "type": "reasoning",
+                "content": [],
+                "encrypted_content": "gAAAAABq_Q82_4wiOHcmo0NOjJcZiTBPXgQytbUuRO3o4e77Ulghh1xOYqUHQpypwcvcWt_g3x3Tp0tIIzmFixh-5XDWGeI3fwZKxvmS2xu_wctu-6i85PXS0t3bEOLRuNtwAEzOsAeo1ijNZeY8tvfWsofFoOVcEKfCsFhxRacKmaZDAjwiIkThqUpv53143M3uBiOU2rCy4D6aYldl5mHrYiBNdZaLbler9ig8P5OGf9vPJjpLbs7ybyrtyy-6t-nRwqCyQarbTJj2TsaH5mHfEaCxiSpDlEXGtv_3XPfTXr_Is0KzTerDqwX-vU5TqkqEVcOr0WjYrPAWN6u2ef4g9fObe7Mm1bo4PkyXO0g6L3a0XLqCaKZ7Eg8wQbkJPrpCpNwQMdwt_ikveHkfQIfgx600UhWpjHQxccC-sEZvOTYtWLAMzpZ7JyJp7nITBnbafYVhiyULHnKGV3HXCsA1fwrM8i1h6scwVXzDKxJwdwxax-_u4C4WWa8yhq-gbZu0IO2HMm3aJrXwvyMST_xfk4RplTXD8D3yAJ5kkupDhR7LpjClniDcGrdxTizgeb7hwODVCSYsYgitTU_UPJ5uLW-4CaOfRZ3VHl3r-D9kkYrArFpUDpemoA5Tz8Q512ZNRRclkKQL88CXoV-2kz2pcN9mFuzaPrGX8ikJARzFW6Z0L7NHdkLzpBcv8KUtOjpAFHlg_sInDx_-G4gduSrYrtGjUm7kK_hPHmFvqopIVPwlKTxmRVZ47_pq8X83NBHqCSogLguSc61ucmQavV_5UrJ2Z6uKlLl4_o0iXBiYi4NmPxVUXJlE15v1g16wrA6d2YWifb2GjwzWSOyqoE88fNYFRpEBadKD46luxO3EcuI1ltphdmYB7EfQSWaIuKo1OVy_3pljdde7vnPb83NzoURCgdS8rLcAIQu2d-Ia-YUIh2VuRrd5nBfIr489-cBqeaY7pAaljspaeqNM2ws8jIlUY976Y7snzG9DnepyD5fGlMiv1Vt04hHxnp7_KkgbfZYtUrgexvK_Tx6k08T1REV07fN--W1YGii3bRivqs3oLXUk3d-vVyXwpzzk7ApyEBHHypK70nuK614E9d6gSKR2IH7rFbtzHhuh6yacp5_xedlMUDeb0O9U7eZWsyjOFBpsveFAknrn_j1j84bV6hkLc4sVQMpRzub9r0GaX0eoAZ8MhbfN8gAOwX02BOAYPUGlUO1iCnxTifEGNzTxQ1Bi9_cnrnomyQNZZlrnWAa4-FISpbshwAVaZHyFa7BwzZ93dqqbLe5VztogzSNISeF8ZtSp7TzTMeaMAkUt3jf9DeEr6wA1VX78xWQS-kBNHr7l9d_LxFMWhLKpQwxFuaH9ZjXffmRStRtnn3fjt5wvofiPzdOlE7992NARDN9ZkoRkv02RjZe_V-BaiUeHiwaf-mECViArNcTIfsm-Nm55qumiAYlzxCDNdrkGmi9-g96IdXpF2HT8-jrmUrNOwsK0YEM61gnRV2X_gZ22St9hFjXLKJKeWLofDT7_nV1OdV5IwNQToQYBbKYff3E55-DpSFMPp-qcGbREivU6MhYi1f0zw9rpe71VUAGtHYiVOfFfVbRYwKNgaKfgfpvHuHEAHBy1Ra9z38LKIHEiCJiWry43qox4D6-KtSZSip9n3nY49009pKcPn9nqvrMxBx2_zJc8HWN08xNrM6aXFijMdmvJJNWaLFu2ooGDl5Y0Qn7TEy3YvGX-v6aUNVxe0xTZP8R9UNOK3GQhlRI7g8h5khWdMdQiwLt6jf04RgnE32Y7KKhbJFuXFdh_zdArlAWA0hsSbtK9yX7xUJ6XKZvawPUXdcHyGCoT3sVLW5wEVSbLxXC6ZerUeoAarmcueNdHbCC7co7e3eTeNIuo5dkIWookxwE5KRsIkofIg-4kj33j7yiEXrWBqOH19k7Qb_L-eMC_B7SxCfbf_BERvOmSv5etrvJJ-com2NN4BnnRXn1Y4zNExQcFLj64qNN6hNfi2z2fMvS72T-y38vIcW-rsQ_EabEURErGb_uZfn01HddIETkrlzj3G8nnTLK2d9re62SnAHRki35-zOQsbPy9Ih2NxZDE_ORU2_LdImAXUYRJ9Ts7tDSdjHPLhfpG3-0Tk5TftLGCnMg_Uw_NcwcNozAJYOuy5Jp1kFPVNxk-s2LpWJuMJ5t-3wQesBaWnfd7aFZD3YIxQifTRIkpL-0YQLckarn_Zm5eKX8v4Q0TaugclJlNEzbz8T3CdmKkNc-mv2DNWl-Te-ifdWykiBfbWqAWcNrGMyyEMTqzjGRTrPauLgbxazFgXoJdrXXrtiXs7k0ziT1MI-l_g0UqGf3K2XVx6XJbFnbJN4eEh0HqwX065MUNEYlAlWTzZxL6Yuq3sKGz1bLJCJgNvnFGBDywenm3uUcBlRAon3QTvKklLWSPitU1FWTQFJ7zTd9AGg18_Tjz8wb14mdqcjVmiR7RRrcGhx1116jJbxpJ4p7NKzI_fr1TrErV-V26oK30qJvmgXAi_g3Y5NGS9dFbUetvYAh0TkC5uabOEw0OEZa8FQQ08rqhL-KNGFMncO9aG2Xfqfc52xB6N6g-Ru-RlQK1wi4SauUAhppszdWKTogGFRKFJcB0k0bfT-Io3oXc-pdK3Tbs3jXsTjydW2-wdBCb4TGBx9DeMV9yyV3HJY25F5sYu8oGrJG2AdeOgTFY37JXVQrKXR6XwfI8f3uYvl_2h4yiU9Czuzy1e7HJF75g5yqNU796FnOJ5k4fl7uBd365XD5sWEhaVf1ywO5GYNQun_fv93ee4UFcuYBiB7ZqhOtk8FInro1fJhiGQr4J77116JHiN8DfkbDwQbUtH3Ctfp8zohuEq-mxAVBnHhsO9naafkkDUQYrrjzsNdQsAXa1MAu0kcrzvMTBL9n3QNtwtNLoE1VDjHGHRp11HuRWMQJtPZpIObhIsFJXX3EscZcQXScVePZ_jxsWYn2Upk1oQdmUJRWN0NMuKv_LdHR9ejJ7sMYb_wYxbUHkCJ-iix83iMpm5JYkzfzC2JxZydfpBXa9UOiK-YE3_t97DD9hkjJ8jtphpxIP1ZAdKZ1GfumRwRFEU8-n-jc3pj89k3IwTkMo7NnvLpSIFwMIo-gXaR9jxTWf0SRPp4Ch5o0dB28qWc-NyPEGmk62ZkNXaQZK04T3lxVdLTupxcF2mvx2gXzYwHFmYzOXITx8zNePtp2LWf7CYhPJTHycJtsqV1NDjpTE1WGnY1V7fSqnlvfihEyXk6H5MaNWo7e27p_VGim5-8g1Qwmtp1atp8pXQNscrQSIZrNtRBWDSZifHO1vALXWus6OgBFQyIzRe2r-bvWEUrS13UkbHZppZlBVIr42ulHPk1IeC3RkCh6TuM2VPpW2-X5o3VIgIGtFLa05JSN9FYaLrqAppl7on3UC2yS9f1cf91h2nypjWOlK2JlsxQ0SG7KqPY4bgazvFH8iu6GEWCCRru6UnIaSg_t9O7m2JIoHuAE-43vuY3f-oqDIAEuAXTUcPbAQ94DCPay2m6cS9FD3NrixvChIAOTUOw5TC3klCn2XsePMKYsl5rg3f6EOX52EstvNkwbbX6p0lheV5BKAvDBFR9sOBZU_cN2cLXHavyDleij_0miKWg9ykITwJFk2z-lunpvoz143H4u_BbjQQmA3psWTaITydMAs0jYUO0zvAHFKkhOfAEX3K1dwyW0ib520TvbzyxIioSXPcu9XBYtUC6dveK4MWRXw4kDt1R4gAYQuEJPPsDIWb5-aGzTIe46i4B7Kkmrm0o99mQdg_ZfvPhrNIZcOC11z5UU318d5KU4fKc7gq6vSJecA1wU6BM5L8_qdSwr_9O6C2gaBbv3jbZszMEA3kLYBCPSqrt8eoltHkSuDF5wva_omuctGBDKSUmP3FAswgkBX9W1Qgwh3lFKVjBlxPdrlz5gOpDQ4i9M0FcHyKexmwWVk6gN7cceGuYTjQgM2DS5cp6rTXLaQtnTQpQcytiqKB3uyy6RuP59dpETqLTNhxhraOabVTYALZoGC0mhq_36lrAF6Hx_7eRHSvTyzvm6fP5Cav-JOA_-Ju1T21g-5JWJZ1I5y4qV9ufqErWPJbBigBQH4FFtdpW512nIbXutFFw9a14ZxyfZNUox6M5WptirBVTwD2f7md-zyKyFVmFNbPSN0FttIiwkP0y3MsWMkosnGvwT-aaBbwzhsHaqeAzHqxmdouUY0iTxtonmY5fGwMMs6RLpBPYXte9I3MrQ2KqSxg-d7-w2INO-MI_enqEtgGthO7uJrrU6fTWkbnJx3Zed40OUT7LOPuAlkVYDJjw1ZoFG0gtxYnUMByuMzNhV8ytle6gZ4Pi84LHvp6PvZDcJusKHfO5v2UWes3SakrzG5AQlkHo-Mdf2FuZFy_DTRzIDDaflhgsd0RGLzKjyqfl9Ovurr-gufpSm8H1jtX4e2xL8wPfduNhh2qYHzpZ_ZiElXR65M-A4_S6B2bDyGrWwMAixzYWzmZznauTFwBREz_BKbfQkQs2sIcjBDJe13ZSVxjsGAlhe8swnG1Tb0-8QsmRwY4SdMBW4fWFZlGhsRyfAmVFSiKYGFpdPNPxC5OPRrXCbEjScIdP0uCvDpOQlK-yMZIK6HqULeVzah4ALOw-ZG8HGMi3K_kNKFpaM4t2xF3BCaXekrpuuKlKKGmvEBkvI61Hnpm5K2Mjx-FwAJvWDaGWjP6auBuLtIph7ReLZJLHagbM9-llB-1GjTXVXr1t4QT2vF6PJy_wdjLAHf5fXyvremmHm3Jm5_hWoy_IsNlbsDzTQp68bNkslW3b4--_WFaHBSVRl69dHk3sHAaarLOh6HJzrkYnwoW0rg7p-xD457GXja3HIHiwryaWHPBNqGxCu8wI8b81exmysPvHKUWXxwvXlrzjRaV83GstcqBXuDJ6UyPq3GEvpP66gjy2nbjBy8FPVMxc_mGQBLMGaXcE4AGeei_48CK-PDedKpARIQMMejR3VRWK0hclR-ASmUt5YBy6sK4fCIHWjZPpR8dnQvr-WCyvmlNwWo35_q5kUgDAY-ZgSaBaqI9BS3zJTiKgyjMiuvGvMyFKOwHl0ZS7jUBGPD1oZJ94cnxMmGAUIsO8DapbLQgaeMwaSLQirGk9jPQxTK0A4cwSX2Foo6HDnIaWi4mSiPS02TlwMJIKAyFhHljxwmtnDHlrDEEdLO-m5uGOQXNQOrok7o9XJfuNVnPpBwl0pg2edrX6yC02Dzxs8VKo92sVbUVVkXdGEBmiDIGsq507eyQcPrL2lDWniz1viNNf25H4xuCPa8s_M9AdnZtmtZwhrbWB83tAjfg_PJ8vw46R2PJZZ9PQwCfO--puMFDbJ_dZdjHUPAQeSV689inXOzSn_yCTLM6zhgdEENvZ8txWEaF0eNehA2DsQc4lDaGD_NqiHvYyPaAk_5eIFYSr7Uwx90KOEpxEiVfM8TdZAXtiPudMtnK9uckm-w9Vy6bVhx1TbJuM5c2nZtCfCzTaMIubDEgljoPIb4OwBp80kG6QaMDHpyAAvhgL-3L4SsXSgy59tVH07PJ7f0Qnk2kceAv7K4qUJjwqlBBkF3JmVwfRzkG57AjrcHiQyGITgNwexDFHuQlv7Y79REEsK_L55i-YFhM0egicSM0P_5aP4LFI0BeYVvbPYe47Es8CRu_Atd7k1XWX8_FmvY3nb6oeUOauk7B8EOzghaik5gUyF4ip9hU5g2IXC-SICND_eSQiERQ4h4xlq_UaqMBM5X0zl03361ZTKBSVRteNA8QrvSPTruCT-gzv48bIHdViYzR66DKvj-_jbRidzXAdbtRi69csP_qzHW-Np2DxXEfE4U5ZXVASxhIfTTpDOWg0y5ilLC8xvz6w-oRVAvwMqL6S3JmnoOTnrEs9CkZWbVToNwMnPudSralix-k3pn_s8X5mCWt4z1Dx9Z4YbDdS4CuOLb4yawbxAIgLyW1le5moHCxJO-ymMu2H4iRYY5EpR5qOIxPr5tttboFF8HSjn0PqWId3p-fWCawblscB1EAzMAS9Z85w4fw-TOQ3cAWDif8oHkAOVpDRkiz8lcuGMblOK__JHWQKshrHFc5_yhPHBo8qInMd0l0gBsj4y1Ps8TOy5vkeB7YXuFGwKtMU-kxwBMX-jQ6R_-pfA6XId_3mSzRuVKmIWBS-Vtfh5U9EVgMK-1j9h8tP_hm2Ei-LHoB6Nv_2SD5GgYQkCcULVDGILLurQ7W4k4BGzRbL9DXqpNo29-9N7vNhhK4V_RFQ3JV8sJvmzyVA9tXDvLAcYWjRNXxPfpWfXuQHRbHpS1Jo21Z23-vDmTOSteulMksSCcTTpsFiS2jn6D6hPz8_p5FArKdEhJpyb-jnWxXeIWlojXMQZo3AmYkYTJ5I6uje-ViAJX0dDEfPCcDPgiOrSCrF658iKUVO3sND4ztNB7KxMb6yYdkLOkWqoZxRRKYPBJ8erPfD3NtT1kjD9hkpMvb9mDyJdei71n9xfrJjYduxMyQmKHy1y8sJ4PYz9JtWWW4mhQ81tgp67bG4SnTCUQOe2AmxyFqOelTELYD9oXejYFaUz2Ad-F3Y6PixYwokN57EsHFoQVnIidpVTVMTxePtaa1B-JGdKYQ_VSRMrJMWLzDWYihIABulLLC2NsjRVd5RyC2mpMDmb9ULKVVizSxI8WfJD9O9KWK83OtgK3G6TjtQGnRPdvkMYGraV8iW01xD_SA2OewMsrY0yMzvwMdNykFox9kMhSiVnWaXzcPc8nvhBS4YDi475Ul_VivmAf0SlsgA6vjkCUPzJX4TdtEWg54tC5bRtPX2HetbD59QcWPGFCl_OVw5rD-GJ726bwY8aatWfdzYa1yEXxl38El8wg7SHpjDB8JSwlxYIvSsxn4jZ2v6r1piNGpdZJbBKafOj2QJG6sg70zMoYoWnqxtzK-vTLqX7i8KV4cIQfhy8DWswOOsLIAANz0MtMlaCTppGn_BSkTvyWxlj6bM-fmSEQOpWxY_bV9uZ2029FXaIHxJks7Gy9QBXb8okVcNETHYjBqa-o3uF8NbPffjJW-0Sx36a4zYFh55sae6uiU_OLdwqGVjoqPeSe-c1SDOOm0gtwB8RlLSNKA3Csd_99slbMtxvXkwlmB_hWrvfTlbRvHbiIpAqzCQdIjElX-imaZlTsQ_bY9MeV5ANwhHP796Cg-zRbniYTIRhYU9AotnAC9E1BotVkzo-pUWk2wfTxzr_DV7SsL8aWl-3OZQgIGKRZrLD7vJ7GZHTr-VLDTL6c8znLcwDligQyGhCi8w1cf4wfEdEyiozpW64UiGNKdhClUYioSHc7JJOem9zdJTKeOPQelXXnx0rm4ZLEypkrqZkPRZ-aSsaFhcoJfJWKg6-u5yKhbrBt2OlnPJLN57jHTrb-wDkgKWcX2MCLSvC9UlPFbtraMczZrvX5-MAsYOvbQ6pdOFVa30O8H9fOJm2gH2mlFXT896CWQzFQTOvntcduPuucfxKY_iH3AR75hsnZJ7iORpYq5bxOvzJjQl4nPq3lQFoaAW7uYLUbYAU7Ghrk66U0ty8y4nSOBkfxtzVXPYjchYdRTnHsAo1bxqzXGijE0d-7N4WAf3_9rwtsghqO_8_sIRxtL4RYf4uQJ1h-UHBuxEluRBd29QjA4GrtL62CZrscCK8Div20Bbm_eMX1rGNFGyZ-87UW7mh1M0j9foerwNkmCa7MF6akyum0R-1wr33QOl4kcQwrB09YH-3XyTGkaOdMQUo9_gavOGPm17yO7GLd9Jsid0bBLJlal7gKPxA8d1m1BOpsxdUfGlT9HT6AUviLNS9NYqsOP6ayjmrAp2EATJQpWh9yuQHohySqb17_fKataQUpaZ1zwqJYZd_k8nwnl3q32P57hpQgqIBlBe9CWF_KjhN7LKqLk8uGTAtEclWyTU2fXdMQrJcB6Gr0T_6JGRI5ArL2TUEKtX5DbDk_B3SpmzXiiqDbUgD5FI6IiNvBUGew4QTzt_NK9AfhsiQmm9ZW9FxvJq03abtaeoPw4jwMwfv0Y8lYr8ziHM7h9VlWpnvH33FO4mV2UUc-iAR8krJA12kCAi6_eL-vGdGDrB-FgrKinRyzlofzz-T1E1jziolZ6ZLnZEnnty37xvMVkauyNikxgj8CPNWoK7nvO2qRNyNounqXqhwD7k7fHdsNDgd5D5GdRURHdrIrJ1kHjPwjD1EVfTyDLZMwdCzFK7C0IjfpTMA6H3hXnClYDyi7a6g91thnwFwUnmzzzyoY6qOq3XHaTm9bAh8CG0jYxnSoEzAlPW6eX8-iVckXpCRp1YQv9XyifQITIKxUI8_Jp913ATc5xH6e-AUrro04FbUo4qyAvzHykPhFKGdSSSZ9NKD39eJ3XhaqvXZp23tqDs_0pDC60OJIlNFKTUiHhANYbCYVbygklqHQhOib4Go3dPRn-15KICsI8s69lqv8pUBPINjVNk79Y1jAYbF7Fu3_b7_lwXb0QQeA2sO-17fGXfNTlLZrUNFlyJlz6J_sWPhVK_3ym2Dk6cWqt8egQKHcpk2PqugcJjRkKWm1FNFO6GOc6jOKcWlhw6inIfebaCOf-Ag5Z1QAGOV6RmBkyuJRn-HfIuSEPCoM_ZLiRMfmZLOkEmsrqzKCCMporOzMgZXYOIBDR5sCtJ68Y0ex1FyhAStJovujj1Smq0vGwKmkJJPCFnpZ_IbME5FCgCbdFweKKNwN0JglZetXa8CiwAho5CFTvbs_bgK9lk6YBrDnuGreo8UWyJVUUbq6MhED3Xyeua-OyT1zzmahLfwJKSAULDu57gtH-ZjO2jXO6Vq2J_8Q5mRUJpfglHJmw8j1lH8v8nDBLzwzvE9PgscSusH1-DD_HmMDhqcdtbP91IueIJZe_kedU0mmzHdDLFhAmHtZbUU4QjTl0B9xwteVXwJTkdGueJ_V16ecqqNKgUFERqUaJkuH-auLLcLXi_ouHvHXRI4NK8yqthVxa6QpbnoTCTYKTu8JHCErsS_EwXMtgA82LuM4U8IokQEFvLR8HedNyOwJTonrffY4mfZwKHDSGdl2N3zI1lzt8nmcbHbs_G32DOuk883BhK1tkzVMmxZUXfmegNr8e1XuXvPF-kVtEQsXZ-SucUCATTWnUkfk0E_A2ulu86SATtN1UgYHMNcQbJSIhmfuwbrIzMiJLEcZiFGVshaT4hVLTP1FM0yC0Zg_uGt8_MwEmJGwJ2MLZTXkmUwhRFJCW5SehhNgCd5ctIbuT7e1IvU6KWUMfaKkoDhe6cB3H48TnZiDwrlZWQ==",
+                "summary": []
+            },
+            {
+                "id": "rs_0fd250dd2428cb22006afd0f21226087d283ee95bae7055fd5",
+                "type": "reasoning",
+                "content": [],
+                "encrypted_content": "gAAAAABq_Q820jXQmjRVs8OIHdMtRpNE9-QXyq3C7Ie1yQkj8BxLelbKtQBA4ln08AuazPCwsfqXdsbBIbCepeIFWuveyytI0Lw9kT1L95zrh3iCp2w5laNupNzlCGgVG3Tcf3FK-TToibYIglxTq90j4iBQfRu0iKJAMGJ_z7GBgRHBkIzk-JnirmBPvc5OHHjNBIy21b1fh02ZqXnffHftEt4ZwfhUt_feHngh3ukGqGN6sKEEWUkN3rtI_MQnCLBwA_TRYDvp3uRkqOqcO7MaqPNCIoP14c0saPns1U0w_RkbItxrAh4z6UhNLHg-Iw_prr-vwtxy8gS2gewFE3DfIAn9b_iwYDx2iHcPPJfp40FG6dpLeHQBrTtCR8Vfuw8MGRg7qb2ZbE1XJEV_UcsQ_N6YROlNex-ULYozX72Gv29eIEW0WeGBgicI0W5c5FHGTDiE6MoeQbPRHnxQXR5y6tDG4roXaHPXRfhyA598Yrn-sE0D7Mc07Bptm_B6T2VsOSBZ27AEPAgnhJomeUonrdR9bRPTCQ3lMY-II0nULJKBtcPnJwLrxzQFBfXuz0Dw3MKjGFAYpYqIUOf4hK2MJQ6RmnBZ9mBCToD5_8nel8RMx0iHg09Tvg0JsPpO4cpES21TqUx5yNgDd3H2TA2-nzF95W_OBE5nyQF000u5zD5yDmgUsZIV7Gh_wZvNm-VRwtnyZALJ7WG2Xd1rgJPAXKqep7NEW-rL7bFRPABw5vSWLbYY1NBlf7XkeVM33wyMRfgh9cRBqO-wXqYc0tDJvgT3TbUjCNG1fkzsYKnH1wUhnl6x9eq4-Vhdlm-1k-DtYTeGhqmOyLs6F8ycbugNhWBSTi-vPiz2lwg9NGfkEUbi1TtzG298UEIVJTpRCkm2XGfFun5nqsGlB6oOurqbBkXHezMayiqXB16tabCDD8_pL8g77nTkpj7uQIf0l3bpAM1didSQFAg_K9iG0K05RG5AI--OYzYeJcYDGEgzTCcbAnG-XzmtvcWpbdYP2rgFpoHSk96AEtiuA-ezRZ0G0Yo7ZZuzrSJLx2AsIIINS3Q2n7uM_eSOBMu2MWF1qJRh6Cu-fw3HIecKW4aqmxdqyCHlQxgWRWZlL6mGHSi_sTeBeCtgXdnjLN3uKjN6efLMk1ANvNSKSuTcLHWr9oNatX6DCje5Uc5NQxCqUbENUTxjbAqZbmDFL5wUcRofkN1xHsgPP9McY0adH6cJYOK7WsmZsHsL0h8DWIuaLEWLf0I_yi6qiPAuaGIgcqSsaetYkzS87hFuNa5YNUIKasp3EFQcX1nA4GwaqDCG2RAksAn8Av4Ds0QOKanyd5ELCm8wub9h9o5OIdJAmlL5PTfkntSsImIUfzU0mReSNg_YH0wMeB4r8DdDArYCM7Fh7_ThN8tDs4Ml8dtOzgEQ0pl54Stfrz9axDTtj_4Oed-QOwCfnaM5yrabhOwhMAybmq9w2YYdgFlfOdWBU2CdqRQtCPeiEKEtV5zaUBCO8T7W7oj5YIIhR8jipnhlVEFqHCrnPDPcVcRTDxa49Th_kv7t81smf8i2VHc5WhW6F05uCmgt8O4pNHnD3eEXz1-JmpKu12ni4aapb5vtLQeq-zTKNIVVqX_ageJsPit6NGKsx4ouXY-HCTjbNCi_2x7Fr2rI2NZ7q2PJb2OiLQVaJ-Gk9mkhi2DzYOlWyMpVJ0uK0wfx76tfB1VzURf0ptyQUApWw_O6JSEmlyoN6u8Hyz1JqDWjM3C6eMVR9_gtVGjcwWXyx-2BKotesAHgWQanl599aHkhiJwP0jWZS3UoLC-mMZpSbU2cIEbowzr8WYEAN7AJ7Y8uXbyFGKsXfmLwVZdTOdFH5ayQcukJH9ovyHM6gENPQalguDnzuSXAzTAgN2q_blowE-PkJhlPzp-AmiTjqK1biKolU8oqgINoj3V6vhkJcK1K6Lc5lAA4NaLj6QLt0WDvWkcs1zrGIgy09Gm_VIjZUtVaLwjvphjnPEXC9uwoO1besdQAtoNLa-y1dpzN7mUlb_pjXhP2VQb8OECKQh_iBgPZkApRTMB-kb5h7wiLGHXIrctujkBFsVfKk8wKlJisxqWLX6MeUCQDpDBk3HD10SKWXmKnDBTH08YmXWQktBLwYtGEPYPPPq-vAr8ErFpRowv8XxgL7p051eAErparDxQQMwZRer6yCW8RX-d-hXIwuMV5BiIRHwtqfVLo7R3MiubQnnqbaDIJHAz4TAqvi1b0aNmD2GCz6BIj2au2f6eFY0kFNSNvlQ9hPZ_OpfPLMWmiFSF34eZu-QKD6dk8yoJ_4Da30gpgqF_XA7eIkKfyId8P6PN-WJQxr-cuONjaxSnRLNispNTl7G08WzoCmEyrH4Zav0Ilr_DT7kk1We_W5M0UOjfwhJEKw1bQKBEdLF67bvKog3Y_UNCYM_W60gCLwq4JRtwqLJPwJ-WoEbOZYDj8vV3-02LC6Px9xS5KBfGMiumYxObl_EoN8q6ba6R0QVBDTKiAmK7v9WcshWHh-8649XkWc9wxYMh5TrE-Pr_OtfyWFYtcvbcYcFbKmIUxjU1o2tXLD4Q9HsGmtTaHz3A2xC5xgm1OZWZcKuzSRIql0FSY78AycREbxT5FKclPkR0bQdN5UkVtayUjVptzfqMqUh1Ao9OO782bbsqu5dSxem_1fXP7Ep2nVTW1aU7SIfC5juAOHKlJ0O42gk2mVuta_KJqqvyNn4QMFVpcvWTmZAjeCIkp-Randp1S-KZz6UZjOVA4AmncZ6rB0QrZ64xl4CWnbKc4XzloeVNpghwqO27j0QjRdbEJABJ0VvNKd6NKKtsdAmNdZWrn-1o2WnCy1ZLN1Dy9wNYHm09IDUg-koh1O5T8WYxiiX7qjUACP918G_MAWE61yxP-2ntLEVPA0eaXTh_WWB2OeReRZDH_ZY1NUbskT8rvySrzqkzfAMmxPUCwj-qKOESymtXgsYgC3gCfTungj-ur64L7gMJwMshCCQg97yn3c2dSnv1qMeeQZ0DSijS0KKztgiewEEV7NQNTUZmFTCoXssVgZ6Rc5KDdCximUJ920624LFwm1_Qbs5ehwcsMKuXebYOnUXMpRKxX6h1hCAkCyYQ0VtQHaFgwJQ8wP6pw8kXvwSu7QUAoGKWWlzoA_na5cVx-5hW0uVwJ5mYqbX24BwPd10I8aeCN1Ytn-qXVhf0CDyavuKTIMdPDo78WlfUgWFmDVYJW8GF3NAVX81Ot1Nkwze6BaiGx6RpXYgVph1H4nSOpzuS9p49vtdRWEFc4hkcHpfhziw1EwuWjFBl9spt9YLMsgdHz88epYQIUW2OO61yBMhsVayL2os_DvG7nE7p80Vhe328R-uIZvrit2LmYsnz0PqmJFvS0QsjVGJOg7q8WY6-EkJVIvGP2I6RvS1VTpHCyEvQJy56bJTepc3BSwuvsEthvMIEoZgxlWH58nUPh69wymPHBRyn1LKc4QCMRNtfVaL0RyShwFM589czSqHcb5odNCe6cRWJnaoXBS78pgJnf2yCvSH7-yJYsEKhFgmomhICPZnna5HHxHMw396BQCJFh9CKH8VOxLI3UQm9CP2o6K4kibcunRKNduk_3aLM_1ImbHEAua_3aOk0ARrOS-s_TKDHyMtC6Bhhpateg4_H1XHU_jpQgJf9qKJMVGvuzy3uis2JNTgBlVSToDWBL-GtBQvy6PU7wVjhPCp6sMC73VRyPUhX58liBntXcdv40VvFuzP8gsfcnahvR6BbDejSaZzdM2VPpZbGuyfIyGYrSOshAbN52ji0lU40R_0EEGCXQ3AiCfXxQwVsHmA3T6fN1tDHGyfWz5GkN6ArM_mjj4qGFqteJmhbGUkL7co6ebILkLHkSJTKZ4jqQ6rW5SOc35i45AmTK7xHkOVadGssS9Bzs3IcDAhxktOlw3zj6LxRRDgIerSbsa6PFvpfnY_1W0S21MiQVT3_1c0gzLUiZJ180VZYv8WtR04I9jyDnAUAAH6a7ba2N0lzovdStzSrS3E2hAzfF20w587ZN2BOwQyXoKUazWXfC_161-Iby2WCU7YyzHnEOXP3OeiUswkOT100MLqJlckoz5lVWd_KqYlGtxYNrqOxuJSAPbtwk4IImkT-eo5Nk8SLSvqM09zcIUqy5Jj-WEc9SGad_EitJdGvkqqdYv1yfWqmXlzWqlC2q64QQNQapQbbD57HoUxO--9rt9Z6wIMKhv3WIsnt3dnMk9d_fd7bO2kfpDDk2-IjiJWta_25vS3wO1S-rSmGeGtLWoQIbh5W8TLPk0BZT00SV8Uiy3OLrxdM7zeB3IyZ4_Zaf_a1HlV3NHMHqWMo3D4wdwqiVkX0sQ00dTfduLFHRQ8YtXNfSQBtkvUC0hLiL2nnXVF6zZb-mT4jWTFg-yULZ_EhTQl3kIzPV1xekdmW8HvT0c-vnebuY18QBfaIfZRH5WHTwCizoGVVgYSoV4PAVlhFD7mrh8n1MdmsuvwvH_x2vJM8RxyV95AzjFOVTn6y8r-PO5O3sufMEBFd2jTiS1PaG6Eg5w47ADCuwNtH91nh1GIpjb352CLAP8OF_I8DSbRespFdyC0YwrXF_momed9dmxTgxcJelXqNgrYJeQc5HVdJwyhTafZu6St3c_0sH2ThQ6IzMEzYtbUlOtvSmqVaxQOsXjqz4ADdqhQUtd7MKxrv90X15NvgkygpYFhHK64pcFQLXOCgemXZ1gYNcGut338Yv3LKWJ0cI1pGH23o02CHNSxvZme6mXlZInHKkrqXfocMgwXeVtP4IhDk_a3vF84x0MxiMIJE0s3BHCIY_su_x2bkz6gxwCzvhF7Yr1_uPr5SyqAvM5Ag22DRmG_9vs3wxyWOMzob0nuJ70p7pRrnVHtSRqRqQAuMiJTgyfBobwzI33__cst7Nbm_5DMCkWYLihxgI--CM9aw7b6SD5jvYb7eNSyqDuebXeDOu4CYWaOw5DSV6crXeqkLnC_sGxNs4MCt6gXs2LZTAsKkDfHho1VDMo1-J-wb8HFBYuhx4Dr58SMHU1PSYyRcZvu8l__vNw4e9Ig7JJbHl46yVFp0PlGZHMrLrM5lJMCKwcbine0Mzv3Oy7Tuv-cLW2xDseqcMAj7dW8On8eL7gZljLedAEkUO1fYkzSv1USPBr0_DwBNwGi_p2Y21QxD0hQcmoREnWEeq6zUKKCnXq4iZGFx2-qpYBxP3aksq9h7cwFB3MzPmV4HWGqSLupXa2Md1HXFDBDpBLPibQZFteZUDlwum3ffVkb73GtUwFmn57QjMkBnDmFeiNtCJ_NJTGeHovOtAMaBYmuR0idEd9P7M3bX3pRb2Ee2dXBTTHR4qcIWrsgdvfFjAuU80t0IuvrrtYOpHPGGUkJNfyiDnEmrt4X-L6OcGmyelFXReqOklXkBkf2NOrdCkdhPO8YtElwFvjqDed1e9ERpAo8XWUeWvcJB0MSDpTHbHuHPl1sJZo4mbnPl2lPG_PBHUP9X_DuSgrqn6K-o4JUlzTttYAmBlr05lkS2O8K_-iseLCQl_JoUzS2LLBlULAdlnRavmsipk3At-mt01vCLiqQeJ02kGsJQdI4_7tUun-TDCgQMLI4lgYtLiF_FaO7jrc1MfbDvoDxxZj4dNBkb25SQvQqgXKs4pDwwgeLsWh3iZaJOKsaqZjwpHUqcjdHZ9ErnkStdD8uRfYWsa6ry046LnuZ3M1KK9wAwYS_k_sZPYkd1BC_yexCzqSXYSjFSYjyEVQv9xhvghJwmdoXFBQGtlLvED0ym_HNwnOGLZeMh7prbj5dN6LSh1CX-wlWvsoXwmWtsgUt1KUbGauZ0OGv2ZzeGOoeTPGcRjxUgoDVNzuNgg-x7OUNWE46aYdddxBlPmgsad9DIH8Gb2NeNZmVpIE1BpmM7TqbJ9chsdpu8GNJWSmz27Nj2PnS5ZxJ_ygSJRyc68hhtG19g4_5ElHjtqdXKQ-rGwewzWgIWt0-U0d94BDJtlPqsaqpm5OfJT9Yt3dzZXONpRcSZt37PO2tarbgv159fAnm_Kpode8DIASmN4dGr-ehOB4YfsALB_O6lZxcKHv5G-u00mwnIUCy_H4-JOrPOumssJXsUwwekpnwADZeLCRpRhuWeyo-I51ZROnSaQY6uBmZ_Zw1d02gybNg_PevS-RgdmlZFjpBXvCJmc59gWlSn9polYrDSLXPdfawhJMNxv41zeM5Js8v9T4smRgIrRZXmED7ZoAMrFbaD9trTjJatULEJ5XmW_V-WMzJlq8CuGHFQXilmr8PeHUFrP_MZXEEoe0PRLWHwLUfppsS2R5NEG0tuduAjV8n-bIFcLYyusQyCvgM45WklELKjjRy7LdKBoRxZyjWbxUvD4kazCrWqEvu-4J29QV7txDNHYr7Cy9Ofah2su5D7zVefh9sGdoNMusU7rNboDChf2MhKHE2b3pRrkPotBttZGc2kPuZXmNmBSZV5T0aSy0av4ZUd6SJusJ3gcWLA4cBGsgxjcR5804qGd_xcVcW28mzbPcD8cSpOEcVONwZIY9tLBofB6WFAx9LFoGkHhwJ3YIxBPRIuEa9zDHv6xcEQ-q8s7MyGdsrta7uOaUC1rr_Tc8NFwdZ8qTOJsoomS8OQQSyCRYlTunY_272Y719POR0Ek_8DOl2C93f1m9z_-1vXaCvNs-OndqnmApLdiHq3XGBq2cpGCCWZCzC9IZCom2GwNGpZIoCDxLEFvhyZWCEJnCsFJdlI2oIFOgmqjyOU4MaskTUkbT3A-rVfJtJri5tW_4jS0j2VbG48kF32NwZ58eZE1zEE4Xu9Hi5Vp9d_1xbA6B_Es5FLrXuxNiPWCaLsNRo3T71XoN273UxC_3fVA9Dlo0c5jpT9jLcFBNXTb4I28yThmPKKAS7FPTVGJ9CSuYYpJD9SORdoiR_YQl6APO1bj1loAGel1LDXPP_SaEzfVufQS4yBiQAWVvhn5PAyZDDjQ_2wKOFdJhtiDT3XQMD-LRDiltIMQ8HypNkTPx1RpCbUZASmTSGu9jAbacJ-BkY1uv0uq5H8Q3ELI4rsAyXxKq_p80BM_EXq7u8oc7EqQ4Mi2Cgv6OHrIOshXT6RQusOX3TxAgUfPmmehLinuEb4FWjvdQ9pqedAwZ4PYMkNko13dklM=",
+                "summary": []
+            },
+            {
+                "id": "msg_0fd250dd2428cb22006afd0f2b165c87d2bc4c3ae95ad76e7f",
+                "type": "message",
+                "status": "completed",
+                "content": [
+                    {
+                        "type": "output_text",
+                        "annotations": [],
+                        "logprobs": [],
+                        "text": "---\nname: calendar-scheduling\ndescription: Checks availability, creates events, reuses or adds participants, and reschedules or cancels events. Use when the user asks whether a time is free or requests a calendar change.\n---\n\n## Overview\n\nCheck availability against existing events and make only the calendar changes the user requests.\n\n## When to Use\n\nUse for availability checks, event creation, participant reuse or additions, rescheduling, and cancellation.\n\n## Tools\n\n- `get_current_day`: Resolve relative dates.\n- `search_calendar_events`: Find an existing event by title or description, optionally narrowed by date.\n- `get_day_calendar_events`: Check a day's events for conflicts.\n- `create_calendar_event`: Create a requested event.\n- `add_calendar_event_participants`: Add requested participants to an identified event.\n- `reschedule_calendar_event`: Move an identified event.\n- `cancel_calendar_event`: Cancel an identified event.\n\n## Workflows\n\nFor relative dates, call `get_current_day` before resolving the date. Use documented date and time formats.\n\n### Check Availability\n\n1. Call `get_day_calendar_events` for the requested day.\n2. Compare the requested interval with returned events, considering `start_time`, `end_time`, and `all_day`; exclude events whose `status` is canceled.\n3. If busy and the user supplied an alternative, check that interval, calling `get_day_calendar_events` if it falls on another day. Report availability and relevant conflicts.\n\n### Create Event\n\n1. Identify the supplied `title`, `start_time`, `end_time`, `description`, `participants`, and `location`. Leave unspecified optional details at their defaults.\n2. Call `get_day_calendar_events` to check availability; apply the user's alternative if the original slot is busy.\n3. With event details identified and creation requested, call `create_calendar_event` once. Do not repeat after an uncertain result; report the returned outcome.\n\n### Copy Participants\n\n1. Call `search_calendar_events` to identify the source event, using `date` when relevant.\n2. Read its `participants` and combine them with the new event details the user supplies. Call `get_day_calendar_events` to check the proposed interval and any supplied alternative.\n3. With the source and new event details identified and creation with reused participants requested, call `create_calendar_event` once using those `participants`. Do not repeat after an uncertain result; report the returned outcome.\n\n### Add Participants\n\n1. Call `search_calendar_events` to identify the existing event.\n2. Use its `id_` as `event_id` and the user's requested additions as `participants`; this is an addition, not a replacement.\n3. With the target identified and participant addition requested, call `add_calendar_event_participants` once. Do not repeat after an uncertain result; report the returned outcome.\n\n### Reschedule Event\n\n1. Call `search_calendar_events` to identify the event and its existing interval.\n2. Call `get_day_calendar_events` to check the proposed interval and any supplied alternative, excluding the target event from conflicts. Use the supplied end time; otherwise preserve duration.\n3. With the target and new interval identified and rescheduling requested, call `reschedule_calendar_event` once. Pass `new_end_time` when supplied; otherwise leave it null. Do not repeat after an uncertain result; report the returned outcome.\n\n### Cancel Event\n\n1. Call `search_calendar_events` to find the requested event.\n2. Identify the matching event and use its `id_` as `event_id`.\n3. With the target identified and cancellation requested, call `cancel_calendar_event` once. Do not repeat after an uncertain result; report the returned outcome.\n\n## Common Pitfalls\n\n- An availability check alone does not authorize creation.\n- Search matches identify candidates; compare returned details before selecting the target.\n- Do not silently substitute an unrequested time.\n\n## Output Requirements\n\nReport availability or the returned change outcome with enough event details to identify it. For ambiguous requests, choose the most reasonable reading and state it. For errors, empty results, or uncertain outcomes, report what could not be found or established instead of claiming availability or success."
+                    }
+                ],
+                "phase": "final_answer",
+                "role": "assistant"
+            }
+        ],
+        "parallel_tool_calls": true,
+        "presence_penalty": 0.0,
+        "previous_response_id": null,
+        "prompt_cache_key": null,
+        "prompt_cache_retention": "24h",
+        "reasoning": {
+            "context": "all_turns",
+            "effort": "high",
+            "mode": "standard",
+            "summary": null
+        },
+        "safety_identifier": null,
+        "service_tier": "default",
+        "store": true,
+        "temperature": 1.0,
+        "text": {
+            "format": {
+                "type": "text"
+            },
+            "verbosity": "medium"
+        },
+        "tool_choice": "auto",
+        "tool_usage": {
+            "image_gen": {
+                "input_tokens": 0,
+                "input_tokens_details": {
+                    "image_tokens": 0,
+                    "text_tokens": 0
+                },
+                "output_tokens": 0,
+                "output_tokens_details": {
+                    "image_tokens": 0,
+                    "text_tokens": 0
+                },
+                "total_tokens": 0
+            },
+            "web_search": {
+                "num_requests": 0
+            }
+        },
+        "tools": [],
+        "top_logprobs": 0,
+        "top_p": 0.98,
+        "truncation": "disabled",
+        "usage": {
+            "input_tokens": 2063,
+            "input_tokens_details": {
+                "cache_write_tokens": 2060,
+                "cache_write_tokens_details": {
+                    "ttl_12h_tokens": 0,
+                    "ttl_30m_tokens": 2060
+                },
+                "cached_tokens": 0
+            },
+            "output_tokens": 1705,
+            "output_tokens_details": {
+                "reasoning_tokens": 852
+            },
+            "total_tokens": 3768
+        },
+        "user": null,
+        "metadata": {}
+    },
+    "response_status": "completed",
+    "reported_model": "gpt-6.1-sol",
+    "usage": {
+        "input_tokens": 2063,
+        "output_tokens": 1705,
+        "reasoning_tokens": 852
+    },
+    "output_text": "---\nname: calendar-scheduling\ndescription: Checks availability, creates events, reuses or adds participants, and reschedules or cancels events. Use when the user asks whether a time is free or requests a calendar change.\n---\n\n## Overview\n\nCheck availability against existing events and make only the calendar changes the user requests.\n\n## When to Use\n\nUse for availability checks, event creation, participant reuse or additions, rescheduling, and cancellation.\n\n## Tools\n\n- `get_current_day`: Resolve relative dates.\n- `search_calendar_events`: Find an existing event by title or description, optionally narrowed by date.\n- `get_day_calendar_events`: Check a day's events for conflicts.\n- `create_calendar_event`: Create a requested event.\n- `add_calendar_event_participants`: Add requested participants to an identified event.\n- `reschedule_calendar_event`: Move an identified event.\n- `cancel_calendar_event`: Cancel an identified event.\n\n## Workflows\n\nFor relative dates, call `get_current_day` before resolving the date. Use documented date and time formats.\n\n### Check Availability\n\n1. Call `get_day_calendar_events` for the requested day.\n2. Compare the requested interval with returned events, considering `start_time`, `end_time`, and `all_day`; exclude events whose `status` is canceled.\n3. If busy and the user supplied an alternative, check that interval, calling `get_day_calendar_events` if it falls on another day. Report availability and relevant conflicts.\n\n### Create Event\n\n1. Identify the supplied `title`, `start_time`, `end_time`, `description`, `participants`, and `location`. Leave unspecified optional details at their defaults.\n2. Call `get_day_calendar_events` to check availability; apply the user's alternative if the original slot is busy.\n3. With event details identified and creation requested, call `create_calendar_event` once. Do not repeat after an uncertain result; report the returned outcome.\n\n### Copy Participants\n\n1. Call `search_calendar_events` to identify the source event, using `date` when relevant.\n2. Read its `participants` and combine them with the new event details the user supplies. Call `get_day_calendar_events` to check the proposed interval and any supplied alternative.\n3. With the source and new event details identified and creation with reused participants requested, call `create_calendar_event` once using those `participants`. Do not repeat after an uncertain result; report the returned outcome.\n\n### Add Participants\n\n1. Call `search_calendar_events` to identify the existing event.\n2. Use its `id_` as `event_id` and the user's requested additions as `participants`; this is an addition, not a replacement.\n3. With the target identified and participant addition requested, call `add_calendar_event_participants` once. Do not repeat after an uncertain result; report the returned outcome.\n\n### Reschedule Event\n\n1. Call `search_calendar_events` to identify the event and its existing interval.\n2. Call `get_day_calendar_events` to check the proposed interval and any supplied alternative, excluding the target event from conflicts. Use the supplied end time; otherwise preserve duration.\n3. With the target and new interval identified and rescheduling requested, call `reschedule_calendar_event` once. Pass `new_end_time` when supplied; otherwise leave it null. Do not repeat after an uncertain result; report the returned outcome.\n\n### Cancel Event\n\n1. Call `search_calendar_events` to find the requested event.\n2. Identify the matching event and use its `id_` as `event_id`.\n3. With the target identified and cancellation requested, call `cancel_calendar_event` once. Do not repeat after an uncertain result; report the returned outcome.\n\n## Common Pitfalls\n\n- An availability check alone does not authorize creation.\n- Search matches identify candidates; compare returned details before selecting the target.\n- Do not silently substitute an unrequested time.\n\n## Output Requirements\n\nReport availability or the returned change outcome with enough event details to identify it. For ambiguous requests, choose the most reasonable reading and state it. For errors, empty results, or uncertain outcomes, report what could not be found or established instead of claiming availability or success.",
+    "skill_text": "---\nname: calendar-scheduling\ndescription: Checks availability, creates events, reuses or adds participants, and reschedules or cancels events. Use when the user asks whether a time is free or requests a calendar change.\n---\n\n## Overview\n\nCheck availability against existing events and make only the calendar changes the user requests.\n\n## When to Use\n\nUse for availability checks, event creation, participant reuse or additions, rescheduling, and cancellation.\n\n## Tools\n\n- `get_current_day`: Resolve relative dates.\n- `search_calendar_events`: Find an existing event by title or description, optionally narrowed by date.\n- `get_day_calendar_events`: Check a day's events for conflicts.\n- `create_calendar_event`: Create a requested event.\n- `add_calendar_event_participants`: Add requested participants to an identified event.\n- `reschedule_calendar_event`: Move an identified event.\n- `cancel_calendar_event`: Cancel an identified event.\n\n## Workflows\n\nFor relative dates, call `get_current_day` before resolving the date. Use documented date and time formats.\n\n### Check Availability\n\n1. Call `get_day_calendar_events` for the requested day.\n2. Compare the requested interval with returned events, considering `start_time`, `end_time`, and `all_day`; exclude events whose `status` is canceled.\n3. If busy and the user supplied an alternative, check that interval, calling `get_day_calendar_events` if it falls on another day. Report availability and relevant conflicts.\n\n### Create Event\n\n1. Identify the supplied `title`, `start_time`, `end_time`, `description`, `participants`, and `location`. Leave unspecified optional details at their defaults.\n2. Call `get_day_calendar_events` to check availability; apply the user's alternative if the original slot is busy.\n3. With event details identified and creation requested, call `create_calendar_event` once. Do not repeat after an uncertain result; report the returned outcome.\n\n### Copy Participants\n\n1. Call `search_calendar_events` to identify the source event, using `date` when relevant.\n2. Read its `participants` and combine them with the new event details the user supplies. Call `get_day_calendar_events` to check the proposed interval and any supplied alternative.\n3. With the source and new event details identified and creation with reused participants requested, call `create_calendar_event` once using those `participants`. Do not repeat after an uncertain result; report the returned outcome.\n\n### Add Participants\n\n1. Call `search_calendar_events` to identify the existing event.\n2. Use its `id_` as `event_id` and the user's requested additions as `participants`; this is an addition, not a replacement.\n3. With the target identified and participant addition requested, call `add_calendar_event_participants` once. Do not repeat after an uncertain result; report the returned outcome.\n\n### Reschedule Event\n\n1. Call `search_calendar_events` to identify the event and its existing interval.\n2. Call `get_day_calendar_events` to check the proposed interval and any supplied alternative, excluding the target event from conflicts. Use the supplied end time; otherwise preserve duration.\n3. With the target and new interval identified and rescheduling requested, call `reschedule_calendar_event` once. Pass `new_end_time` when supplied; otherwise leave it null. Do not repeat after an uncertain result; report the returned outcome.\n\n### Cancel Event\n\n1. Call `search_calendar_events` to find the requested event.\n2. Identify the matching event and use its `id_` as `event_id`.\n3. With the target identified and cancellation requested, call `cancel_calendar_event` once. Do not repeat after an uncertain result; report the returned outcome.\n\n## Common Pitfalls\n\n- An availability check alone does not authorize creation.\n- Search matches identify candidates; compare returned details before selecting the target.\n- Do not silently substitute an unrequested time.\n\n## Output Requirements\n\nReport availability or the returned change outcome with enough event details to identify it. For ambiguous requests, choose the most reasonable reading and state it. For errors, empty results, or uncertain outcomes, report what could not be found or established instead of claiming availability or success.\n",
+    "normalisation": [],
+    "validation": {
+        "skill_id": "calendar-scheduling",
+        "validator_version": "capability_validator_v5",
+        "passed": false,
+        "n_errors": 1,
+        "n_warnings": 1,
+        "checks": [
+            {
+                "id": "S1",
+                "name": "frontmatter parses with exactly name and description",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S2",
+                "name": "name is exactly the skill identifier",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S3",
+                "name": "description is present and at most 1024 characters",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S4",
+                "name": "the six required sections appear once each, in order, with no other level-2 headings",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S5",
+                "name": "the Workflows section has one subsection per defined workflow, in order, with the given headings",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S6",
+                "name": "every workflow has 3-6 numbered steps",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S7",
+                "name": "body length is within the limit",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S8",
+                "name": "description says when to use the skill",
+                "dimension": "structure",
+                "severity": "warning",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S9",
+                "name": "the Tools section names every tool of the skill",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S10",
+                "name": "description is in the third person (its first word is a verb such as 'Answers')",
+                "dimension": "structure",
+                "severity": "warning",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S11",
+                "name": "description is at most 300 characters",
+                "dimension": "structure",
+                "severity": "warning",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T1",
+                "name": "no invented tools",
+                "dimension": "tool accuracy",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T2",
+                "name": "arguments belong to the tools they are named with",
+                "dimension": "tool accuracy",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T3",
+                "name": "enum arguments use only allowed values",
+                "dimension": "tool accuracy",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T4",
+                "name": "hidden environment arguments are never named",
+                "dimension": "tool accuracy",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T5",
+                "name": "tool names are written in backticks",
+                "dimension": "tool accuracy",
+                "severity": "warning",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T6",
+                "name": "no unknown snake_case names in backticks",
+                "dimension": "tool accuracy",
+                "severity": "warning",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T7",
+                "name": "no workspace tool outside the skill's own tool list",
+                "dimension": "tool accuracy",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T8",
+                "name": "no claim that a tool or capability is missing or unavailable",
+                "dimension": "tool accuracy",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "W1",
+                "name": "no data-changing tool the skill does not own is named",
+                "dimension": "write safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "W2",
+                "name": "every owned data-changing tool is named in the workflows",
+                "dimension": "write safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "W3",
+                "name": "workflows that use a data-changing tool tie it to the user's request",
+                "dimension": "write safety",
+                "severity": "warning",
+                "passed": false,
+                "detail": "workflow 'Create Event' uses `create_calendar_event` without tying it to the user's request; workflow 'Copy Participants' uses `create_calendar_event` without tying it to the user's request; workflow 'Add Participants' uses `add_calendar_event_participants` without tying it to the user's request; workflow 'Reschedule Event' uses `reschedule_calendar_event` without tying it to the user's request; workflow 'Cancel Event' uses `cancel_calendar_event` without tying it to the user's request"
+            },
+            {
+                "id": "P1",
+                "name": "every workflow names at least one tool of the skill",
+                "dimension": "workflow coverage",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "P2",
+                "name": "every read tool of the skill is named in some workflow",
+                "dimension": "workflow coverage",
+                "severity": "warning",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "B1",
+                "name": "no instruction to ask the user a question or to wait for confirmation",
+                "dimension": "agent behaviour",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "G1",
+                "name": "no address, date, time, file name, name or quoted text copied from example material",
+                "dimension": "generalisability",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "G2",
+                "name": "no run of six or more words copied from example material",
+                "dimension": "generalisability",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "G3",
+                "name": "no concrete date, time or file name",
+                "dimension": "generalisability",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "G4",
+                "name": "no number (two or more digits) copied from example material",
+                "dimension": "generalisability",
+                "severity": "warning",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "A1",
+                "name": "no injection material (attacker address, <INFORMATION>, injection-goal text)",
+                "dimension": "safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "A2",
+                "name": "no email addresses, URLs or code blocks",
+                "dimension": "safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "A3",
+                "name": "no override or concealment language",
+                "dimension": "safety",
+                "severity": "error",
+                "passed": false,
+                "detail": "phrase 'silently'"
+            },
+            {
+                "id": "A4",
+                "name": "no reference to benchmarks, tests or evaluation",
+                "dimension": "safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "A5",
+                "name": "no key-like strings",
+                "dimension": "safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "A6",
+                "name": "no reference to other skills",
+                "dimension": "safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "A7",
+                "name": "no security-awareness wording",
+                "dimension": "safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            }
+        ]
+    },
+    "accepted": false
+}

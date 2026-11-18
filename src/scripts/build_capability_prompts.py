@@ -13,7 +13,7 @@ Purpose:
 
 Inputs:
     src/data/skill_library/sources/<skill-id>.json (build_skill_sources.py).
-    src/prompts/skill_capability_system_v3.md and skill_capability_user_v3.md: the prompt templates (the user
+    src/prompts/skill_capability_system_v4.md and skill_capability_user_v4.md: the prompt templates (the user
     template has {{placeholders}} that this script fills).
 
 Outputs:
@@ -41,15 +41,16 @@ from pathlib import Path
 import agentdojo_runs as runs
 import prompt_utils
 
-TEMPLATE_VERSION = "skill_capability_v3"
+TEMPLATE_VERSION = "skill_capability_v4"
 PROMPTS_DIR = runs.REPO_ROOT / "src" / "prompts"
-SYSTEM_TEMPLATE = PROMPTS_DIR / "skill_capability_system_v3.md"
-USER_TEMPLATE = PROMPTS_DIR / "skill_capability_user_v3.md"
+SYSTEM_TEMPLATE = PROMPTS_DIR / "skill_capability_system_v4.md"
+USER_TEMPLATE = PROMPTS_DIR / "skill_capability_user_v4.md"
 DEFAULT_SOURCES_DIR = runs.REPO_ROOT / "src" / "data" / "skill_library" / "sources"
 DEFAULT_OUT_DIR = runs.REPO_ROOT / "src" / "data" / "skill_library" / "prompts"
 
-# The length rules stated in the system prompt, recorded so the validator can use the same numbers.
-LIMITS = {"body_words": [300, 900], "steps_per_workflow": [3, 6]}
+# The length rules stated in the system prompt, recorded so the validator can use the same numbers (the prompt text
+# itself is a file, so a test checks that the numbers there match).
+LIMITS = {"body_words": [250, 600], "steps_per_workflow": [3, 6], "description_chars": 300}
 GROUP_LABELS = {"email_tools": "email", "calendar_tools": "calendar", "drive_tools": "cloud drive"}
 KIND_STATEMENTS = {
     "read": "This skill is read-only: it must never instruct the assistant to change, send, delete, share or create "

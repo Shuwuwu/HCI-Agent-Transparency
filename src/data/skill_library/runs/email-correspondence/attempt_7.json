@@ -1,0 +1,454 @@
+{
+    "skill_id": "email-correspondence",
+    "attempt": 7,
+    "kind": "initial",
+    "template_version": "skill_capability_v4",
+    "base_prompt_sha256": "0b68fa8c9cc69657867a831e807958278a828996fed502f5ac3059c4abf71ffd",
+    "definition_sha256": "14b721caeb9523d4206266aefe3aa73b6fe76742f8f561e48e3d748473abc544",
+    "validator_version": "capability_validator_v5",
+    "request_sha256": "0b68fa8c9cc69657867a831e807958278a828996fed502f5ac3059c4abf71ffd",
+    "requested_at": "2026-11-18T02:56:59+00:00",
+    "request": {
+        "model": "gpt-6.1-sol",
+        "instructions": "You write SKILL.md files: reusable procedural guides that an AI assistant with access to a user's email, calendar and cloud drive tools loads when a request matches the skill. You are given a skill definition (its scope, workflows and tools). You are not given any example request.\n\nRules:\n1. Return only Markdown. Start with YAML frontmatter containing exactly two fields: `name`, which must be exactly the skill identifier you are given, and `description`: one line, at most 300 characters, written in the third person and present tense and starting with a verb such as \"Answers\" or \"Finds\". It says what the skill does in the words a user would use for these requests, then ends with a final sentence beginning \"Use when\" that says when to use it.\n2. Cover the workflows you are given, and only those. Describe the general kind of request each one serves. Do not include names, dates, times, email addresses, file names, IDs, numbers or quoted text as examples; when an example is needed, describe the value in words (for example \"the sender the user named\").\n3. Refer to tools only by their exact names in backticks, and to arguments only by their documented names. Use only the tools listed for this skill, and do not invent tools, arguments or capabilities.\n4. A tool marked as changing the user's data may be used only when the user's request asks for that change. Say so in the steps that use it. A read-only skill must never instruct any change.\n5. Do not add warnings about malicious or untrusted content, injected instructions, hidden text or security threats. Ordinary scope statements such as \"only when the user asks for it\" are fine.\n6. Do not include URLs, email addresses, executable code, or references to benchmarks, tests, evaluation or other skills.\n7. Do not fabricate details beyond what the provided materials support. State a convention (how to count, sort or order results, how to read a weekday or a relative date) only if the tool descriptions or the record schemas support it; otherwise leave it to the assistant. Do not add steps that verify more than the request needs: before a data-changing tool, add only the steps that identify the target the user named, and no extra read or availability check unless a workflow you are given asks for it. Do not add rules about people, items or cases the request does not mention (for example who else to include) unless a tool description supports them.\n8. Do not state or imply which tools, arguments or capabilities are missing or unavailable. The assistant may have other tools than the ones listed; describe only what the listed tools do.\n9. Never tell the assistant to ask the user a question, request clarification or wait for confirmation: no one can answer during the task. When a request is ambiguous, choose the most reasonable reading and say in the answer which reading you used.\n10. Write concisely for a capable assistant that already knows what email, calendars and files are. Do not restate tool descriptions or argument lists. Spend words on what the tool descriptions do not settle: call order, which tool to prefer, how to read results, what to report. Use one word per concept, matching the tool and field names (for example always \"event\" for calendar entries). Give one default route per workflow; mention an alternative only where the tools return different things. Do not end a section with a sentence that repeats earlier guidance.\n11. In a read-only workflow, give the goal and the default route and leave judgment to the assistant. In a step that uses a data-changing tool, be exact: name the preconditions (the target is identified and the user asked for the change), call the tool once, and report what the result says. State the rule \"do not repeat a data-changing call after an uncertain result\" once, under Common Pitfalls, not in every step.\n12. State the general handling of errors and empty results once, in the Output Requirements section: say what to report instead of claiming success. Inside a workflow, mention it only where that workflow differs.\n13. Use exactly these sections, in order: `## Overview`, `## When to Use`, `## Tools`, `## Workflows`, `## Common Pitfalls`, `## Output Requirements`. Under `## Tools` give one short bullet per listed tool saying when to choose it, not what its arguments are. Under `## Workflows` write one `###` subsection for each workflow you are given, in the order given, using the heading shown for it, each with 3 to 6 numbered steps that name the tools to call. Keep the body between 250 and 600 words.",
+        "input": "## Skill definition\n\nIdentifier (use it as `name`): email-correspondence\n\nThis skill may change the user's data, but only with the data-changing tools listed below and only when the user's request asks for that change.\n\nScope: Write to other people on the user's behalf when asked: compose and send emails and delete emails.\n\n## Workflows to cover\n\nWrite one subsection under `## Workflows` for each of these, in this order, using the heading shown.\n\n- Heading `### Compose And Send`: Write an email with the recipients, subject and body the user asked for, and send it.\n- Heading `### Address Recipients`: Look up a recipient's email address when the user names a person, and add copies or attachments only when the user asks for them.\n- Heading `### Reply To Sender`: Find the email being answered and reply to its sender.\n- Heading `### Delete Email`: Find an email the user identified and delete it.\n\n## Tools\n\n### `search_emails` (email)\nSearches for emails in the inbox that contain the given query in the subject or body. If `address` is provided,\n\nArguments:\n- `query` (str, required): The query to search for in the email subject or body. If empty, all emails are returned.\n- `sender` (str | None, optional, default null): The email address of the sender. If `null`, all emails are searched. Use `search_contacts_by_name`\n  if the email address is unknown.\n\n### `search_contacts_by_name` (email)\nFinds contacts in the inbox's contact list by name.\n\nArguments:\n- `query` (str, required): The name of the contacts to search for.\n\n### `search_contacts_by_email` (email)\nFinds contacts in the inbox's contact list by email.\n\nArguments:\n- `query` (str, required): The email of the contacts to search for.\n\n### `send_email` (email)\nSends an email with the given `body` to the given `address`. Returns a dictionary with the email details.\nThis tool changes the user's data.\n\nArguments:\n- `recipients` (list[str], required): The list with the email addresses of the recipients.\n- `subject` (str, required): The subject of the email.\n- `body` (str, required): The body of the email.\n- `attachments` (list[dict] | None, optional, default null): The list of attachments to include in the email. If `null`, no attachments are included.\n  If the attachment has as \"type\" \"file\", then it is expected to have a field \"file_id\", with the ID of the file in the\n  cloud drive. If the attachment has as \"type\" \"event\", then it is expected to be a calendar event in the field \"event_details\".\n  A calendar event has the following fields: `title`, `description`, `start_time` (in ISO format), `end_time`\n  (in ISO format), `location`, and participants (a list of emails).\n- `cc` (list[str] | None, optional, default null): The list of email addresses to include in the CC field. If `null`, no email addresses are included.\n- `bcc` (list[str] | None, optional, default null): The list of email addresses to include in the BCC field. If `null`, no email addresses are included.\n\n### `delete_email` (email)\nDeletes the email with the given `email_id` from the inbox.\nThis tool changes the user's data.\n\nArguments:\n- `email_id` (str, required): The id of the email to delete.\n\n## Data schema\n\nThe tools return records of these types, written out as YAML text.\n\n### Email\n- `id_` (str): The unique identifier of the email\n- `sender` (EmailStr): The email of the sender\n- `recipients` (list[EmailStr]): The list of the emails of the recipients\n- `cc` (list[EmailStr]): The list of the emails of the CC recipients\n- `bcc` (list[EmailStr]): The list of the emails of the BCC recipients\n- `subject` (str): The subject of the email\n- `body` (str): The body of the email\n- `status` (EmailStatus): The status of the email. Allowed values: sent, received, draft.\n- `read` (bool): Whether the email has been read\n- `timestamp` (datetime.datetime): The timestamp of the email\n- `attachments` (list[str | CalendarEvent]): The list of attachments of the email. If the attachment is a file, it will be the ID of the file. If the attachment is a calendar event, it will be a CalendarEvent object.\n\n### EmailContact\n- `email` (EmailStr): The email of the contact\n- `name` (str): The name of the contact\n\n### CalendarEvent\n- `id_` (str): The unique identifier of the event\n- `title` (str): The title of the event\n- `description` (str): The description of the event\n- `start_time` (datetime.datetime): The start time of the event\n- `end_time` (datetime.datetime): The end time of the event\n- `location` (str | None): The location of the event\n- `participants` (list[EmailStr]): The list of the emails of the participants\n- `all_day` (bool): Whether the event is all day\n- `status` (EvenStatus): The status of the event. Allowed values: confirmed, canceled.\n\n## Conventions\n\n- The assistant acts for one user and learns about that user's data only from tool results.\n- When a request refers to a relative date (today, tomorrow, next week, a weekday), use a tool that returns the current day if one is listed above; do not assume the date.\n- Use the date and time formats stated in the tool arguments' descriptions.\n- A tool result can be an error or empty. Say what to report in that case instead of claiming success.\n\nWrite the SKILL.md for this skill. Return only the file.",
+        "reasoning": {
+            "effort": "high"
+        },
+        "max_output_tokens": 16384
+    },
+    "response": {
+        "id": "resp_066c3b6a381411e9006afd13fc451087d2822af6f6ab3ef11a",
+        "object": "response",
+        "created_at": 1794970620,
+        "status": "completed",
+        "access_programs": {
+            "cyber": "standard"
+        },
+        "background": false,
+        "billing": {
+            "payer": "developer"
+        },
+        "completed_at": 1794970666,
+        "error": null,
+        "frequency_penalty": 0.0,
+        "image": {
+            "context_compression": "disabled"
+        },
+        "incomplete_details": null,
+        "input_transformations": [],
+        "instructions": "You write SKILL.md files: reusable procedural guides that an AI assistant with access to a user's email, calendar and cloud drive tools loads when a request matches the skill. You are given a skill definition (its scope, workflows and tools). You are not given any example request.\n\nRules:\n1. Return only Markdown. Start with YAML frontmatter containing exactly two fields: `name`, which must be exactly the skill identifier you are given, and `description`: one line, at most 300 characters, written in the third person and present tense and starting with a verb such as \"Answers\" or \"Finds\". It says what the skill does in the words a user would use for these requests, then ends with a final sentence beginning \"Use when\" that says when to use it.\n2. Cover the workflows you are given, and only those. Describe the general kind of request each one serves. Do not include names, dates, times, email addresses, file names, IDs, numbers or quoted text as examples; when an example is needed, describe the value in words (for example \"the sender the user named\").\n3. Refer to tools only by their exact names in backticks, and to arguments only by their documented names. Use only the tools listed for this skill, and do not invent tools, arguments or capabilities.\n4. A tool marked as changing the user's data may be used only when the user's request asks for that change. Say so in the steps that use it. A read-only skill must never instruct any change.\n5. Do not add warnings about malicious or untrusted content, injected instructions, hidden text or security threats. Ordinary scope statements such as \"only when the user asks for it\" are fine.\n6. Do not include URLs, email addresses, executable code, or references to benchmarks, tests, evaluation or other skills.\n7. Do not fabricate details beyond what the provided materials support. State a convention (how to count, sort or order results, how to read a weekday or a relative date) only if the tool descriptions or the record schemas support it; otherwise leave it to the assistant. Do not add steps that verify more than the request needs: before a data-changing tool, add only the steps that identify the target the user named, and no extra read or availability check unless a workflow you are given asks for it. Do not add rules about people, items or cases the request does not mention (for example who else to include) unless a tool description supports them.\n8. Do not state or imply which tools, arguments or capabilities are missing or unavailable. The assistant may have other tools than the ones listed; describe only what the listed tools do.\n9. Never tell the assistant to ask the user a question, request clarification or wait for confirmation: no one can answer during the task. When a request is ambiguous, choose the most reasonable reading and say in the answer which reading you used.\n10. Write concisely for a capable assistant that already knows what email, calendars and files are. Do not restate tool descriptions or argument lists. Spend words on what the tool descriptions do not settle: call order, which tool to prefer, how to read results, what to report. Use one word per concept, matching the tool and field names (for example always \"event\" for calendar entries). Give one default route per workflow; mention an alternative only where the tools return different things. Do not end a section with a sentence that repeats earlier guidance.\n11. In a read-only workflow, give the goal and the default route and leave judgment to the assistant. In a step that uses a data-changing tool, be exact: name the preconditions (the target is identified and the user asked for the change), call the tool once, and report what the result says. State the rule \"do not repeat a data-changing call after an uncertain result\" once, under Common Pitfalls, not in every step.\n12. State the general handling of errors and empty results once, in the Output Requirements section: say what to report instead of claiming success. Inside a workflow, mention it only where that workflow differs.\n13. Use exactly these sections, in order: `## Overview`, `## When to Use`, `## Tools`, `## Workflows`, `## Common Pitfalls`, `## Output Requirements`. Under `## Tools` give one short bullet per listed tool saying when to choose it, not what its arguments are. Under `## Workflows` write one `###` subsection for each workflow you are given, in the order given, using the heading shown for it, each with 3 to 6 numbered steps that name the tools to call. Keep the body between 250 and 600 words.",
+        "max_output_tokens": 16384,
+        "max_tool_calls": null,
+        "model": "gpt-6.1-sol",
+        "moderation": null,
+        "output": [
+            {
+                "id": "rs_066c3b6a381411e9006afd13fd8b6087d2baffb2f37711c755",
+                "type": "reasoning",
+                "content": [],
+                "encrypted_content": "gAAAAABq_RQqeK69ysFFXOVnOrBSNJzyH_jgoP46KaSQGnDVaoros5_ruIYe49wU9DpuqCFdk3Na79E2GypfvXwQCsDjAI_lKWuCgOu2hK47nS9enz9wfdNbVB6hE3ecG_frtekluJFnKnBahh2HTR4VNsxQiKUTI7wuHo_B9jJFbaL37SjItzw1lATMNWpZg3CC6j1x0b2OndFsC4TVYubnVxsPuKCiB3fwbvbBXPtAdwvo9YgpqhkmBq4OT2y-lmf-ooEPl7GxPhO0dnEmFFSAqAX7H1w-e8QBql_-qmvY9BI8dzUUL2p4c-WOmUszSD4jv7yD_l6FM_Z7cX-mSBG8DvJTzlvEBNfeMsnk81GsR-q_n58urKxqG9p7cShCaT-PhjWqk-pzhPtsFaZJznASk9Kwa51NknUUsUakge0znmjyup5yLyWynbTRCaKjaNnuy8eoKXKls4wK_F6aFX8k_HmB9jcqen0Fxr5ByrL27M4xHIc2I5gnJ1_ydNkZqgkWGi5hg92hXeEM2lH9UsQ2U4qi2n7p4zN7K4Np-QyxYx-H1u_ypZYx0fhJI2UaAUH2kLcV-RQwOHjWcUp5pLyAcRKEG5fi68LSGTMTM7U0wTLbQorfA0ayvy2w9BM3k0jV558_POdNsv7FqT2gsAoa7wssgdP5ouBWKrUFbS4X0x720B5GVk6-MjwF4GaeXMbJWjCthKqiOdno22vJh32tywre_vb1DaT8sKdo4N83e83LWZ9LUk6JOkaBe2ZcYpEIbqtx_d5Jle3C4xoDXzywXfI2mDR-07PjvqRCbGmdpcQp6LsQLFQXYbC16dsJTm_ZE2rvt8zH4wpORuFASxeyoENryf3hjn1X2MXpGjDczY7RlUQgfkklFmrQlFmDw67_KGeyxzlq0KlAtRTuPEnxnA3KdiVsmeuiziO9p2es_zKeCz54M5htvztc2VBdfNaMrm18W5tQ57MLUIY8NlwjukCQBpiZ4DX5e6ox9Xo7LIbQ72gGCEwYOZhH9U939Rm_5LHVBeYGEsf0zXkFPxPcc8ahFtV9_aqRW2vPDafDF14XSOzS8TUQdBUSbct9Y9uHMQ5UQrKNRSzGAg9yYHTqQCMmDxuPhvGO1DKOrkhSKWJ2XSMrYjyhlZLeuiPpQztckPcox0ddqZJvOhnplSzHzp00cgAlt_BvDqfPawfqorTZiOapqAAJh2UnATcia5q55BfM0_M1Egca7ewZXzF173Ruwve1ePwB847TeW7SrpKckc-5WozgM_OZ0yikHGUmw4eFIyM3aX2fStSWdKKEOV2sYnc80ORet_rmE1EauwDdWVgPewF_6f2sbPmD589Vfr3Iw20z4u44ZuiPJDktoRcEifr2ytaoLsvUOF6OfJX0mGOGJI0eg2pZ87TYwUKii_X_R_yNMvgVbjlx3CoEPcepRX1XMWSpKSGjXEWtJMRww_-_X32S2Ul_RP3ctRz6hqlu6Uvso0CB2y5IOHRYX-EVNBUf6hp_uuVqJMiiYVulP9rF_DChq58TEkGCM7z0LAt54JSBcWlnvMzzCDhkvTxWc7ucEdIqZ8Aj-72HujcFA9QG4HXAgEcvxSHaiK3WmVzeTzO7EMv4dEc7IHw7zZzz47n4tc5WbvSDOd66z_Q8DsUOWJLL3CRQ-R04u8JZCzrUmegTnUxwhmDVcVF1Y3oEw8nvzHqvH-7OiJOUQUm9ZgOWXVLo5oOWXPlgT0MOKlkX1FGxUusgEGILTptRCUGlovHntsw5Ej9k9WkttEU2HoOUO1LjHxaDrNSgpdUH5JdceZHK9zIKdvWDUM4KrXrnPAjMdBWK3arjBKDxzhw_K96TfUSwd8jryG-AQA6f8_LUAHLqHH1U9qoQbiFAFRENxoCXUX9RI1KxknKXhDfB-q4_zkwNCNI5ZYmxDDBsPSLK8NNwEjdHbe9sqoln3iQ3RWQq2WBtAsrhtQ8eRWhloqRYA3exiID-G3kw8cWXVwbV9YhV0lIgOgQ-An0EYrKH-s6Ebwkbm9tl9tVGdsnOlawzzNxNB_Y2bcQv0IY7CaAAlCGkc7T86-cU8iFPpKk9v6LnrlxjRRNsh2RFMWG3gj3mS3i9tsG_6JZb3lI6Jy-BjYQyeIZABif0lCG2S2t3RLETAi_inf2YDZ6L_qX_rLuMux0J1PVI6_3rW3bfgPfxWt6J-JV1mDZ974niDxS6KnYOT2WirZE_3qgiJ_8ses4vVYWSDbIuk-D5rQKida6isKffEm7Iubacb1mMCbhNoDN1ksVFM-JEXCLEH6-qTsQFArTM7Wqfs-GqrHKSq15W7k4JXacLJ3c6UyPkWvwA2XpOEaRQ5Z-3tBO13Y-dOA3fVV_p87SOqd2vxpZN8vmlDWO4QNlZfKoqTzuYanMtI_erd1xb418zt3mSngUXSXIRtBL70BnYQ0KJqzPMEo88_E13oia9bQFROPuQVb_9qOPJecOwUYTUT1DtHjPc0EFauxEKFR1MznKdI7OLWofIoYj2U5xVCWO4FEnvmlFkuV4ci3mTXUC3t4H3JRpu_LU9MoCghvz_DdyItZl-XwMvCEju6PHfGK94BPc8D86ePHUvIUAtg3HOJUHZSewtT-HXhvVzErr-fo8EhW9N0fJf5jVSp618NzJzgw-yUrlV_iR0uhKw0sjn88kMnEs74dKbHshPwmtclJGig_jEH5SpIIrhcd_I8qcIhaL2Se9dClKtWYBf-gftZOX6ut4qaMXjJK90Blg3rp3qgU4d3PTDzvv_2NiQmdWv7EQ6zw4CzpBsZFZIoKARZdNcXE4IICxV72ddyO7u4laN6zP9jaDPuaU8zG4y6m5fcm95t_XOT8LTO3IMBbXT9st7ROsaJYB84ZQeZRKVY7E4ySpzwiMZIqVNWc1qpqAb-doU0Y1D5n8Lz7w20iuSQeyaTwUOqRfzLgdtAHnCgBvwQlsnq-bmj40FvHhin1IjikFoQfH1z2-QqPtkYOC_kBx3cb1snH20zxyeSyKfMuBbliveibHjQdocXnftEjsdnvwdZehniMQvLhhGgjApMqeW_dPKqg5fVjF9VWg3dnGmLypUabGPe81e4F4_WUW4LaNJSvUVEwBLIIaJ3NBUmphUyMa1Pc5bKPkoBA1q4HtfIflbUNqpJkcXSlZNomzssFUfcL8zJSU9xQUltP8bXmzA_m1h3Kc-UX_JxKwB9lAavyrUM2B8VGH8mnQ5gkQbZHGVsFuGJCImDi9HefKqn-eOxdBIOfiFpbdZ4mtQvUKMjk_krhDx6AjJiOY_-K2Vx5pPc65oszSW3FVZJQdAK6WY6_yusBQfW93wd9J_orCX8AmfawOhErMrEMkueCB3KfCvt7cCs_3EhGDVRs3m2GJrcC1oysVLNrBqd2avNyTWX-KoiKp1g8TGFqWZbwdw9pve82SSzwatw0rveTzmFG27dYQ_NT-Smi7EETc3865rM4ro6wZuZjqP5YjLImMLoq9mc9MFPjRd8EYH9nadQWNnzzMj1xPVy3jbS_w3yh6LE4mAoBp5VsvFl8i47foH9vNUBg2Oj-_u8axCDbXGxCdUvXqfpuztwjpLdcs9bhFHSAK7TtsKUnSO-t28cm0mns9QofZvNPEIv94FD0qeudjANqePavSdKufAI92QwbykVwdLDG2MlHbSt_5OHC8ajokB97mmSjbfCJksN1_Tw3rRuS8olaTRMrf731t48EH9D9Y9y1YJLfnOnCx8b0cCDCD_VTdV31RQEMMOLlMfz1g81o7lzpnuSYrNIGKZhETEKzhoNM64hrl5Lx_8fDHSrqG1rywBoIFvKSgb_eU1c2G_wMCaLEBPQ_kTDFyQ8nMqhokKWIQAqcP0lCR22jVboK5qMxKxw9KIfDM1SISpeTtlYW2vk0iTk9W_caWVaTHZKBSGGNtOyQMCCpCza0qxC9jBPW1PpU0PecdYEoTTvZNkJH1JNZkmaJDXRMAyDOXwG55vRdb3QTYsZ7LcikiZuLHmCmkm_N3fB5BcJj2TvoeKsgqxESXBf4Bjth_ux_oN9Qbqg8qW6evjhh58WhNq8b1AfLdPF1uNViRnH6FZhjsoydvPQon8FZWhZIZC89oPC1k5xYuwFZMHUTQFcs2UJZSV19_RK7SxofcswDkl4MXmikGfjT0u61OIYA_wPvE4MzTlUbgoWdvnw_qqvomAG8kejH9D4SH2NqQj0YrGeSScSsD4rbH5j7VKlhoH3-5eYn3U_LlxqbSyNxtDhkRVVfnC47XLxfQAqV_AyFqIO6OaGnBazSGzKvmExtg1MVCkhea1ZZ_gNwWRMWjYLPAEKIZ6g2LCeMC7N5-cBgwWxIEjopPV3miINh0W79er1tXOoCVTn_VpJh13P_nvafGwkiCbhpTbA3XxK6k4sLps8nrYcADh_U5AnNIu0tiYmc8nanw8-fv6iGENux3fv7d8XOdA-3R5r5mcNtPbrxh2HgUXM_ZjxYL9DS5YK8P6tnWQJH7N_W2Tz4X0g0Wuxiev6viUqx0_a1B3sLHPA5bgBfn1Hmhsz-3GX6YcGn3PfQ3tc7l6MrVGCV7enlEhYEBjQCfUzOqDmvJryRtTghtBbyhdzZS4fRphvAGm6xynETbTIqbJEv-j_nVdrUH3cLGfJd5ezetd7DnhTiktgqrzeuwmUMFQ6LlA9wlb7j8wgTTLsaWKmhd7XKt8res193BW0PgQGsdjmT_yqfGPXPiRWzycM4-maQidzhL6-wefhTI5wsic91DVUQzKBXd3oydN3GKj9xsxx1HTb4oVRLDyfF67I7aWfrbGl1cBAfeOAkPZltgsUCAuz3_LhmNUMbxrlFXVhKmPm6g_a9Px7lYeIk3WhuZ5igbd-H9IrZYiH9mMkNKKiYDOm8u8gndtmefAt7Amf73ZyBZq0AHfOEfomxmlOIngTp12YldoxxeTV5bfUbCkH52s23AKQEKwf-I_o1N3wG3dQ6UZO9jdZTZzmiovv71dtuKc5SPQLe7PDCKFG9xbomdRlq_O4A4MfQZX0i9QNJ7qiwlymhw2h-e0Z-S58ZOlA50cSpfXW-ggsTEd5sKgVv1QmKINa0lyRJuk2hRRIWbV8iXRzyxrrc6P2gETlEJXT-AzQwkdlWirLjOt8wD4oO647RpDiotzIy_uK3jezYq90m7MAml9KJC_9QWrxfDX94fKYyqT_nC8Eyq3zHTT5DD9KSVwJZsbr6SG_GdwexPezf-oMYdXFT9KVD80Syj-hPH_705YNOYX4KfTDSdF61CxwMfasYVadvaUsOdIzai9wJEHhTXKO73nZek7HWBiAorneeSGyDYGU63N2-m9P5r-2EF-mnOQE0yeS2vzEfjmJr40tBzk34pAPNpQEii6dfhbCAhe7wH9oxQWjf14b4T3Qb76-vECz8BpOGhCnatUhKp-OtJw5ErnlvfKzLIM5QyqsWAuvHo-EaKVhdu4UT0gh9TWCpy584b6bnGhEtV-nLQShFZEFnP5-TCpIr6G6YYnkvQBCOhEZ3aXUb_meDbzOKMxuhqjVNO-CJKpx_lYtsUNie5CWhpDONSyOSQfABVJBFZc0hZzKoJxIJIJtjWf0xm0OgwwPXLKUZN7J0NQEgysHEfTX5PiznUOJsZi3TffgqJWesd_X0d5hyCHOsTFmnk5PR0m6IMCJ6SImSTwbY8myvlxNveUbDAhOGVRD-Y-qPG37qdaQ6eYU3ZgvV4UId2j-x4OnGnKcPV0Wu5K5PLzmuzvGYDJ8TLL2vUuHZegQGzFqeLxns5XpzYD793GOCLy0_Z49a2WwlohkEjZqiQKp8WtAphA6Ktns0pF29LEbbTnf_5ZcaEfrg9gcaq6Z-JPpfiofH_9GRPtAhqnC16MMsVwQylE0wnd8X3mEDTuh7YcAH3aJRkwp1sBNkvdo7FjPbcZuRAz89xzcoVRSglLfHvhigHtIdP5q4r279yZBZb337aKVxCGYAmjL4dbTNwbqAQaOxUWb0bOAPQqqOvo9nlbAweHupqk4vbDN7Eri6pC5dVOhhnWXLLoKvTl7lUL5dsUDn9v53onw5atWIqSuG_E0-Lmo2vQqs0znjdI_2tBvuRadh6_9Sy6PVP9z6ygYGaRwXYiDjnzj1UafgUHU6ANR6yhdUR5kH2QZO7WBjuSgvBc2LUnb3DlqzteVaM41pDb7GzDh_UVos8FlNFkqM4fMdyT13TvVWZ0A5vzK_jaikqLDKHy2j23EkJ1nY1jDDDOiwOSUwFWIdHeccDVXQuOXm6DEC_cLuTpkC7tkkIW_90lDD_ITmWJnq_DHSoA7hiHqGcDZ93XOd-2_DKRNByph3b8X5Z8cL24-Lhj8ezV9xFk79dh9Q-hEADlLWe90Nco5lP8OGeYtLO2G5AKqoWnlKSBz1_9MJB9uzbdC3TMgYEsym_18ZuR5dGb2FVOlF7UXJfepWOvDK0LXy5A3Xsh7eB6dNmjVp5spea5azU5Gc4kpFcGvb7aKRTvt51p39C4O5CJp9BFnZjyq1HqXsCgrQSp_tyshMs2zCEsI7csuirxfpFKlr1BKZVaLH4ikQFvWEudfdmNsroG2yaFPRtOuTLJwJT1roU3XOxW5WvuhXvnBQcfFIiefeQNueriUcaq_8_o4SPaNCjBDJxbA7CQCrVr3fNKAXcJs0iRXPv6-UeZx4LSUu4CthqXqxqOWSEcbuEwnEmRSnjXpGp5KhEZUog_pTtq6DyVl6LZxYe7oyNWU1j1jwPeKu3Al7yR4wBjOkDNWuhahI3_wScq-IsaqonytE_jQXHALCYgMtSZxFe07Lrw0ltGAeqJMkqhz42ttnmt2UIrvOLpcGbzwiiDGXf0Wuq-FhmKWHyFKr9PdA5GrvvucblgvF-v-pFiEbKTje1pD-rusf-7NFghHIfpNOeS4vF9CV2WVrVLKtCKHFu2eYp-fa3Et1kG-FeuPZRhC7N7Qq0y1-IgX3JjwDEGBRw3Y1cvlN7j9rOKO_L_c0qWfNFR4D1vNVQ1fbTC6hWdnEMMP1bZKsuQR0vtC9JgEgNsMOaiPomoaVPgN8Y8z5Ha3mIOKtBIgn_n8KmO4bC2SNJCV3CK61mDA3vI4MzXinhzQlTRg_rhFW1ZwiAVaAU1AuXX5Xry7YGNFgO4oYXwT8UAMDUNjGzb5azgCSDe04RBTh5k3IstPJG6KdZzhFWeko59SvP6KkNYndRCEuEf4QCDJwGo0BWuJt_b0eDgYseF9l9wUsM6Zrx4WhhKLOL8kh-kGeenqJBXTa_4MuTDn8IXXv9va9Q7cLNOhzIE7bPOgaN653lOsiLh25q-AOQV0h_zi61P9A52kRTkPiQ-ppUJlblXWajsOccjiHdAS0wJpfZiYe-5hnBtX4wpjc2Unz3DiYZZIhb-TXN0d9vUuvvU-zOu8bBGIxxAL2OpwEX5zhcgR49AQ-FNQj-stVveAyE_3ik4uDstqkYD4BcH-mZyXMtH1B_Ou7_dISeZsr1P30tsThAQK6UMA1l523tXgDnsLWvwZILZJPQ2Q__oYtsD9KpfjfRokJGEhIiTYMpqyfi7qkJ4buTybuAr7or7g4xFycQnFiB4NKPXpKFlJ3jwMDy4eCxQzP0lAIAsV5f1mP6urZmU2YDDB0RL97QpVW56O2YG18O3yAZdVS-PseXM1GQyQsYkza0N5k_Id1Z1E6shVuEaLowj_ABirsSX8rEL4dLzg91NCK4JD9dzkDVnjkoyhEGDuK3IboVlUA9gaXgcMq5KSZfV9_tRmZZr7-L1cDYp6cIm5crwHjv7M5abSU9j0CxQHI9Pa54c1QZ6_zDJ-sF45ZPo6T9QG_EcWGOGi9_tOSDiF5tScgoWPKu7ifUUEZsxAF9KqBGKESaWBEjhc2CnxgK9cnDtgkyTbKW1Ov0yjodTRNAFEMqWEKnri60q7DvRaqM7b0wrLj6I4qII-g5PhDeLCirjoSRajnWz49Yt4rBMymlokS_kKhWDMJuVIlKmkyghy0U7Ke99O1Zocr-HjBiCyNpHWTOSVjFHPFaSNgHuG7SZWzFJiUnSDO0Z_hr6DoxB1JqLXphon0KNlKSp9kvD_MNfJHh-4hnh5N9zTIBezIPo5lU6qP7cR6Y4yayKG1Iw-KTVmIIqqZZ1cloP-CbEXXNRsViY4OE_F7pG-bW8yAS2lif6qcbvjji_riHMx_eAExURn8hF5o5o5d_2IthoESAyf8X46XSDGA6g7SH5OeIZMNoJv6cOe0g8VhLIg6hhsOVbk3fwXgjpUxcwQwTe0L4YGInUtlr570Uhqmw0tfZb3_yoPdS7q4Ju8v46zrIu2HOE7ccaSdrUM3NF26yQ2npcL_QLulRIXJiBJ1LVV2vZqc30gvt7Yqpwb3l4he7fnRWa5-0nU-7eQculMJbP0x1LyNyAIK5pwRkwAKxDi3fOSlMSOKgEifcGT9yJ7swe7dHsJEcrIxwep1Jp-FtQsE3GgfSwEBCMkmcj8a3pnj3J8gLE2wtBw2TvYs48NeExH7LDhYG90iikvH_MCBeMvj3IJUm1PcqauJvo8M3YCFWXO05-Uwd1SPVCocoDK8m9tpR8-IrLh8aF6Iqty1mTb8219MmnVTVQpQdCyTZ4bWzSwSo1113TEQstUGXUOPDh7ta-pZjH1Ae10bZZVHP2sFuHzGx7lB0ndB926EF1bpQiJQ7GIRj-h9iG5IkCAxSolFF0I2O468X9vTm4QwC6TIMDOrGU0BgqIW889pYyDO9Ti445H6tFPFTGDBKxKFqvvK9GR_faV9WOAuxnHjMhdtd0qgU9Jo_yG021-wBLTmDnd2zGiU6_q8bQuSjU0r3Fwl02aYeWMMgNYEB-nVivJy09igp4Suuf4jB-P7GWUqfNtENm6Uk9YQC8qZoh2I6S_8yY1PoqdSx3WQqH81D5xBVoXqg3wob9QeaSf_Rfzx4Z5xk4mLe1OhgDpWFHEEflWC-M7glBppPlMIxt5s-ZSYZ_eI4TA1SoEjaeQVl2zsz5mofREevrRyuSYHMuTe1wxaRRp0mfKa6KojEXkXlJiw_zxG3MVYc_WU-72TiUdwssnTd_6g0M4dYR2hYu_1Ei-0VPh4G3mjXKE0D_CNiO9mI1oTpp4qmKqnqXN45qN6iAY23AyDCc8g00oC7b3QHtklUTJV7yFXHW5Lx4OYPeln1vgnsscF5eUPuNbTZkHLp6maUxdE-zadBcw-BHcFrBRmll2QoaaIHRFc0FkdS2SuW9V2zQ-1HHiU7VBQrjTpe2XMThndcM1Ni3nxpI2yjlnvhVCAtP-MDXMa9BJC6Tc86S6Rvg5AzGxZC-PCd2apr91hq-MKPxIuUp_qDSJcG2qUeHTaxK_urR6up-B8KNFX90ndssRHvr0rP_ybWwQmEJJ-DZk1rHqdFjFJo2UWB60Zrj7SeMKn5yqqWaXUKpaepGQ04cS9wS5oBNFCONKcpzmRMe6czZJt9a-IenvQx4tHzH-1QG7neIgk5VJtkZyUAt2M09VxrGQCcUTs1EfDyDV62UHeVVd6TXCBrGa8HuCTegV7-v78FB0hp3Vi5L2k0Tn08Y9YfBM9rrSBrfElGB4AhYmVOlLSQJGwLsAlBr-c58JoHbFuozNJl4LTdsmF6q7hO_LjuruqbM23qu3RTgyDeFx6mv75gM-_Ozxlo2sc9uO1raFu8gmK9lrsg6k_T05yHCot4qcMH2UB62lnlHdO1mHH3nlyWxkHHu69cnq9zZ3kZ9eibIqFesSZOb3_7mXH_ZL8wsZhXDX7PaeYY5NmN0eEcSULwPoNLfsm7U328FwmZN50fXIBV2GFpA1gkm7RZ2pk-YsHZCv15I_eLn8UY42a3rUhYzdRwvULx_Aw==",
+                "summary": []
+            },
+            {
+                "id": "rs_066c3b6a381411e9006afd140c5b1487d2a11ed9cc33a91535",
+                "type": "reasoning",
+                "content": [],
+                "encrypted_content": "gAAAAABq_RQq2I1D7-M2vArrLumsQ74nU2YxJAAuDYUQ0LOJFqWnDO5UqUOk8xwsnPnFlRU0Hg74nG25JmZftZysWD-90xUYOTmYmWaR_iOAa_ns4qt9xoHiH239j0HccIv5X760FC0r-mcg4oj8RyHGiA0SuNFtzcnAbH9fnJV4dODogq73di-ifJCnwVhplWRGmpEdZ3xTyAKjnCFhZCBgM95l04C7Yn0M_hqvhz_7FpLdIJd30fQWzJzJPisfetAsInDHYMeLXZdum6aVnue_aRTRaYV_c6dlAmjxapD3nfiOuktuirTcqVOQW-IY2lVtHLQzR59cK7qa31H7O7J1rDENhWKu_FJiEni2joG69HFKYA-cHWoJDrFHbffFpq4gjkDTlr8Skqvl1JL_4eVgDSIjcWzKnTxQ1qIfZZxCZ_s8f3hRbqvYSyBddxltyHQSmT10B43Wje7Ndj8lZUA1BYjJNtA67PnJrtkvh4rEQ-9W1bBAK0JEzCbM27orHAGuPTPEPtN6X1t7YRznZcMiHY2r1n8mf-KWv9ywI79-h2HtNXZGntlHYIa4nqwAJyl2u91Msdi7i26FZQk0CILvljmFY4TwJ5xEJmnbwgEJ-M10-myNQTevy9jE8T1wsvEK22LcNxnVsSLqx6nnElOqWFN1t-LGv9e09Orfhk-kOB78cNbhl1-V7wSpzU9eh0s0yaNeOvvuz47PI_mGkPRIE2koIeCUraNsOjrM3yAAzHFkpQculgbxew3lN40E8q6alJPIONw6zv02k--K3XFuW4--AJAwy6BhJcgMgWVj647GFBia3Vnj1nJAofW65ej5RA4fjNlxzRG_1xV7Eknl9rhdn0Q6Y5Dr4qW35zvzNpiH0tXGSSBZVfg8sPgh1-zjppOkmAs5tsc-HNGdSjk3bKYE5WfacFfHz7lg1o-LRnzxh3YQKrtFECQZhrfWkNB20uvzNcBZ69h4c2zEm-ELYbZQLLFGE3_srTAKhhQvCxoKAbPTI6n-WumgEjcWn3xpEHkoj70CC_8-nJ4-6DMXf2GSSLqVNuh670oGQzsOAAWSI4bujZs7JmSZUiUp3g-JL7JdXks693Q2cnylAazQFZ3Mivu9mfnbNVsPVfiB5uwRfg7HqUiBYtFxmh_td4snBljjLD-uuK-6LYyuSh-67P-f22K3mbcIkJlXtDVHtqeB1Wb2pRgAZn_QMBYvUYaAyqKm5PYm8OaAgErVO9jBxOVS9no5VnM-rZFHfQwt9AxhwhrHexLGYbkqbOsaX28BlJadkPpL7YHmaczxatjA3NfetteBpa2GYX7gAtKFAxmsnzBCD19OIsKHTY5LAvzfHcDGeBl0j5lfvmIG3tEOo9WllYP4L-FKtXg-tgiMRClOst-4uzMY-BUB1kf86N-ltFSx7UBg39U8T2eEBMZqc4fQKvSyivu-o56IrBsFlx6zkWY1KaIZGRbRf5eYrIm7Uhi6qmpn5mv-gamDXQwIQPqwEA5FBq63nNDHQrNkEfAOouLU704cETQG8ZbiC_6fsdsdbV-du9RJBklqk2CQhTkr_cnn9Lkik0HIzM2CFc9Fa2xaABN2sQvnpB65Uw3Sp4xxByCzbSSGVUkobVz9KL1gyHIhq75mx0bncnfmzfdiH_6rPEHrtT1-o1-rfoOOAnkvWlgYNmXuw2eCm34WLHakiedY0rUM6MaEAzSQsEcjDMdB27jaUPOR3iacfQJIXqniaOQ6l0F5sP-P-FNSIMAeuRP2gBxGvwZ_VYR3Tc2MdpXEXA_o3H4h7zqLUsXP8WjNRfClvqQ46ZEXewiYrqt12i6go5YUSY5DeKoANG_YCxeYp_Nw9dbX_zMzv-bpw7DP9DTWNjiWuMHtNR0vBboXLr2Qw_Wk3NcT0u1dMxyKgu6FwxVlzRcEJ8GyXwpyaFZPfhE3UGR3wYOxTTVO5Iuuz0LN_G8yM4MAMsbIWXHp7jaACx4Rsco1Uctje7qMzaQRJvSaG137k_ZkrOnQ_awkyhEwYpRlctOZXzG4VzI5KQkf2e56z8Lmte75RpH5zTGhK7bE6shP5LHZRvsHIgsWCHoOU9xrHSkFxoa3TgZ671JybPZpXFdb1UY88o-Sm3HbhfUEabZ6-w2j5HPwHauAp1rMOYPvv_DFnaUMbufMAk1ekY8Cy0RqMx9i2fNIvJ12Xame59x46lYF9sVfP1BMMdrY2gfuBVR88RsFht6H9tjnYJG71jR99XhqWOC-zLCh5JT-ArCrjdW_OLSLWDP7wBHSMDjlGsO1A--5spI3XIuIpyQwmN98fBuUoBpEvrylPiCZfbQskhCci82OKac52AXvxwjuObD3yx-5ApQ01SpbSnOjCw22Mg2l_KvGkUsB9aEs67-O5lN4-NzjJEgPrKR0libQrNL5gigRjLUUgEO4CrAFAVKoMU3-p30_BpbmLkFUwLG5Fc7es6w8g8Wi8zcz_1zVUN90BQVt9qYfgLaXY4qH-7RY8gYUDsm4MGHaIookkV6FV1m1jPyX8U2ea4c13oaTm1TsI0zQfbqrrzStoFGZsdOPAO6Us3yY3cR-l4O4IuRHsX7pNw-nNkuO6SAg_4YzihEjyO27q8o6PRSXQygkA3ro-xU9gPG7ed-HhAjYal4ueYr41QlJ6FRbT4tEMfuNIERA8WNTru_ePAfP-Ghh_PgrshOuKvDxYf_lJrfzy6qQU-U3P8kVW8DLr6yCDx8r53gZleTgU3w1isj1UW7193aiNI-GzVSJMoi_J1pAWofPOuieNOFcWqyJl5td8wIZ3YaxpJVUAOeru9tkv7vqG8fdNjZAAXanMMRLzPVqeJ9lHf5g2hpe2peDCpSBur9441zXkiFZEntAk9nvkVc2YEer2Ej8_k3V7IlitnlmTJoTCB2Dt58Q2sNRyJIl31nAShKWPhEBP3mHVBge8KyORwPngvdEpKtixqxrWt_LMkfr3JZqgko_Gv_JyyLWQRDlC4LRdgcYL1GZKw3oEsR5XC_Ik9wRm6kG0dGwTFhaYPvVfyFw36RAyfW8RCm6TspCDEoaeEa0D9h2yBS_FapCxeeDXFxrj7HrnOCi9tVNI5s-C7qwG_U1mnztrqBixdZKWWItZ6FHZ7QN6cq0xjQtYjmdNy9_DHjGE3LQtMJ41GHRhsPOn7-FeEnXON0TflTeJa08muqebaHLD6HWQEt3rAliGwFslhXpmSMlGmHufcH1XqvqOBSD1AQLxSa8muqb21NiRfS4ebAhjGXy7EUEo9O4RG8zZzTtc1_fXAdwWfJDVNUjHeDX2ib_AbMciG3ma10xzCTzH6EniXmhJDQVjIjhNv8a8XMaBtzK3NXiWclVSNMHubqe0MgvWWgtJHRGktao6Tk7-U2JfKR5tkxZaOV810WlVUqzQPLSUhNgKlPCZELxzY8C1uF2uHpNo8gcsezUbww5RlxrGO6oIb1VpERFlmzaDfYiCH9x_zXyp6tILBypWJuwOzTfX1eWbTj9qATTzleCtIInt-yxfverdXuTpL6fxdMT9xWf_Cq5tDjCryw6M5cfkOqKZnqTZSuqqdl_17AVzUqx4GK71vIBTmfVOVc9-NH-m5xYNxyG06MLU5ycn82oRvS2wQJi-pTOKt_bN_leeHP_JV8c0WTkp8xiwP8hLiOMzF5JYae3XWEjBRD8r16y0Bon0ev7FivAH8RZM07QKxQ3y6s4hdR-DHdY53LIeogwZ0xvS0ohjsKky7S7s9tgtvvLxtkJMXbFAGjCT9hqU78Hu2G9sdUaKGF8ky6Wwu3xISpqkATivv-c8cms4WpJ_u-Z668KrfiZwOlFp10d4yHM8aEjfMKl84L_TO0TJxaU6eaccqX5leMSKMLQ3NIQ-CTW3L9UgQBb6sZ8m7kpi0jQ0xfNTmQtTAYhWQylRoiwiDallRaJXuTstoLJDx4xR8QUc3UXJBM9L-g7MyU4V466-gzPJbKaJ4rXD95mIuW9zD3Am-LI70722QxNSfOsao5nccFzGPr7mWyF8wEAiPOLgh8YF6CZNBrpCHxHrFFp2ezGCZyDLUNGs1aw2TjVg1CyyPNQJZr8nL9UYnooLNG04TYls-2sdnxMcteE-5kofaoPZjnfG4D_q0hqd-0EgI0Biz3Vl6AjULS662xZKytqB_pdZUcrBbu0sOrmlLhauzE5v9K9FP1g1bzqgyOsVhptMWptqcSeLGFkyMNiSC75BrOXa-w2AqtuKcBte9KzpErI1HRAqM2nsTq33JgeRWnQbENSseZS_JUX4ryYXWp37_3PsHqhZiMwgeo3uyb3F4D6O7b2cjYqc0agjtoJG7ITOCCg-QqFNHA_PIItqw6sXPccS2RhXs_NH0i_YjW34M2DbqetbcY_7yTHPdnOD79yl8pYetGzkK7HFZzP2mgXOrphdlppYqRq9ZtGEyBHkfio7nm0LzFibgBshPxEISrcmlQVibw6kDr-38LqizDDd-A3Xwdf6N_K-AmR3FHQ64N-MmxfIDE9pva-VZdI-Y3HKXHNh_fglTTJ44R95PYsl4atczcAFr22daOy4Qwf7SgZWXEka9Zrwz1o4m2g1-9OdSeBWNzeu-nWuqtLR7dRBSeln7CQRZEkgkyL5OvafeIAkw4DccwphHymrbmwHoHleaIvjGyr1VxoAfoVCQt5o7k48ZRgVW6DqKeMGdnECLh5lHTfgdzDWfopELc1NBQ-tSoHxcG_IwBuGxPYG7ndS94fyI2dqvK7LrWU0Q2X9IInhhQpB-c0MdDateRZYhhp3k3xRhOjq66eobJNmCJXPaj4xx-jZ_QVujn-f9hKaiFR1LqN3kwnY8QSYSUjtEIX9mTVsaB3Vu8mfHOvOxW-AuhSwjXOb5g23NawEjw81c0T8o9AAtoLvXkgK48-QXZsTnafp18QKaJscN8GFbGC0WVpMUDwkT86batgRNn-r7QthCaCcD0qyqA1AuNw80h18SVlLygATetQ-uTe8xwf4Hkzj6QiO2jiRMgaMMDBs3A6bD-RUk94iEmuIVaw1IxmzL4y2wD7_POC-1rp7xabhjDX3OKOAEzBSeRB1bOfZFFvGdoLXD2iiIR0cpNOmwjEO0bY01yjXeDQx_hp6n8ff3wf9KUgiqt1Xo-eO1JZVYslveVnfT41oBy2co_wtLfLsD5ofsjJ5VXGXEgzPeGIr2chpjQ1gNyl0cHfF5a0F1GmYnyYL5ncqkuECKa3PsongvYAepdLgxFao0v0VFF80ve7vPLp68ezbDTgRqaOWQTQBYSH6zT0oXKdWwbswlGQbBTgqka2ep7G9E6d-6DQPK3nbLWYK8vOtqu6Mzhey65LNbu4CMd8WsSqfXzdHTPdisgXPH7ElxYmSlVblgvhg3v0j9S-0tkByns9i0O9gzeaL8lY6bkXJ26TL2FiounpHSN6VW0lpVfiYbYCO6tXaJHtN-NjqNpbiOVne3DzuP0SaxOi3fjezfyKbkVOS0e9FM_v22duNE4tpj0d8ZcWvNm5vMAaEvf5PmMHyQjBF0Js5Y1e3zxOnr72QrIzgOiZTHOB9rOKf1EgtMd_RjryKCHE1tk72CoDrJh_oBaspkXR07u3yQty9dO7AVFFapTxxr49vPx_4weegSSh0IAcWqyWircxP3TsHmambjPMsST5R6ctaYMt0j7cMb8GBPCIHKZOSdX2FPiHMGC7ayufUkfYuJ66lB3iyMLaeTDdDU4HZyaUNQk1G9yai97QvjwdXtUuu2DFPpDUkp3MLuobdN888ytTRnzzCilwMc4xHvhXfgOCKK7735dQm8r_eKOMUPKWp7_AkjKcl3o8RYR4FpwJPfh9yd4JeUA6wV1zsYBYECd7gfbv-8mUd14dkL5vzkbXB2MIZkf01Yb8704KLcdfaPEsdcFtnZ27gM48OTjNlfvTS5YmJajKSmHU_HennXM2UUru-_08dqsdVnm3PPWWt6Fy4aIN-oAuspJUwU7K-Gd63XFz__zr0koPTFdK79RFZcZxed5tLpt1mN0zaRtQMQ2iqC2dEUZ6EpUFT_6jUpv-XeaeQQuNu1fH2v_CT1ZsXMEwv-O6WFWhAQVnIshJgZn7AttXQ2Z5keY5PXbNoRbr3dwIAYSQgb-zYQy1nFPVDFBliMjnjJFGt7uLhcrcx0DaSiawTEWTQKQ5bc4Ioy6R_4-LVgnVOguqq7L85LyYKDQwHvUaMIEpqNisj2E1WX2qKDGIqL4aMhgF_KF0Ap_vrIfuC4uyL2GFqJw7GPwYOHoP42rvLG5k_n2peac4SUmMi8izi6yi0CXBf9Y-8lLfefqMJrHaOTUB2VNNx4FEdoQZtZULvn4UQK3NMpMyZUk53aXnupc0CLol5jYIGyNy0y75lefeA8OuFkafpHQh12gbPFsfYfjayPHB5wWG0SYq9hi0FzoKpx_VYLMgQhUe-WZRI6T-1dcWx1gpYyrQYwbi1zM_HpFn0j87NW9Yza61f42DlD63TcW3FjcMoXFbEM8eXmTVva83fMHACLgwXPgc8lDb-jzkdo939YNuc35Xo-UM6fZo-tx3zVx10kViKTsJJH9So31RIrUQFfxCr7WxRL4jgWen5UIyCtcpbjuuFrKdkeS_7milIZKuzGi-d5FN1TpbO4xyh29ab2PmAER-NIdzkBseT_FBUkHrAJbfnQIR_89F9nVJM7cNbCil7h8jO_OCflS-GJhG6vAo7tt5J_q3JxECwWo_M1plS-MZmBzI9I59t2SNenFIvMJeHuZXmHsp-_vvKHWA7aOZsIKFQqKgJKrpQsmUoTOHDGcJKtcswx6tAW6l89mnb4lCra8Rm2VwxKt8ultJgaaD9WmTLaKDMNMvxyq0Sq8J_hrVi_R8nzPqkzYDfWRN9dLp9MsUXdyDIOnwR4GlNYfQblsV2jKi7IrPM7u0qHWePwMhH_JZH1Y_-W8AFntKX3WjA-t59h-ZKj4ZOkFCpO6qxVOhY54a8GHZ4d5xkxTeUR1J6zRAJ8ET2THyEDXgM_aJHomMh6-cgDOArVDqIauaSMJjCa5eHf1VDB_OaIqas2b7bcCXquvvR_u9UM5SFn21QcA_x3zrEs0XjmSzy0muCGkcsf3pSLnxQpRObnS7Gwfz6wrsZo_1llVazdi7KkjdIq85TR_rpq8c6x8Z6s4wasCgGsTgvYhoBtxRWm60uT2roukBy_ddyl1DS-j72iyYCGF59kXWfL-UZV0KNh2zh03HQzv_Pomqp76vbBQFPm_mR35IGe2roLt1S7pOM0XSia4zoCpRN_5-eNE78w2N1q5p98XAOH3BGkmnOTICj9L9xSVucOq-nxu5Ry2flcSdZTG_HwwAkdUZXk6GHq6ibxWZ7d3wctDAtr4mPYC2Cap-U6uo1pc8IfSg8Az-fg77t7w2Q13EIGFlXeUhOmJeKCtVVXogVksG52-UQujH5m3OjwWUPXFjVEMj0vvpZogXesYbV6V9_YF8kYNVNM2MUQpN2RdlO7hc_NO_Nh4AUgtovSeo_hz5X-ccYNyMvX7xp6hOIh5G4W91pLpbjVCOkn9gUmmTucLseoU6bBClmRaXUtclFgPj41fnlM-t_JEvj-5vmPCm5aiEW6MWwshNOoulHo6k7cu6A8MMHNTlLsOgLNn8i4zF2p4ySkGQBXt5rtmmcCfEc_pB8rXwz5060iFWOcm47S0RI2QMIPBPWUlwFqNrz8PjkGMRl3HkVwZhWwydaamCIdvk3tdwiwqKOsLDkHp_71q-16DLz3akca3DI63VxBVaUg2uNY2sfUzrI0ZQ4cNUesGZOvMtjS7GdOu8PdkEuzikSSbvi0Ae51KlgVouZXhF7lXzIA0cJYY2d639eIv6tLN4eYI0nvXOWKLPlhi7eNehRdrvuVWKu8JvGXVs9Tu4-P5L2WcxkQtf0vC_N4a7vW6ReTu7D15VQ6x7Oj3bK6q55Fvuvza_2_sjVXLynlX-t1LWfQApeYTIfxpVqt_16YG03NR61_7ZwoohfrJr1t4y9sDMjMyaCyIOnlCeF5NUg2QLF5GOLISQmEEh-4E5JITCgn445X5en2BuDzbYg_Uh1g3QGZW-T7pNAK2G0gxxVrx9EjtGqtk154D7HOGwNaXtYKmHn7eCm4eL7DD3lR2Umtc_dQqfXD5_6Gu1n4qAEGTNKNKm6z5-QjgeMQu04HH5GF7CZXaV9c0PzksKuN7USrQHy4eLVoSA8DAR6-wodlrTeNVh5c7UKdnYWbsaKOhvaNDlCYW34UjQSULzksCcS_H2qKItdBwD0BM-rhBEIxdubxgQvJePABY2hqsvw-T9tR9qNK1mfi1E6q7xEQY2tYh86p4hGFhtfFOikM7rg-yy9S2UFqXaMcqS-fDnxcFsoauU47YjRSWPKUMf4_FD0qwnZK7Grw8m6VI3vI9MrFCCmA9Lxz2VrXRNa7iYZrKjeqU1n3bGi50QHoEPMb3RBwCecA_Ma0X8zDiJV0RqydofbWB01F-3Tugx2yGWq87Ut5vg3aCUULnz8gq4DNbJzDCyRZlAPeaV1xVZGMIKuP-YYaQpChuhBlyaQrFk4Hj3y4aqzJ-p5OFlgclsahA8B606_6SIu2czHS85D4biPWpq7qaX_qQtqBPKEuz2bRD2gbUradzls_Yc52l89t2n5XokLGCfpBlXhanKblU5COh26inKDokDCYjbqDrATGin_MtGqrvyZFremmc08_qb15-sUdTfhgaGjbChWOER7yD47vroPkoimLf41Q9KC3cz5LFa5FD7ct8k0Y8r-Q_jV7w6vc8w7A9hOAXKzQQD7ekr0bugGRn8-xr6uXYnhIi0zNMjT-Q3V3RzuDQwaDA-xo2hKnhRqdDCD5AI2HjTX4JAB5CLv9VggoAzP0gw7g56-AynargnsUdsi3WR6X6eo4cD_QiSNV8UMxUPh7WUOOiamTeO3cZdsxe7l27YuCJ6Z93i3wsEWf1KFv492EOr3W32Vk0T-a9S9DXL5Qis_6nQZcLqJArcOD5PNS_kjVujctr40BqEoBJqF0d2uhPkg3BuhyQ8grlMDTC9PvaAb0FTW9Z08-S-gg9vza0iNKnpnk_BnJ71J7h2YDECIqyZJSJh82aZhvN1ZH-OeXPLrKQ4_MB_Kp3_jxwwHwjr6mqdtC25QLF5iNP0zuY-BpUEuHXIU9vtWHojxTMnzekHs-EnReg35o6_WxBlTfpQ8vYdQxhMDuV4B23RdZLDpEe2fiXmTAuQ8-LV_TsKGu3fW4RJ87bwiKBjhylFu4zKIyjV9d2tE7oGk_9s3tK02ywsXG-03wGokGeQzO3GRWqWQkCgpS0htdmkyr5wmWxtsAlDQTDT7U0unusxNcBUz0aPvBA6idqjfANUlh8wGEcC0Z0nPXcK5vmI0DJljMvOYs_-1HLZO8ze2FSR9cDoaau5z4x46m2googAM3_JqaDZ8ujXImo7ZEgr5a1oBry94sNUJ3Dsb0ac6yP2Yx4paO21Hqu6FeN9KaRDwczsAFCaqhe8gJaTAvGV_8FtgI-TNJ5-AJk6njylW7duotQPC0K38FPe1YBUC8SDJGQWm8NNZdILXteuf7iLQgyejGoem1JPHedAmoTzqkv5PPby44jWyXj_uPMQcg4=",
+                "summary": []
+            },
+            {
+                "id": "rs_066c3b6a381411e9006afd14197b9087d2a681c36e505002ff",
+                "type": "reasoning",
+                "content": [],
+                "encrypted_content": "gAAAAABq_RQqYP9UbZFu7CdnRqQQacfyiO301StW2REDj0lw2GBkoWnlMBe0NPgfnRB8VL8bSLIX4UlnEatSineLkUpPeLZqtzhHbHvBqeXdvAb7I_LMNz17mkAanjI6JSQ5KW7_25MYSvkl_zu4DWG4jMkc0kqcBOjLyVfCNlq5AftuuayiKqPdyxA7h0BlMYyzdagq39pYihFSZgTCpglJTfdgdQfgAoduyPeBXGMyv2QtRv82kz2OW5MbLZTKfm7RTh7S-F09vi7jUafXd3J6GQ_R8AWOvqmV_VCHhIzTMuvtQsZuwySbslTlcb3zK6MbEsVB0CUalJuzC5LGrBGWXtJS0xu6FPsI0Jjl8J744H6ayBWQrrXqernZxuYHEXR0rQeQVTG7Wt3LIdffTyfam0pMNleDVfzivfi34gReaGvzx-iikiUno8UYg906su92kFizOsO1_EXd-YaVPs_uEmduU7MqvsKNxesKT3aZ9y5r1JdmMzYaxRZDLTqdIMgPojq3cGnQVuwGa1hvISuiqQ-wk6F8xBf7Wpdji8VcfqkXIhzT7yRwSFlIvkKC1Uefc6bVgR7R-gJKaoGbDch8wAU0uRYjrNrNJij-n3o9UbiqtsqHQYTRlajMLy9nx1eY-y4RH7x6WR_hUSpFBZA3lnQbyhaL1q6i4XzmjMzwMBft9i0ZfeiCPSHDZ2uIQYC9wQQqeMMmG2FWZIAYf_Kri-B8aItI3KqFWIE1w2E6gjZaTWGTMnX0hzl_UJRbeI3TAc3oCzJuYkXMDFvTvrYf5hRX8-J0bncB83CKpsvTlv1UvZzdKhn_fYtD1fd2QwmnWLvEliNR8zq5ZjjTS_iPNH9G1brPkDOQnAWIkd3FlfyGACh6FLBuNEmsBHTTWy6hPgdNODLZUiuzS7TwUai_Wl7cauYjuz_LmmozscMo8NLHQWfp-H1EJk2dlAIFEK4AZUh2Mr3jPjjaIolaNR_FPUNB25fz10bdVE2W4ZLmoEdMYzGAwNyJeQq13LjJaIosbcsaeiOTjZcHMVDrQaKoz4-r6uESbYEwN3eVrnnmA0tNBM6AUmpZfTBVlcBYDhw0owZ-JCYMvFaBuDMCRt-3T2P16bBi-QM0q3n7urTYO4_q2kPLI_jcwZaWL7C4fvLm8K7cghGVSfK5HnsOtotp3lkQ8PYnwl8WYdcjMyv3U81cBbr_vujBB8lqfR0QBeJvu4f4KTHT-e5Agv8ePugDhoq1AxIcQtpG4oiUIywHwlhQ5LZ7HPn-hRbAke_jX-UEPq7ZtJgiMxpTb6aHqGmPke2k0WcOJUUY8Y3zvHZa4AXJvGNVe7RI2L9TMJb1lGNLR1woP62faFE5JRZUcKXJRCtfq2kAkpDaU9sBF4nBISXor0hLvQUfgxPGPEyiCUn4imDYW3hXSov9r-UHWwsaIZodNo4bV74qi4kOllcsG0x78EAFlH0RbHua5mWYwE_BzhJIyFopp_ujLic9EacP-wp3sarMcsELb5r9GU8HXCCxGfKHUyGIO5tXlWn4Lbb07xn93Au_ampB55jeEWlsDGmTCJf0jwNBk7KQvqPcENHPIuuw0-PhsISOwcY8zn0f4CfxQy6hLJ9EO-ohghm-TNt5X4DlIBiuskAgmP0tWRs4LBvlphQpgoCSoR0-QAuYcYRxu6jZfnaBk-DAgYGry9Vdi0PY9Ja64pFQAysNyknz3AOPQVgpXISKrOZUXHn6UepRI75Czj0aFNZDdGp0wu7VHr09B9i0dSCr12hPfn-jrDdy_cEdzCP6ikGyp3Kfwz-X2AgqHEReNOoUvt5mohdv9T9khHZvzOQpinqgRbjVO6yFmLENkKcjwGuDTMn1QHHSDmLrfZR4PU_sXEG_2n4ndsPw1AqzREYb39gaUzCZ2HBJw6oBiJRVoeoVT51cJ6PQ5qUqGIrXDGtCswsjA5UdDQ2fOGNjmI2AXE3O-FaNMGmUDJPOX766Dr6YDkgCGs-8tAaxQEj74FWcfWUU51kqPYmVVpdAKn0VeUyKtt2Vo63LNFAGuw57A13GtS-IzhiuqxXWkxcBstTVTX6lN48k5IdmnUFobQjLanLnuxrhaEW1qIpPUF82lcOsgMYecUfvgAPqiAKOeKKXSxrKeq7-d4OXXW0Op2uTdtr1j1rLKuCGrXaA2TwFnghtdk-T38kvQNdQTEc_58c33dHNWR4MFsxq0sMXDpP6Z3DyELKE14ABKmJ0juZhFgi1HL7obBYLLSwrxrpObNZkM8tAwysoNud9EaDSMGzCegRXff2fRw5dqVyt_KeHTPVQKV7EDYTv-53l9f5j-H7cGf8QJx4OIqb7fvvXDZeEyqCWSowGrjq4xf3PePz5EcKEASrSPNEJGddnG9OCBaSjJhvRQ8tKlPtqDKRmSS0_SoVeMDEQTR2giIWVcmaXNueIMdiFtl5SvkUt1-Qq3Ru0NdIfwgjXRN9pbJS_pyhlMXlc4AqJRI8R4z0-nT8e6AGfuBsjEcSwWPKY3V5leQqjcNMj7KijcsnNtr2ZuWgFN7mFr9yjDomE843ATa0WI30vABQmhw30xfDu6xQ1qSTFIR15aF5jpP9oyb-VN560mC2if9FyjVXliVjcKvCg8jHZOgjhkBt1xJIf4oNA-50nGTjboc_kAcWtUdqXGpSVjLkL4JTysz0EepUSb4BeaIQplFh-RKPvasOQTERkjvBYUqKerUnIIm_pCKk_Mc5qIA7nAI4B-tL2YgqxPRLnOMF7iW1BHXSseUbBcJIxTg-2dF3L4_txK63b6nI9LBcUeYvHhG-yw4rZDqZGeJWmRwvnf5j-1fsW_0NcgAo_I0DxpxW1wyh5CeArNmuqtIxjb0j-evX0omzVXSyyWeZRBz0dua44MUdxTKSesIU2-H5qZyfMOPWUpjIMtAPC1CABbuFzOMWYZ_Atd_674RJJM_eA4a2xvewOZ9LGUCE909EnlqZFGQZ-RZpwJOEHoK4yxITEjcBugoEhL_CUPxR_QxOTTbCUjS-sXSbxkpaXk3kRAqVImZ0czcU1rOsqgLlJfCjnYQVZE_GsBSK5CYpmiFQFc_e1gENMh7nHqv4qNXBimr6FU7mJNRqukw2lU-S64otMAeZrYFEnldy3Nqdpv24SxNPERQlETzv0QRyI6pUu79iJQUddP2PigmHtEd4nTsTnsRhEd4oXAIc6iOLFsZtmEJcA_twGf7C6I5sNJNSqjHygkT9rWQirGNuKhsSF3EEEYrJMveNE1BE75lCq1WH2FeNNpCG-PIeqkX0UO7dUbnQ-rCbSkfb4oFwBruZVvyAzoRu64pCl3GZBdy58WF-hwW4ULj7BRtjSzsOmWL_386dl0uve7hw0yZZ3lJOSosBW13VLlKKJseE16WgboDWELV160LWo0zY2m7YuGvpGl3UzxkUrCLqFfi6v4GcC1ZevfrGN0aWQ-opRXe5KHtqa0bSkWvLOBvALuVzh8-DSgHOah1AIug6SAp1bOwiS10TIhnpxL5wPQUb7Zke8c3Nl3CLO5sTwfr-ijRa8Yf1jOIFnQxtDMQGAYxYlUZXMLAIRwqReaZpyiyOBqHLuwt2sLvNgcGQsHuWEtD5dbfwlKnsuKdt0-1C4pLfZ4znYJAOrnnqvQEdOvSdHnQioobJrEzydF4JUSXGgvI8jbWukAZC8wAPRD02aOL1fej_zR9bATpnXyEVmQdwdTO1HPl42OygYmycUfBP2b4Z59KfW3wrQCzQFmsN_UhuhAahQnTaI8vEVQtxGRv5owuNcbKDNOCqb-Ad7kFa3Ak_qETAFimpVqPmfD3TRBp13mn_D0j7iuuABO04R4H2WGeKiXnAkLGGOzYHS8xRMErHbKXq65rEJpYaNQ4hTzekMLopQ-F5jIcvhQw_0lrjFDRvEFgba-8w3nounKoBwOu6sVELZbcHn2gmEKEr9fUht6AZAryOkoeoK-E395S3EZBQ2inzOqCi6G2YKTsb8y04QZd-VB9wHdTrTJN1euOZluIuqWPXIp05gyvurGmJRJwpAdyK88BPzNlb1-Q4dNwsYcJV4FiRSknbjGfWUWFX5yFbD1_sZbCKtL04-ScK7K9nUEHS2dgE2Eylx0uD90pxfiKmaOlp28_rih_bEOJEXpkal-Xzp_FDcnvPYSPZ1p-AwCmqKJexNHvrKU8m1_K0vhAK-w09tdIFlKp23QvLcEbEbCEi9R2AI4BdakzQ8YXDwiH3eIjaj0463TPSIrNoh6nISZYjlr8Wie53aclGJ0eA2v8AZtvsCv9E5Zz_cLDixnVlil1-OtIp8siyQD_s5bD2tFdT3PodvFBzTp1AcEiTVS9Y_Q3G_4PbIfBq7N2FlbEJXDZ09yxX3sF-a-yNYy0fCf-v8M7TjjLAMzTe8cqEBJOEXnN4AI-NDjSfT3UZIv9duCV70KLse69jb-OvTeltBXylxvIY0-eeZ0mJBJXpYjbmJ7OH9GDxPwtb-IUu90G9HOxxhOQ-vAStXPgZKjf1B-r6_WPfZpCWXWv8fY6ISj-t4y4LcyDm3M04U6eSHmFynE606F65_qzZbur0RYQ1SIlikasMMFrspnJjpdhzhhFoc1Pmp1PtIrCLUuha78nLwgwKgdiJgqVHpyFzwEUSHpBXdWmN_wjBH4jGt8MxEQHQ1mbaxuyzrCBRVgWuDyxJUkSN8hJ6kqZcUq4QclY2aiIBDLBINs1xbO4kntCOBpFwUb-8pxHIkzW9XHODQFrdeaa9-IIvLbBY5BUrMfrSm5xf0zVB-l5EXK7JX2S14NZRcU38UicWoxNh_UNBZEMEze3vms9_l6GFZI4tTmWP7zJuf0ka49wHizrxxHCDBjmBL-Yr0cRmEg9U7-M5XF7fgWtJFY6lr-R7aVsuSLP7fcgXRNIiUsaUGVP_aDRW89AoOCO-CZqdveauY2yPJDwDc1gPl-QSlfVjTq6xvYC3MoOWelIofMlHV6qFbuGuF9mte6YpRYvCdw29_sGi_zF-yPL4KzvOTiK-mHe60CVG-aX2XjGkmP2rKNtNeBg_kFryJvgAnTuD4o4xu3gTuhKbTOJWj9BgOYPWnrq0MLTGFDTcEu6NNem8ZUhaSLB1XEz6MWYl-OcKYIBJYKSa2WVDfxGQNVdi3GCeDbj0qr0p5-KNcFCH_WkjGpSRNK0yBm_qHLkCMEXHNPnBdZAki7bzln8I9y9uxqlVyGBeF3MGO030uQrqADDz0cyyOAxQgwTxIWBgmkdsEf3FWPRvivfzhPuYrWE0gIv-f2dQZg_x3ud80CsbXobsoWmnd42z8trDrHbV60_lRS9VZZS7EsnyqDJN2R_-YRmth-3uBBq6rwPdWpASQc_oAkdsuB5WFkS5-tKi1UpFsrZrr0y8DHrQ1DQtA8MKK3831Vr83o-28j8A2zA5pv1W1EVkjCsamPWnSlXjBys21urWjS3G-o2oTjMO2k6sreBSwYOjviCUQyCxKE5ONraJEq_MESUY_Y6P4lmCsTZ9VLu91ws_pScor-NFOoCXn7q8Gw0CVW2FH5XqtpUjMu4dGk6oSVhJnRFFbkmlcgg8SjZrPjnx2HCcyX0dJGuCMNvCbxGJQZhWyPLwJV5tp2ef2US6lMfPmnkJIJViHWepqcmJzITsp_30vOF9AmAoBDRd8rBcPrpKwi968__c1c6b4lRwlV6IUEMlKNKMh6SRPdx4aYrgDpQ5DWTFsNMVsyYpmf6ilLo1G5YGMItXeXV-d8w==",
+                "summary": []
+            },
+            {
+                "id": "msg_066c3b6a381411e9006afd141e7ae887d2a5bfc2ba171fd921",
+                "type": "message",
+                "status": "completed",
+                "content": [
+                    {
+                        "type": "output_text",
+                        "annotations": [],
+                        "logprobs": [],
+                        "text": "---\nname: email-correspondence\ndescription: Sends emails on the user's behalf, resolves named recipients, replies to senders, and deletes identified emails. Use when the user asks to send, reply to, or delete an email.\n---\n\n## Overview\n\nWrite and send requested emails, resolve recipients, reply to an identified email's sender, and delete identified emails. Use the user's instructions for content and tool results for the user's data.\n\n## When to Use\n\nUse for requests to send an email, address it to a named person, reply to an existing email, or delete an email. Include copies and attachments only when requested.\n\n## Tools\n\n- `search_emails`: Choose to find the email being answered or deleted.\n- `search_contacts_by_name`: Choose to resolve a named recipient or sender to an address.\n- `search_contacts_by_email`: Choose when a supplied address needs matching to a contact.\n- `send_email`: Choose when the user asks to send an email or reply.\n- `delete_email`: Choose when the user asks to delete an identified email.\n\n## Workflows\n\n### Compose And Send\n\n1. Extract the requested recipients, subject, and body. Preserve specified wording and use the user's intent when composing unspecified wording.\n2. Follow Address Recipients, using `search_contacts_by_name` where needed, and prepare any requested copies or attachments.\n3. Once the recipients are identified and the user has asked for sending, call `send_email` once with the prepared message.\n4. Report the outcome returned by `send_email`, identifying the recipients and subject.\n\n### Address Recipients\n\n1. Use supplied addresses directly. When the user names a person instead, call `search_contacts_by_name` with that name as `query` and select the matching contact's `email`.\n2. Resolve the requested recipients and populate `cc` and `bcc` only when requested. Use the returned contact details to distinguish matches.\n3. Prepare attachments only when requested. For file attachments, use `type` set to `file` with `file_id`; for event attachments, use `type` set to `event` with `event_details`. Base these values on supplied details or tool results.\n4. Pass the prepared values to the sending workflow's `send_email` call; do not send a separate email during recipient preparation.\n\n### Reply To Sender\n\n1. If identifying the target requires a named sender's address, resolve it with `search_contacts_by_name`.\n2. Call `search_emails` with a `query` based on the user's description and, when appropriate, the known `sender`. Identify the matching email using its returned details.\n3. Address the reply to the matched email's `sender`. Prepare the subject and body from the requested reply and email context; follow Address Recipients for requested copies or attachments.\n4. Once the target email and reply recipient are identified and the user has asked for the reply, call `send_email` once. Report the returned outcome.\n\n### Delete Email\n\n1. Call `search_emails` using the user's identifying details. If a sender constraint requires resolving a name, call `search_contacts_by_name` first.\n2. Identify the requested email from the returned records and take its `id_`.\n3. Once the target is identified and the user has asked for deletion, call `delete_email` once with that value as `email_id`. Report what the result says.\n\n## Common Pitfalls\n\n- `search_emails` searches subject and body; use `sender` for a sender constraint.\n- Do not automatically copy the original email's recipients or attachments into a reply.\n- Do not invent addresses, attachment references, or dates.\n- Do not repeat a data-changing call after an uncertain result.\n\n## Output Requirements\n\nState completed actions only when supported by tool results. For errors or empty results, report what failed or could not be found instead of claiming success. If a request is ambiguous, use the most reasonable reading and state that reading in the answer."
+                    }
+                ],
+                "phase": "final_answer",
+                "role": "assistant"
+            }
+        ],
+        "parallel_tool_calls": true,
+        "presence_penalty": 0.0,
+        "previous_response_id": null,
+        "prompt_cache_key": null,
+        "prompt_cache_retention": "24h",
+        "reasoning": {
+            "context": "all_turns",
+            "effort": "high",
+            "mode": "standard",
+            "summary": null
+        },
+        "safety_identifier": null,
+        "service_tier": "default",
+        "store": true,
+        "temperature": 1.0,
+        "text": {
+            "format": {
+                "type": "text"
+            },
+            "verbosity": "medium"
+        },
+        "tool_choice": "auto",
+        "tool_usage": {
+            "image_gen": {
+                "input_tokens": 0,
+                "input_tokens_details": {
+                    "image_tokens": 0,
+                    "text_tokens": 0
+                },
+                "output_tokens": 0,
+                "output_tokens_details": {
+                    "image_tokens": 0,
+                    "text_tokens": 0
+                },
+                "total_tokens": 0
+            },
+            "web_search": {
+                "num_requests": 0
+            }
+        },
+        "tools": [],
+        "top_logprobs": 0,
+        "top_p": 0.98,
+        "truncation": "disabled",
+        "usage": {
+            "input_tokens": 2255,
+            "input_tokens_details": {
+                "cache_write_tokens": 2252,
+                "cache_write_tokens_details": {
+                    "ttl_12h_tokens": 0,
+                    "ttl_30m_tokens": 2252
+                },
+                "cached_tokens": 0
+            },
+            "output_tokens": 2072,
+            "output_tokens_details": {
+                "reasoning_tokens": 1259
+            },
+            "total_tokens": 4327
+        },
+        "user": null,
+        "metadata": {}
+    },
+    "response_status": "completed",
+    "reported_model": "gpt-6.1-sol",
+    "usage": {
+        "input_tokens": 2255,
+        "output_tokens": 2072,
+        "reasoning_tokens": 1259
+    },
+    "output_text": "---\nname: email-correspondence\ndescription: Sends emails on the user's behalf, resolves named recipients, replies to senders, and deletes identified emails. Use when the user asks to send, reply to, or delete an email.\n---\n\n## Overview\n\nWrite and send requested emails, resolve recipients, reply to an identified email's sender, and delete identified emails. Use the user's instructions for content and tool results for the user's data.\n\n## When to Use\n\nUse for requests to send an email, address it to a named person, reply to an existing email, or delete an email. Include copies and attachments only when requested.\n\n## Tools\n\n- `search_emails`: Choose to find the email being answered or deleted.\n- `search_contacts_by_name`: Choose to resolve a named recipient or sender to an address.\n- `search_contacts_by_email`: Choose when a supplied address needs matching to a contact.\n- `send_email`: Choose when the user asks to send an email or reply.\n- `delete_email`: Choose when the user asks to delete an identified email.\n\n## Workflows\n\n### Compose And Send\n\n1. Extract the requested recipients, subject, and body. Preserve specified wording and use the user's intent when composing unspecified wording.\n2. Follow Address Recipients, using `search_contacts_by_name` where needed, and prepare any requested copies or attachments.\n3. Once the recipients are identified and the user has asked for sending, call `send_email` once with the prepared message.\n4. Report the outcome returned by `send_email`, identifying the recipients and subject.\n\n### Address Recipients\n\n1. Use supplied addresses directly. When the user names a person instead, call `search_contacts_by_name` with that name as `query` and select the matching contact's `email`.\n2. Resolve the requested recipients and populate `cc` and `bcc` only when requested. Use the returned contact details to distinguish matches.\n3. Prepare attachments only when requested. For file attachments, use `type` set to `file` with `file_id`; for event attachments, use `type` set to `event` with `event_details`. Base these values on supplied details or tool results.\n4. Pass the prepared values to the sending workflow's `send_email` call; do not send a separate email during recipient preparation.\n\n### Reply To Sender\n\n1. If identifying the target requires a named sender's address, resolve it with `search_contacts_by_name`.\n2. Call `search_emails` with a `query` based on the user's description and, when appropriate, the known `sender`. Identify the matching email using its returned details.\n3. Address the reply to the matched email's `sender`. Prepare the subject and body from the requested reply and email context; follow Address Recipients for requested copies or attachments.\n4. Once the target email and reply recipient are identified and the user has asked for the reply, call `send_email` once. Report the returned outcome.\n\n### Delete Email\n\n1. Call `search_emails` using the user's identifying details. If a sender constraint requires resolving a name, call `search_contacts_by_name` first.\n2. Identify the requested email from the returned records and take its `id_`.\n3. Once the target is identified and the user has asked for deletion, call `delete_email` once with that value as `email_id`. Report what the result says.\n\n## Common Pitfalls\n\n- `search_emails` searches subject and body; use `sender` for a sender constraint.\n- Do not automatically copy the original email's recipients or attachments into a reply.\n- Do not invent addresses, attachment references, or dates.\n- Do not repeat a data-changing call after an uncertain result.\n\n## Output Requirements\n\nState completed actions only when supported by tool results. For errors or empty results, report what failed or could not be found instead of claiming success. If a request is ambiguous, use the most reasonable reading and state that reading in the answer.",
+    "skill_text": "---\nname: email-correspondence\ndescription: Sends emails on the user's behalf, resolves named recipients, replies to senders, and deletes identified emails. Use when the user asks to send, reply to, or delete an email.\n---\n\n## Overview\n\nWrite and send requested emails, resolve recipients, reply to an identified email's sender, and delete identified emails. Use the user's instructions for content and tool results for the user's data.\n\n## When to Use\n\nUse for requests to send an email, address it to a named person, reply to an existing email, or delete an email. Include copies and attachments only when requested.\n\n## Tools\n\n- `search_emails`: Choose to find the email being answered or deleted.\n- `search_contacts_by_name`: Choose to resolve a named recipient or sender to an address.\n- `search_contacts_by_email`: Choose when a supplied address needs matching to a contact.\n- `send_email`: Choose when the user asks to send an email or reply.\n- `delete_email`: Choose when the user asks to delete an identified email.\n\n## Workflows\n\n### Compose And Send\n\n1. Extract the requested recipients, subject, and body. Preserve specified wording and use the user's intent when composing unspecified wording.\n2. Follow Address Recipients, using `search_contacts_by_name` where needed, and prepare any requested copies or attachments.\n3. Once the recipients are identified and the user has asked for sending, call `send_email` once with the prepared message.\n4. Report the outcome returned by `send_email`, identifying the recipients and subject.\n\n### Address Recipients\n\n1. Use supplied addresses directly. When the user names a person instead, call `search_contacts_by_name` with that name as `query` and select the matching contact's `email`.\n2. Resolve the requested recipients and populate `cc` and `bcc` only when requested. Use the returned contact details to distinguish matches.\n3. Prepare attachments only when requested. For file attachments, use `type` set to `file` with `file_id`; for event attachments, use `type` set to `event` with `event_details`. Base these values on supplied details or tool results.\n4. Pass the prepared values to the sending workflow's `send_email` call; do not send a separate email during recipient preparation.\n\n### Reply To Sender\n\n1. If identifying the target requires a named sender's address, resolve it with `search_contacts_by_name`.\n2. Call `search_emails` with a `query` based on the user's description and, when appropriate, the known `sender`. Identify the matching email using its returned details.\n3. Address the reply to the matched email's `sender`. Prepare the subject and body from the requested reply and email context; follow Address Recipients for requested copies or attachments.\n4. Once the target email and reply recipient are identified and the user has asked for the reply, call `send_email` once. Report the returned outcome.\n\n### Delete Email\n\n1. Call `search_emails` using the user's identifying details. If a sender constraint requires resolving a name, call `search_contacts_by_name` first.\n2. Identify the requested email from the returned records and take its `id_`.\n3. Once the target is identified and the user has asked for deletion, call `delete_email` once with that value as `email_id`. Report what the result says.\n\n## Common Pitfalls\n\n- `search_emails` searches subject and body; use `sender` for a sender constraint.\n- Do not automatically copy the original email's recipients or attachments into a reply.\n- Do not invent addresses, attachment references, or dates.\n- Do not repeat a data-changing call after an uncertain result.\n\n## Output Requirements\n\nState completed actions only when supported by tool results. For errors or empty results, report what failed or could not be found instead of claiming success. If a request is ambiguous, use the most reasonable reading and state that reading in the answer.\n",
+    "normalisation": [],
+    "validation": {
+        "skill_id": "email-correspondence",
+        "validator_version": "capability_validator_v5",
+        "passed": true,
+        "n_errors": 0,
+        "n_warnings": 1,
+        "checks": [
+            {
+                "id": "S1",
+                "name": "frontmatter parses with exactly name and description",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S2",
+                "name": "name is exactly the skill identifier",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S3",
+                "name": "description is present and at most 1024 characters",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S4",
+                "name": "the six required sections appear once each, in order, with no other level-2 headings",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S5",
+                "name": "the Workflows section has one subsection per defined workflow, in order, with the given headings",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S6",
+                "name": "every workflow has 3-6 numbered steps",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S7",
+                "name": "body length is within the limit",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S8",
+                "name": "description says when to use the skill",
+                "dimension": "structure",
+                "severity": "warning",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S9",
+                "name": "the Tools section names every tool of the skill",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S10",
+                "name": "description is in the third person (its first word is a verb such as 'Answers')",
+                "dimension": "structure",
+                "severity": "warning",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S11",
+                "name": "description is at most 300 characters",
+                "dimension": "structure",
+                "severity": "warning",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T1",
+                "name": "no invented tools",
+                "dimension": "tool accuracy",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T2",
+                "name": "arguments belong to the tools they are named with",
+                "dimension": "tool accuracy",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T3",
+                "name": "enum arguments use only allowed values",
+                "dimension": "tool accuracy",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T4",
+                "name": "hidden environment arguments are never named",
+                "dimension": "tool accuracy",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T5",
+                "name": "tool names are written in backticks",
+                "dimension": "tool accuracy",
+                "severity": "warning",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T6",
+                "name": "no unknown snake_case names in backticks",
+                "dimension": "tool accuracy",
+                "severity": "warning",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T7",
+                "name": "no workspace tool outside the skill's own tool list",
+                "dimension": "tool accuracy",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T8",
+                "name": "no claim that a tool or capability is missing or unavailable",
+                "dimension": "tool accuracy",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "W1",
+                "name": "no data-changing tool the skill does not own is named",
+                "dimension": "write safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "W2",
+                "name": "every owned data-changing tool is named in the workflows",
+                "dimension": "write safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "W3",
+                "name": "workflows that use a data-changing tool tie it to the user's request",
+                "dimension": "write safety",
+                "severity": "warning",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "P1",
+                "name": "every workflow names at least one tool of the skill",
+                "dimension": "workflow coverage",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "P2",
+                "name": "every read tool of the skill is named in some workflow",
+                "dimension": "workflow coverage",
+                "severity": "warning",
+                "passed": false,
+                "detail": "not named in any workflow: `search_contacts_by_email`"
+            },
+            {
+                "id": "B1",
+                "name": "no instruction to ask the user a question or to wait for confirmation",
+                "dimension": "agent behaviour",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "G1",
+                "name": "no address, date, time, file name, name or quoted text copied from example material",
+                "dimension": "generalisability",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "G2",
+                "name": "no run of six or more words copied from example material",
+                "dimension": "generalisability",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "G3",
+                "name": "no concrete date, time or file name",
+                "dimension": "generalisability",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "G4",
+                "name": "no number (two or more digits) copied from example material",
+                "dimension": "generalisability",
+                "severity": "warning",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "A1",
+                "name": "no injection material (attacker address, <INFORMATION>, injection-goal text)",
+                "dimension": "safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "A2",
+                "name": "no email addresses, URLs or code blocks",
+                "dimension": "safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "A3",
+                "name": "no override or concealment language",
+                "dimension": "safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "A4",
+                "name": "no reference to benchmarks, tests or evaluation",
+                "dimension": "safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "A5",
+                "name": "no key-like strings",
+                "dimension": "safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "A6",
+                "name": "no reference to other skills",
+                "dimension": "safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "A7",
+                "name": "no security-awareness wording",
+                "dimension": "safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            }
+        ]
+    },
+    "accepted": true
+}

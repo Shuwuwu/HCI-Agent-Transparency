@@ -37,7 +37,7 @@
         },
         "calendar-scheduling": {
             "kind": "write",
-            "summary": "Change the user's calendar when asked: check whether a time is free, then create events, add participants, reschedule or cancel.",
+            "summary": "Answer whether a time is free when asked, and create events, add participants, reschedule or cancel events when asked.",
             "yang": [
                 {"subtopic": "Calendar Management", "tasks": ["Check availability", "Create/edit events"]}
             ],
@@ -92,7 +92,7 @@
             "workflows": [
                 {"id": "file-inventory", "description": "List the files and answer questions about their size, owner, sharing and last modification."},
                 {"id": "find-file", "description": "Find files by name or by keyword."},
-                {"id": "delete-file", "description": "Delete a file the user identified, after finding the right one."},
+                {"id": "delete-file", "description": "Delete a file the user identified, after finding the right one. The delete tool's file_id argument takes the file's id_ from the returned record, not its filename, although the tool description says filename."},
                 {"id": "share-file", "description": "Share a file with a person at the access level the user asked for."}
             ],
             "read_tools": ["list_files", "search_files", "search_files_by_filename", "get_file_by_id"],

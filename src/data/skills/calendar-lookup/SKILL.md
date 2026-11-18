@@ -1,69 +1,64 @@
 ---
 name: calendar-lookup
-description: Answer read-only questions about the user's calendar by resolving dates, listing and counting daily events, finding event details, locating upcoming occurrences, and calculating gaps between events. Use when the user asks what is on their calendar, when an event happens, who is attending, where it takes place, or how much time separates appointments.
+description: Answers questions about calendar events, daily schedules, event details, upcoming occurrences, and time between events without changing the calendar. Use when the user wants to look up or summarize calendar information.
 ---
 
 ## Overview
 
-Use calendar results to answer scheduling questions without changing calendar data. Resolve dates before applying date filters, distinguish scheduled events from canceled entries, and base event details only on returned records.
+Answer calendar questions using returned event records. Resolve date references, retrieve matching events, and report details or calculations without changing the calendar.
 
 ## When to Use
 
-Use for daily agendas, event counts, title or keyword lookups, upcoming occurrences of repeated events, and time gaps. For ambiguous wording, choose the most reasonable interpretation and state it in the answer.
+Use for daily schedules, event counts, event details, the next occurrence of a repeated event, or gaps between events.
 
 ## Tools
 
-- `get_current_day`: Use to establish the current calendar day before resolving relative dates, incomplete dates that depend on the current year, or upcoming occurrences. It takes no arguments.
-- `search_calendar_events`: Use `query` to match event titles or descriptions. Set `date` to a resolved date to restrict the search, or leave it null to search across dates.
-- `get_day_calendar_events`: Use `day` to retrieve the appointments for a resolved date, including those needed for daily summaries and time-gap calculations.
-
-The `date` and `day` arguments require YYYY-MM-DD format.
+- `get_current_day`: Choose when interpreting a relative or partial date requires the current day.
+- `search_calendar_events`: Choose when locating events by title or description, with an optional date filter.
+- `get_day_calendar_events`: Choose when listing, counting, summarizing, or comparing events for a day.
 
 ## Workflows
 
 ### Resolve Dates
 
-1. Identify whether the requested date is explicit, relative, or incomplete. Call `get_current_day` whenever interpretation depends on the current day; do not assume today's date.
-2. Derive the exact date or dates from that result. For an unqualified weekday or yearless date, favor the next matching date, including today where reasonable. Interpret next week as the following calendar week unless the request indicates otherwise.
-3. Carry the resolved date into `search_calendar_events` through `date`, or into `get_day_calendar_events` through `day`. For a range, retain each relevant date rather than collapsing it to a single day.
-4. State any material interpretation in the answer. If `get_current_day` fails, report that the relative date could not be resolved and do not present a guessed date as established.
+1. Identify the date reference and whether it requires a current-day anchor. Call `get_current_day` for relative dates and partial dates that need that anchor.
+2. Resolve the reference into an exact calendar date, or the dates covered by a requested period, using the request’s context.
+3. Supply resolved dates as YYYY-MM-DD through `day` in `get_day_calendar_events` or `date` in `search_calendar_events`. When interpretation is ambiguous, choose the most reasonable reading and state it in the answer.
 
 ### Day Overview
 
-1. Resolve the requested day, using `get_current_day` when needed, then call `get_day_calendar_events` with `day`.
-2. Inspect the returned events and sort timed appointments by `start_time`. Identify all-day entries from `all_day`; do not assign them an invented time.
-3. Count and summarize the events according to the request. Unless the user asks otherwise, count non-canceled entries as scheduled events and identify canceled entries separately.
-4. Report the resolved day, event count, and relevant titles and times. If `get_day_calendar_events` returns an empty list, report no events found for that day; if it returns an error, report that the day's calendar could not be retrieved.
+1. Resolve the requested day, using `get_current_day` when needed.
+2. Call `get_day_calendar_events` with the resolved `day`.
+3. Use the returned records to list, count, or summarize events as requested. For a count, count event records and make any status-based filtering explicit.
+4. Include relevant `title`, `start_time`, `end_time`, `location`, and `all_day` information. Preserve relevant distinctions in `status`.
 
 ### Find Event
 
-1. Extract the title or keyword and any date restriction. Resolve relative restrictions with `get_current_day`, then call `search_calendar_events` using `query` and, when applicable, `date`.
-2. Compare returned titles and descriptions with the request. If necessary, call `search_calendar_events` again with a simpler relevant keyword rather than assuming the initial wording must match.
-3. Report the best-supported match or distinguish multiple plausible matches. Include requested details from `participants`, `location`, `start_time`, `end_time`, and `description`, along with cancellation or all-day status when relevant.
-4. Treat absent details as unspecified. If searches return no matches, report that no matching event was found; if they fail, report the lookup failure rather than claiming the event does not exist.
+1. Extract the requested title or keyword and resolve any date restriction using `get_current_day` when needed.
+2. Call `search_calendar_events` with `query`, supplying `date` only when the request specifies a day.
+3. Identify the matching event from the results. If several remain plausible, use the request’s context and state which interpretation you used.
+4. Report the requested details from `participants`, `location`, `start_time`, `end_time`, and `description`, identifying the event by `title`.
 
 ### Next Occurrence
 
 1. Call `get_current_day` to establish the starting day.
-2. Call `search_calendar_events` with the repeated event's title or keyword as `query` and no date restriction.
-3. From returned matching occurrences, exclude canceled entries and those before the current day, then sort chronologically. Use the earliest qualifying occurrence; treat a same-day result as occurring today rather than asserting it has not yet started.
-4. Report its date, time, and requested details. Do not infer additional occurrences from a repetition pattern. If none qualify, report that no upcoming matching occurrence was found in the results; report tool errors separately.
+2. Call `search_calendar_events` with the repeated event’s title or keyword as `query`, leaving `date` unset to retrieve matches across dates.
+3. Compare matching `start_time` values and select the earliest occurrence on or after the current day, respecting any status restriction in the request.
+4. Report the occurrence’s date, time, and requested details. Make clear that the search looks forward from the current day.
 
 ### Time Between Events
 
-1. Resolve the relevant day with `get_current_day` when necessary, then call `get_day_calendar_events` with `day`.
-2. Identify the requested events in the returned records. If multiple matches remain, use the most reasonable match from the wording and state the interpretation.
-3. For a gap between appointments, subtract the earlier event's `end_time` from the later event's `start_time`, unless the user specifies different endpoints. For a supplied time, use the event's start unless the wording indicates otherwise.
-4. Report the endpoints and interval. Describe negative gaps as overlaps. If an event is absent, timing is insufficient, or retrieval fails, explain why the interval could not be calculated instead of inventing it.
+1. Resolve the requested day, calling `get_current_day` when needed.
+2. Call `get_day_calendar_events` with that `day` and identify the named events or the event paired with the supplied time.
+3. Calculate the interval using the boundaries the request specifies. For an ordinary gap between events, use the earlier event’s `end_time` and the later event’s `start_time`, and state that reading.
+4. Report the duration and boundaries used. Describe an overlap as an overlap, and respect `all_day` when interpreting times.
 
 ## Common Pitfalls
 
-- Counting canceled entries as scheduled appointments.
-- Treating keyword results as a complete daily agenda.
-- Assuming an all-day entry provides usable clock-time endpoints.
-- Conflating an empty result with a retrieval error.
-- Inferring future occurrences not returned by a tool.
+- Keep all actions read-only; do not repeat a data-changing call after an uncertain result.
+- Do not assume search results are chronologically ordered.
+- Do not omit canceled events without explaining the filtering or infer details beyond returned records.
 
 ## Output Requirements
 
-Answer the requested question directly. Include resolved dates, relevant event details, and material assumptions. Keep summaries concise, preserve distinctions between canceled and scheduled events, and report missing information or tool failures plainly.
+Answer directly with the requested details, count, summary, or interval. State material date or event interpretations. For errors, report what could not be retrieved or calculated; for empty results, report that no matching events were returned rather than claiming success. Distinguish absent details from retrieval failures.

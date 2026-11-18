@@ -1,9 +1,10 @@
 # Postponed: skill-generation improvements (prompt v4, validator v5)
 
-**Status: not implemented.** Decided on 2026-11-14 to postpone until the trace-to-stimulus pipeline exists. Nothing in
-`src/prompts/`, the validator, `build_capability_prompts.py` or `src/data/skills/` has been changed for this. The six
-skills in the repository were generated with prompt `skill_capability_v3` and validated with
-`capability_validator_v4`.
+**Status: implemented on 2026-11-17** (prompt `skill_capability_v4`, validator `capability_validator_v5`). The six
+skills in `src/data/skills/` were regenerated with `gpt-6.1-sol` under these rules and pass the validator. The
+text below is the plan as it was written, kept as the reasoning behind the changes; where the implementation differs
+from it, a note says so. The previous skills (prompt `skill_capability_v3`, validators v3/v4) stay in git history and
+in the attempt logs of `src/data/skill_library/runs/` (attempts that were `accepted` before the regeneration).
 
 Source: a review of our generation pipeline against Anthropic's *Skill authoring best practices*
 (https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices). The page was read through a
@@ -34,8 +35,10 @@ points. Evidence from our own output: the six skills have bodies of 772 to 830 w
 
 ## The eight proposed prompt changes (prompt v4)
 
-All are edits to `src/prompts/skill_capability_system_v3.md`, which would become `skill_capability_system_v4.md`
-(the user template is unchanged; `TEMPLATE_VERSION` becomes `skill_capability_v4`).
+All are edits to the system prompt, now `src/prompts/skill_capability_system_v4.md` (the user template is unchanged in
+content and renamed `skill_capability_user_v4.md`; `TEMPLATE_VERSION` is `skill_capability_v4`). Implemented as rules 1 and
+7 to 13 of the prompt; rule 12 names the Output Requirements section without backticks because a test checks the order
+of the backticked section headings.
 
 1. **Description voice.** "Third person, present tense, starting with a verb such as 'Answers' or 'Finds'; at most
    about 300 characters; use the words a user would use for these requests; end with 'Use when...'."
@@ -55,20 +58,20 @@ All are edits to `src/prompts/skill_capability_system_v3.md`, which would become
    calendar entries)."
 7. **Error handling once.** "Put the general handling of errors and empty results in `## Output Requirements`. In a
    workflow, mention it only where that workflow differs."
-8. **Length.** Lower the body limit from 300 to 900 words to about 250 to 600. Participants read these skills, so reading
+8. **Length.** Lower the body limit from 300-900 words to 250-600 (`LIMITS["body_words"]`; the description limit of 300 characters is `LIMITS["description_chars"]`). Participants read these skills, so reading
    time per trial counts.
 
 ## Validator updates (version v5)
 
 - `LIMITS["body_words"]` in `build_capability_prompts.py` is the single source of the length rule (read by the prompt
   and by check S7): change it there, rebuild the prompts, and update the tests that pin 300 and 900.
-- New warnings: description does not start in the third person (a first word ending in "s" is a usable heuristic);
-  description longer than about 300 characters.
+- New warnings (implemented as S10 and S11): description does not start in the third person (a first word ending in a
+  single "s" is the heuristic); description longer than 300 characters.
 - Keep every existing check. I checked the check list: no current check requires error handling to appear in every
   workflow (W3 ties a data-changing tool to the user's request, P1 and P2 are about naming tools, S9 requires every tool
   in the Tools section, which stays true with one-line entries), so change 7 does not conflict with any check.
-- Bump `VALIDATOR_VERSION` to `capability_validator_v5`. `stale_skills` will then flag all six skills until they are
-  regenerated or re-accepted; the manifest records the version each skill was accepted under.
+- `VALIDATOR_VERSION` is `capability_validator_v5` (36 checks). `stale_skills` flagged all six skills until they were
+  regenerated; the manifest records the version each skill was accepted under.
 - Add tests: a mutation test for each new warning; the prompt test that pins the rule text; the limits.
 
 ## Regeneration and knock-on work
@@ -78,8 +81,9 @@ All are edits to `src/prompts/skill_capability_system_v3.md`, which would become
 - Rebuild `src/data/skill_library/prompts/` (every prompt hash changes), then re-run `build_review_sheet.py`.
 - Do this **before** the two raters review the skills, so they score the final text. If the raters have started, restart
   their scoring for the changed skills.
-- Rebuild the execution plan (`build_execution_plan.py`): skill hashes change, so `plan.json` and the pilot comparison
-  are no longer about the same skill text. The pilot records stay as they are, as the record of the first skills.
+- The execution plan (`plan.json`) and the pilot records were **not** rebuilt, on purpose: their skill hashes refer to
+  the previous `calendar-lookup`, which stays recoverable from its accepted attempt log (a test checks this). A later
+  evaluation needs a new plan built from the current skills.
 - Re-run the execution pilot only with approval (new API calls).
 - Review the new text for the issues the review already found: the `calendar-scheduling` check-before-create step and
   the invented conventions.

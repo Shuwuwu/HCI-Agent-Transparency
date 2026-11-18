@@ -60,7 +60,7 @@ class CommittedPromptsTest(unittest.TestCase):
             self.assertEqual(list(record), ["skill_id", "template_version", "prompt_sha256",
                                             "estimated_input_tokens", "limits", "source", "request"], skill_id)
             self.assertEqual(record["skill_id"], skill_id)
-            self.assertEqual(record["template_version"], "skill_capability_v3")
+            self.assertEqual(record["template_version"], "skill_capability_v4")
             request = record["request"]
             self.assertEqual(set(request), {"model", "instructions", "input", "reasoning", "max_output_tokens"})
             self.assertEqual((request["model"], request["reasoning"], request["max_output_tokens"]),
@@ -203,8 +203,27 @@ class TemplateTest(unittest.TestCase):
         self.assertIn('a final sentence beginning "Use when"', SYSTEM_TEXT)
 
     def test_the_template_files_carry_the_version_in_their_names(self):
-        self.assertEqual(cp.TEMPLATE_VERSION, "skill_capability_v3")
-        self.assertTrue(cp.SYSTEM_TEMPLATE.name.endswith("_v3.md") and cp.USER_TEMPLATE.name.endswith("_v3.md"))
+        self.assertEqual(cp.TEMPLATE_VERSION, "skill_capability_v4")
+        self.assertTrue(cp.SYSTEM_TEMPLATE.name.endswith("_v4.md") and cp.USER_TEMPLATE.name.endswith("_v4.md"))
+
+    def test_the_description_rule_states_the_voice_and_the_length_in_the_limits(self):
+        self.assertIn(f"at most {cp.LIMITS['description_chars']} characters, written in the third person", SYSTEM_TEXT)
+        self.assertIn('starting with a verb such as "Answers" or "Finds"', SYSTEM_TEXT)
+        self.assertIn("in the words a user would use", SYSTEM_TEXT)
+
+    def test_the_system_prompt_states_the_v4_writing_rules(self):
+        for phrase in ("Do not restate tool descriptions or argument lists",
+                       "one short bullet per listed tool saying when to choose it, not what its arguments are",
+                       "leave judgment to the assistant",
+                       "call the tool once, and report what the result says",
+                       "once, under Common Pitfalls, not in every step",
+                       "no extra read or availability check unless a workflow you are given asks for it",
+                       "only if the tool descriptions or the record schemas support it",
+                       "Do not add steps that verify more than the request needs",
+                       "Give one default route per workflow",
+                       "Use one word per concept",
+                       "State the general handling of errors and empty results once, in the Output Requirements section"):
+            self.assertIn(phrase, SYSTEM_TEXT)
 
     def test_the_system_prompt_does_not_ask_for_examples_with_values(self):
         self.assertIn("Do not include names, dates, times, email addresses, file names, IDs, numbers or quoted text",

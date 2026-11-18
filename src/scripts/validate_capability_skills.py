@@ -50,7 +50,7 @@ import build_capability_prompts as cp
 import check_skill_map as cm
 import skill_text as st
 
-VALIDATOR_VERSION = "capability_validator_v4"  # v4: B1 also catches "ask follow-up/further questions"; v3: checks T8 and B1 added; names documented in tool descriptions are known
+VALIDATOR_VERSION = "capability_validator_v5"  # v5: warnings S10 (description not in the third person) and S11 (description over 300 characters), body limit 250-600 words; v4: B1 also catches "ask follow-up/further questions"; v3: checks T8 and B1 added; names documented in tool descriptions are known
 # v2: person-name extraction finds names after a capitalised first word
 DEFAULT_SKILLS_DIR = runs.REPO_ROOT / "src" / "data" / "skills"
 SECTIONS = ["Overview", "When to Use", "Tools", "Workflows", "Common Pitfalls", "Output Requirements"]
@@ -105,6 +105,8 @@ CHECKS = {
     "S7": ("body length is within the limit", "structure", "error"),
     "S8": ("description says when to use the skill", "structure", "warning"),
     "S9": ("the Tools section names every tool of the skill", "structure", "error"),
+    "S10": ("description is in the third person (its first word is a verb such as 'Answers')", "structure", "warning"),
+    "S11": ("description is at most 300 characters", "structure", "warning"),
     "T1": ("no invented tools", "tool accuracy", "error"),
     "T2": ("arguments belong to the tools they are named with", "tool accuracy", "error"),
     "T3": ("enum arguments use only allowed values", "tool accuracy", "error"),
@@ -246,6 +248,15 @@ def validate_skill(text: str, library: Library, skill_id: str) -> dict:
             findings["S3"].append(f"description has {len(description)} characters")
         if description and not USE_WHEN_PATTERN.search(description):
             findings["S8"].append("description has no 'use when ...' statement")
+        first_word = re.match(r"[A-Za-z]+", description.strip())
+        # Heuristic: a third-person verb ends in a single "s" ("Answers"); an imperative ("Answer") does not.
+        if description and not (first_word and first_word.group(0).lower().endswith("s")
+                                and not first_word.group(0).lower().endswith("ss")):
+            findings["S10"].append(f"description starts with {description.split()[0]!r}; write it in the third "
+                                   "person, starting with a verb such as 'Answers'")
+        if len(description) > library.limits["description_chars"]:
+            findings["S11"].append(f"description has {len(description)} characters; the limit is "
+                                   f"{library.limits['description_chars']}")
     else:
         for key in ("S2", "S3"):
             findings[key].append("no frontmatter to check")

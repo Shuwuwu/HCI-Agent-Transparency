@@ -1,6 +1,6 @@
 ---
 name: calendar-lookup
-description: Answers questions about the user's calendar without changing it: resolving dates, listing and counting a day's events, finding an event and reporting its details, locating the next occurrence of a repeated event, and working out the time between events. Use when the user asks what is in their calendar.
+description: Answers questions about the user's calendar without changing it: resolving dates, listing and counting a day's events, finding an event and reporting its details, and working out the time between events. Use when the user asks what is in their calendar.
 ---
 
 ## Overview

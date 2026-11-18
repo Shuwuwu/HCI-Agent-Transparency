@@ -1,71 +1,64 @@
 ---
 name: document-content
-description: Read cloud-drive documents and spreadsheets, extract records, summarize content, append requested additions, and create requested files. Use when a request concerns the content of an existing cloud-drive file or asks to add content or create a new file.
+description: Reads, extracts, summarizes, extends, and creates documents and spreadsheets in the cloud drive. Use when the user wants file content read, specific records extracted, a summary, appended content, or a new file.
 ---
 
 ## Overview
 
-Work with document and spreadsheet content in the user’s cloud drive. Ground retrieval, extraction, and summaries in returned file content. Append content or create files only when the user requests that change. Distinguish information retrieved from a file from newly composed material.
+Work with document and spreadsheet `content` returned in cloud drive file records. Use the user's reference to identify the target, then perform only the requested reading or change.
 
 ## When to Use
 
-Use this skill to read a file, find particular values or records, summarize a document, add material to an existing file’s end, or create a file containing requested content. When wording is ambiguous, choose the most reasonable interpretation supported by the request and available results, and state that interpretation in the answer.
+Use for reading a file, extracting selected values or records, summarizing content, appending content to an existing file, or creating a file with requested content.
 
 ## Tools
 
-- `search_files_by_filename`: Find candidate files when the filename is supplied or reasonably identifiable; pass it as `filename`.
-- `search_files`: Locate files by their content when the request provides a topic or distinctive content; pass the search text as `query`.
-- `get_file_by_id`: Retrieve a particular file using `file_id`, including a file selected from search results.
-- `append_to_file`: Append the requested material using `file_id` and `content`, only when the user asks to add content to an existing file.
-- `create_file`: Create a requested new file using `filename` and `content`, only when the user asks for file creation.
+- `search_files_by_filename`: Choose when the user identifies a file by filename.
+- `search_files`: Choose when the user identifies a file by its content.
+- `get_file_by_id`: Choose when the file ID is supplied.
+- `append_to_file`: Choose only for a requested addition to an existing file.
+- `create_file`: Choose only for a requested new file.
 
 ## Workflows
 
 ### Read Document
 
-1. Identify the requested document or spreadsheet. Call `search_files_by_filename` with `filename` when its name is known, or `search_files` with `query` when locating it by content.
-2. Select the best-supported match using returned metadata and content. If the request already supplies a file identifier, call `get_file_by_id` directly with `file_id`.
-3. Read the returned `content`. Call `get_file_by_id` with the selected record’s `id_` as `file_id` if retrieval is needed after discovery.
-4. Present the requested content faithfully. Preserve meaningful table structure and distinguish blank entries from supplied values. If retrieval fails or returns nothing, report that the requested content could not be retrieved.
+1. Retrieve the target with `search_files_by_filename` for a filename, `search_files` for a content description, or `get_file_by_id` for a supplied ID.
+2. Identify the matching file from the returned records and read its `content`. Search results already include file content; use it directly.
+3. Present the requested content, identifying the source file. Keep a request to read distinct from a request to summarize.
 
 ### Extract Records
 
-1. Translate the request into selection criteria and requested fields, preserving distinctions between matching a person, locating a row, and extracting a particular value.
-2. Locate the source with `search_files_by_filename` or `search_files`, using `filename` or `query` respectively.
-3. Read the source content, calling `get_file_by_id` with `file_id` when needed. Apply the criteria to the available records rather than treating search matches as the complete extraction.
-4. Return the matching values with enough labels to preserve their meaning. Retain multiple matches and note missing or ambiguous fields. If no matching records appear, report that result without inventing entries.
+1. Retrieve the source using `search_files_by_filename`, `search_files`, or `get_file_by_id`, according to the user's reference.
+2. Read `content` and select the values or records matching the user's criteria. Use the document's labels and context to interpret matches.
+3. Return the extracted values with enough source context to show what each value represents. Distinguish source values from any interpretation.
 
 ### Summarize Document
 
-1. Locate the requested source using `search_files_by_filename` with `filename` or `search_files` with `query`.
-2. Read its returned content; use `get_file_by_id` with `file_id` when a separate retrieval is needed.
-3. Summarize according to the user’s requested focus and level of detail. Preserve material qualifications, decisions, and distinctions supported by the source.
-4. Identify the source and describe any limitation caused by empty content or retrieval errors. Do not present search snippets or incomplete content as a full-document summary.
+1. Retrieve the source using `search_files_by_filename`, `search_files`, or `get_file_by_id`, according to the user's reference.
+2. Read `content` and identify the main points relevant to the requested focus.
+3. Write a source-grounded summary at the requested level of detail. Preserve qualifications and distinguish stated facts from inferences.
 
 ### Extend Document
 
-1. Establish the requested addition and target. Only proceed toward `append_to_file` when the user asks to add content to an existing file.
-2. Locate the target through `search_files_by_filename` or `search_files`, or retrieve a supplied identifier with `get_file_by_id`.
-3. Inspect the existing content, using `get_file_by_id` if needed, and prepare an addition consistent with its relevant structure and context. Keep the addition within the requested scope.
-4. Call `append_to_file` with the selected file identifier as `file_id` and the prepared addition as `content`.
-5. Report what was appended only if the result establishes success. For an error or empty result, report that the append failed or could not be confirmed, as appropriate.
+1. Identify the target using `search_files_by_filename`, `search_files`, or `get_file_by_id`, according to the user's reference. Use the matched record's `id_` as `file_id`.
+2. Prepare the requested addition as `content`, preserving wording the user supplies and drafting only what the request calls for.
+3. Once the target is identified and the user has asked for the addition, call `append_to_file` once with `file_id` and `content`.
+4. Report what the result says about the append operation and identify the affected file.
 
 ### Create Document
 
-1. Establish that the user requested a new file. Determine the requested content and filename; if the filename is unspecified, choose a descriptive name based on the requested subject.
-2. If the new document must draw on existing files, locate them with `search_files_by_filename` or `search_files`, and use `get_file_by_id` when needed to retrieve their content.
-3. Compose the requested content, separating supported source facts from newly written material and avoiding invented user-specific details.
-4. Only because creation was requested, call `create_file` with `filename` and `content`.
-5. Report creation only when the result establishes success. If the result is empty or an error, explain that creation could not be confirmed or failed.
+1. Determine `filename` and prepare `content` from the user's request. If the filename is unspecified, choose one that reasonably describes the requested content.
+2. Once the intended new file is identified and the user has asked for its creation, call `create_file` once with `filename` and `content`.
+3. Report what the result says about creation, including returned file details relevant to locating it.
 
 ## Common Pitfalls
 
-- Do not mistake a candidate search result for the intended source without checking its relevance.
-- Do not infer spreadsheet values, omitted records, or document facts absent from returned content.
-- Do not convert a reading or summarization request into file creation or modification.
-- Do not invent calendar dates to resolve relative-date wording.
-- Do not claim completion after an error or empty result.
+- Do not repeat a data-changing call after an uncertain result.
+- Do not treat a matching filename as proof that every returned record is the target.
+- When ambiguous, choose the most reasonable reading and state that reading in the answer.
+- Keep appended content separate from existing content; do not submit the entire document as the addition.
 
 ## Output Requirements
 
-Answer the requested task directly. Identify the source or resulting file when supported by tool results. State any interpretation used to resolve ambiguity. For extraction, provide clearly labeled records; for summaries, preserve the requested focus. For changes, distinguish intended content from confirmed completion. Report retrieval failures, absent matches, and uncertain outcomes explicitly.
+Identify the source or affected file and provide the requested content, extraction, summary, or change result. If a tool returns an error or empty result, report that outcome and its effect on completing the request instead of claiming success.

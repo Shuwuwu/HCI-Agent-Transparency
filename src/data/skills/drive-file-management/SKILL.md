@@ -1,69 +1,58 @@
 ---
 name: drive-file-management
-description: Inventory and find cloud-drive files, report their properties, and delete or share identified files when requested. Use when the user wants a file listing, a filename or content search, file metadata, deletion, or sharing.
+description: Lists and finds cloud drive files, reports their properties, and deletes or shares files on request. Use when the user wants a drive inventory, a file search, file details, deletion, or sharing.
 ---
 
 ## Overview
 
-Use cloud-drive records to identify files and report their size, owner, sharing permissions, and last modification. Delete or share files only when the user's request asks for that change. Base all file-specific claims on tool results.
+Inventory and manage cloud drive files using returned records for file identity and properties. Delete or share files only when the user requests that change.
 
 ## When to Use
 
-- List files or summarize their properties.
-- Locate files by filename or content keyword.
-- Delete a file the user identified.
-- Share a file with the intended recipient at the requested access level.
-
-For ambiguous requests, choose the most reasonable interpretation supported by the request and retrieved records, and state that interpretation in the answer. Do not invent file identities, recipients, or permissions.
+Use for requests to list files, inspect size, owner, sharing or last modification, find files by name or content keywords, delete an identified file, or grant someone access.
 
 ## Tools
 
-- `list_files`: Retrieve all files for an inventory or a broad lookup.
-- `search_files`: Search file content using the required `query` argument.
-- `search_files_by_filename`: Find filename matches using the required `filename` argument; inspect the returned list.
-- `get_file_by_id`: Retrieve a specific file using its returned `id_` as `file_id`.
-- `delete_file`: Delete only when the user requests deletion. Despite its argument name, pass the verified filename as `file_id`, as documented.
-- `share_file`: Share only when the user requests sharing. Supply the file identifier as `file_id`, the recipient as `email`, and the requested access as `permission`.
+- `list_files`: Choose for a drive-wide inventory.
+- `search_files`: Choose for content keyword searches.
+- `search_files_by_filename`: Choose when locating a file by name.
+- `get_file_by_id`: Choose when the file identifier is already known.
+- `delete_file`: Choose only for a requested deletion.
+- `share_file`: Choose only for a requested sharing change.
 
 ## Workflows
 
 ### File Inventory
 
-1. Call `list_files` to retrieve the inventory. If it returns an error, report the failure; if it returns no files, report that the inventory is empty.
-2. Inspect `filename`, `size`, `owner`, `shared_with`, and `last_modified` for the requested properties. Call `get_file_by_id` with the relevant returned `id_` when an individual file needs closer inspection.
-3. Organize the results according to the request, using only returned values. Report size in bytes or clearly labeled conversions. Do not guess the current date for relative-date filters; report available timestamps and explain when the relative period could not be resolved.
-4. Present the requested inventory or property summary. Distinguish an empty sharing mapping from a failed or incomplete retrieval.
+1. Call `list_files` for a drive-wide request. For details about a file whose identifier is already known, call `get_file_by_id` with that identifier as `file_id` instead.
+2. Read the requested properties from the returned records: `filename`, `size`, `owner`, `shared_with`, and `last_modified`. Treat `size` as bytes and `shared_with` as the recorded people and their permissions.
+3. Present the inventory or answer the property question using only the relevant returned fields. Interpret `r` as read access and `rw` as read/write access.
 
 ### Find File
 
-1. Choose `search_files_by_filename` for a name-based request, supplying `filename`. Choose `search_files` for a content-keyword request, supplying `query`.
-2. Inspect all returned matches rather than assuming the first is correct. If the request reasonably involves both filename and content, use both search tools as needed and reconcile matches by `id_`.
-3. Call `get_file_by_id` for a promising match when its full record is needed to verify identity or answer the request.
-4. Report matching filenames and relevant distinguishing properties. If searches are empty, report no matches for the search performed. If a call errors, describe that failure rather than treating it as proof that the file does not exist.
+1. Call `search_files_by_filename` with `filename` for a name-based request, or `search_files` with `query` for a content keyword request.
+2. Examine the returned records against the user's description. Treat filename search results as a list rather than assuming a unique match.
+3. Report matching files with enough returned properties to distinguish them. Include relevant content details only when needed to explain a keyword match.
 
 ### Delete File
 
-1. Only when the user asks for deletion, locate the target with `search_files_by_filename`, `search_files`, or `list_files`, according to how the user identified it.
-2. Inspect the matches and, when needed, call `get_file_by_id` to verify the target using returned properties. If the evidence does not distinguish the intended file, report that deletion was not performed because the target could not be resolved.
-3. Call `delete_file` only for the resolved, requested target. Set `file_id` to the verified `filename`, not its `id_`, because this tool documents deletion by filename. If duplicate filenames leave the deletion target unresolved, do not perform the deletion.
-4. Report the outcome supported by `delete_file`. For an error or empty response, state that deletion could not be confirmed rather than claiming success.
+1. Identify the target through the Find File route, or call `get_file_by_id` when the user supplied its identifier. Use the returned record to select the file the user identified.
+2. Once the target is identified and the user has asked for deletion, call `delete_file` once. Set `file_id` to the record's `id_`, not its `filename`, despite the tool description's filename wording.
+3. Report the deletion result for the selected file, without inferring success from the call alone.
 
 ### Share File
 
-1. Only when the user asks for sharing, locate the target with `search_files_by_filename`, `search_files`, or `list_files`.
-2. Inspect matching records and call `get_file_by_id` when needed to resolve the intended file.
-3. Determine the intended recipient and access level from the request. Use `r` for read access and `rw` for read-and-write access. If the target, recipient, or requested permission cannot be resolved, report that sharing was not performed.
-4. Call `share_file` with the verified `id_` as `file_id`, the intended recipient as `email`, and the requested access level as `permission`.
-5. Report the sharing outcome and access level supported by the result. For an error or empty response, state that sharing could not be confirmed.
+1. Identify the target through the Find File route, or call `get_file_by_id` when the user supplied its identifier.
+2. Resolve the person and requested access level from the request. Map read access to `r` and read/write access to `rw`.
+3. Once the target is identified and the user has asked for sharing, call `share_file` once with `file_id` from the record's `id_`, `email` for the person the user named, and `permission` for the requested access.
+4. Report the sharing result, identifying the file, person, and access level.
 
 ## Common Pitfalls
 
-- Confusing filename searches with content searches.
-- Treating a list of matches as a uniquely identified file.
-- Passing an identifier to `delete_file` when its documented argument requires the filename.
-- Inferring ownership or existing sharing from the user's wording instead of returned records.
-- Claiming a deletion or sharing change succeeded without a supporting result.
+- Do not repeat a data-changing call after an uncertain result.
+- Do not substitute `filename` for `id_` in a data-changing call.
+- When a request is ambiguous, choose the most reasonable reading and state that reading in the answer.
 
 ## Output Requirements
 
-Answer the user's actual inventory, search, deletion, or sharing request concisely. Include relevant filenames and properties, any interpretation used, and the observed outcome. Clearly distinguish successful results, no matches, unresolved targets, tool errors, and unconfirmed changes.
+Keep results focused on the request and distinguish retrieved properties from change outcomes. For an empty result, report that no matching files or records were returned. For an error or uncertain result, report what could not be retrieved or established rather than claiming success. Include only outcomes supported by tool results.

@@ -2,7 +2,7 @@
 Purpose:
     Check that validate_capability_skills.py accepts correct capability skills and rejects every kind of defect it
     is meant to catch. Two hand-written good skills (tests/fixtures/capability_skills/) must pass with no error and
-    no warning; each of the 34 checks is then triggered by changing a good skill in one small way (a "mutation");
+    no warning; each of the 36 checks is then triggered by changing a good skill in one small way (a "mutation");
     a mechanically built compliant skill for each of the 6 skill definitions guards against false alarms; the
     library-level coverage and overlap checks and the command line are tested too.
 
@@ -95,7 +95,7 @@ def synthetic_skill(skill_id: str) -> str:
         numbered = "\n".join(f"{n}. {text}" for n, text in enumerate(steps, start=1))
         parts.append(f"### {cp.workflow_heading(workflow['id'])}\n\n{numbered}")
     bullets = "\n".join(f"- `{t['name']}`: use it as described in the workflows." for t in tools)
-    filler = " ".join(["Work through the request in the order given and keep every action tied to what was asked."] * 25)
+    filler = " ".join(["Work through the request in the order given and keep every action tied to what was asked."] * 12)
     return (
         f"---\nname: {skill_id}\ndescription: Handles one family of workspace requests step by step. Use when the "
         "user makes a request of this kind.\n---\n\n"
@@ -125,6 +125,8 @@ MUTATIONS = {
         t, " Use when the user asks to schedule, move, cancel or update an event.", "")),
     "S9": (SCHEDULING, "calendar-scheduling", lambda t: change(
         t, "- `cancel_calendar_event`: cancels an existing event. It changes the user's data.\n", "")),
+    "S10": (SCHEDULING, "calendar-scheduling", lambda t: change(t, "description: Changes", "description: Change")),
+    "S11": (SCHEDULING, "calendar-scheduling", lambda t: change(t, "an event.\n---", "an event." + " x" * 160 + "\n---")),
     "T1": (SCHEDULING, "calendar-scheduling", lambda t: add_to(t, "Common Pitfalls", "- Avoid `get_calendar_events`.")),
     "T2": (SCHEDULING, "calendar-scheduling", lambda t: change(
         t, "1. Find the event with `search_calendar_events` and confirm",
@@ -172,7 +174,7 @@ class GoodSkillsTest(unittest.TestCase):
     def test_result_shape_and_check_catalogue(self):
         result = v.validate_skill(LOOKUP, LIBRARY, "calendar-lookup")
         self.assertEqual([r["id"] for r in result["checks"]], list(v.CHECKS))
-        self.assertEqual(len(v.CHECKS), 34)
+        self.assertEqual(len(v.CHECKS), 36)
         self.assertEqual(result["validator_version"], v.VALIDATOR_VERSION)
         self.assertEqual(result["skill_id"], "calendar-lookup")
         for row in result["checks"]:
@@ -220,7 +222,7 @@ class EveryCheckCanFailTest(unittest.TestCase):
     def test_severities_match_the_plan(self):
         errors = {k for k, (_, _, s) in v.CHECKS.items() if s == "error"}
         warnings = {k for k, (_, _, s) in v.CHECKS.items() if s == "warning"}
-        self.assertEqual(warnings, {"S8", "T5", "T6", "W3", "P2", "G4"})
+        self.assertEqual(warnings, {"S8", "S10", "S11", "T5", "T6", "W3", "P2", "G4"})
         self.assertEqual(len(errors), 28)
 
     def test_warnings_do_not_fail_a_skill(self):
@@ -429,7 +431,7 @@ class CommandLineTest(unittest.TestCase):
             document = json.loads(out.read_text(encoding="utf-8"))
             self.assertEqual(document["validator_version"], v.VALIDATOR_VERSION)
             self.assertEqual([r["skill_id"] for r in document["results"]], ["calendar-lookup", "calendar-scheduling"])
-            self.assertEqual(len(document["results"][0]["checks"]), 34)
+            self.assertEqual(len(document["results"][0]["checks"]), 36)
             self.assertEqual(document["library"]["errors"], [])
 
     def test_a_bad_skill_exits_with_status_1_and_prints_the_errors(self):

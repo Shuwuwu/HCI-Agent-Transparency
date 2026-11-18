@@ -1,73 +1,66 @@
 ---
 name: email-lookup
-description: Find emails, extract requested facts, list and summarize mailbox contents, resolve relative-date references, and look up contacts without changing user data. Use when a request asks for information from the user's mailbox or contact list.
+description: Answers questions from the user's mailbox by finding emails, extracting facts, summarizing mail, and looking up contacts. Use when the user wants mailbox information without making changes.
 ---
 
 ## Overview
 
-Answer mailbox questions using retrieved email and contact records. Locate relevant messages, extract only the requested information, and identify the supporting message when useful. This skill is read-only: do not change mailbox contents or any other user data.
+Use mailbox and contact results to answer the user's question. Keep the workflow read-only and limit retrieval and reporting to the requested information.
 
 ## When to Use
 
-Use for requests to find messages by sender, subject, or keywords; retrieve a fact from an email; summarize unread, received, sent, or draft mail; interpret relative dates; or find a contact’s name or email address.
-
-If wording is ambiguous, choose the most reasonable interpretation and state that interpretation in the answer. Base user-specific facts on tool results.
+Use for email searches, specific facts within emails, mailbox lists or summaries, relative-date references, and contact names or email addresses.
 
 ## Tools
 
-- `search_emails`: Search message subjects and bodies using `query`, optionally restricting results with `sender`. An empty `query` returns all emails.
-- `get_unread_emails`: Retrieve unread inbox messages for listing, summarization, or further filtering.
-- `get_received_emails`: Retrieve received inbox messages for listing, summarization, or date-based selection.
-- `get_sent_emails`: Retrieve sent messages when the request concerns outgoing mail.
-- `get_draft_emails`: Retrieve existing drafts for inspection or summarization without modifying them.
-- `search_contacts_by_name`: Resolve a contact name through `query`, including finding an address for a sender search.
-- `search_contacts_by_email`: Resolve an email address through `query` to find the corresponding contact.
-- `get_current_day`: Obtain the current day before interpreting relative-date references.
+- `search_emails`: Choose for inbox searches by subject, body keywords, or sender.
+- `get_unread_emails`: Choose for unread inbox mail.
+- `get_received_emails`: Choose for received inbox mail.
+- `get_sent_emails`: Choose for sent mail.
+- `get_draft_emails`: Choose for draft mail.
+- `search_contacts_by_name`: Choose when the supplied contact identifier is a name.
+- `search_contacts_by_email`: Choose when the supplied contact identifier is an email address.
+- `get_current_day`: Choose to anchor relative dates and weekday references.
 
 ## Workflows
 
 ### Find Email
 
-1. Identify the requested sender, subject, and keywords. If the sender is named but their address is unknown, call `search_contacts_by_name` with the name as `query`.
-2. Call `search_emails` with relevant subject or body terms in `query`. Set `sender` when a matching address is established; use an empty `query` for a sender-only search.
-3. Inspect the records returned by `search_emails` for the requested combination of sender, subject, content, and timing. If necessary, retry with fewer or alternative relevant terms rather than assuming special query syntax.
-4. Return the matching message’s identifying details and requested content. If `search_emails` returns no matches, report that no matching message was found; if it errors, report that the lookup could not be completed.
+1. Identify the supplied sender, subject, or keywords. If only the sender's name is known, call `search_contacts_by_name` with `query` set to that name.
+2. Call `search_emails` using subject or body terms in `query` and the identified address in `sender` when relevant. Use an empty `query` for a sender-only search.
+3. Inspect returned `sender`, `subject`, and `body` values to identify matching emails. Return enough context to distinguish the matches.
 
 ### Extract Fact
 
-1. Locate the relevant email with `search_emails`, using `search_contacts_by_name` first when a sender’s address needs resolving. For requests specifically about sent messages or drafts, use `get_sent_emails` or `get_draft_emails` and filter the results.
-2. Inspect the returned subject and body for the requested fact. Where relevant, inspect a returned calendar-event attachment’s structured fields.
-3. If selecting the message depends on a relative date, call `get_current_day` and compare that day with the returned email timestamps. Distinguish the message timestamp from dates or times stated in its content.
-4. Give the fact faithfully, preserving exact characters where necessary, with brief source context. If retrieval succeeds but the fact is absent or conflicting, say so rather than inventing a value.
+1. Locate the relevant email with `search_emails`, resolving a named sender through `search_contacts_by_name` when needed.
+2. Read the returned `body` and other relevant fields for the requested fact. Distinguish the email's `timestamp` from dates or times mentioned in its content.
+3. Return the fact directly, preserving codes and links exactly. Include brief sender or subject context when needed to identify its source.
 
 ### List Mailbox
 
-1. Call `get_unread_emails`, `get_received_emails`, `get_sent_emails`, or `get_draft_emails` according to the requested mailbox category. For a general inbox listing, use `get_received_emails`.
-2. Filter the returned records to the requested people, topics, or dates. Call `get_current_day` before applying any relative-date filter.
-3. Organize the results from the selected retrieval tool by timestamp when available. Include sender or recipients as appropriate, subject, and a concise summary of relevant content.
-4. Report an empty result as no messages found in the requested category or filtered set. Report retrieval errors separately; do not present them as an empty mailbox.
+1. Select the requested category: unread, received, sent, or draft.
+2. Call the corresponding tool: `get_unread_emails`, `get_received_emails`, `get_sent_emails`, or `get_draft_emails`.
+3. Apply the user's requested filters to the returned records. List or summarize relevant subjects, senders or recipients, and content without broadening the category.
 
 ### Resolve Recent
 
-1. Call `get_current_day` whenever the request uses relative timing, including recently or a weekday.
-2. Retrieve candidate messages with `search_emails` or the appropriate category tool: `get_unread_emails`, `get_received_emails`, `get_sent_emails`, or `get_draft_emails`.
-3. Compare returned timestamps with the current day. Treat recently as prioritizing the latest relevant messages unless context establishes a window. For an unqualified weekday referring to past mail, use its most recent occurrence on or before the current day.
-4. State the interpretation used and return the matching messages or facts. If timestamps or current-day retrieval do not support a reliable selection, report that limitation rather than claiming a match.
+1. Call `get_current_day` to anchor relative-date or weekday language.
+2. Retrieve candidate emails with `search_emails` for content or sender constraints, or the relevant mailbox-listing tool for a requested category.
+3. Use each email's `timestamp` and the current day to interpret the reference. Choose the most reasonable reading of ambiguous wording and state that reading in the answer.
 
 ### Find Contact
 
-1. Call `search_contacts_by_name` with a name as `query`, or `search_contacts_by_email` with an address as `query`, according to the information supplied.
-2. Compare the returned contacts with the request. If several remain plausible, present the relevant matches rather than choosing an unsupported identity.
-3. Return the requested contact name or address from the results. Report no match for an empty result and an unsuccessful lookup for a tool error.
+1. Determine whether the user supplied a contact name or email address.
+2. Call `search_contacts_by_name` for a supplied name or `search_contacts_by_email` for a supplied address, placing the supplied identifier in `query`.
+3. Return the requested `name` or `email` from matching records. If several records match, present the relevant matches rather than combining them.
 
 ## Common Pitfalls
 
-- Do not confuse a body mention with a sender match.
-- Do not treat subject-or-body search terms as subject-only filtering.
-- Do not substitute an email’s timestamp for an event date.
-- Do not infer attachment contents from a file identifier.
-- Do not claim complete coverage after a failed retrieval.
+- Use `sender` for sender filtering; `query` searches email subjects and bodies.
+- Ground mailbox and contact details in tool results.
+- Do not treat mentioned dates as email timestamps.
+- Do not repeat a data-changing call after an uncertain result.
 
 ## Output Requirements
 
-Answer the user’s question directly. Keep summaries concise, identify supporting messages when helpful, and distinguish retrieved facts from interpretations. State material ambiguities, empty results, and errors without claiming success.
+Answer directly with the requested facts, matches, or summary. State any interpretation used for ambiguity. For empty results, report that no matching information was found. For errors, report what could not be retrieved or established instead of claiming success or treating the error as an empty result.

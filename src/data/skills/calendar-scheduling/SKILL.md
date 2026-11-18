@@ -1,76 +1,70 @@
 ---
 name: calendar-scheduling
-description: Checks calendar availability and creates, copies participants into, adds participants to, reschedules, or cancels calendar events as requested. Use when the user asks whether a slot is free or requests one of these calendar changes.
+description: Checks availability and creates, reschedules, or cancels calendar events, including reusing or adding participants. Use when the user asks whether a time is free or requests one of these calendar changes.
 ---
 
 ## Overview
 
-Use calendar records to check availability and make only the changes the user requests. Resolve relative dates through `get_current_day`, preserve supplied event details, and distinguish successful changes from conflicts, empty results, and errors.
+Answer availability questions and make requested event changes. Resolve relative dates with `get_current_day` before using them. Use the documented date and time formats.
 
 ## When to Use
 
-Use for checking a proposed slot, creating an event, reusing an event’s participants, adding participants, moving an event, or canceling it. When wording is ambiguous, choose the most reasonable interpretation supported by the request and calendar results, and state that interpretation in the answer.
+Use for checking a time slot, creating an event, copying or adding participants, rescheduling an event, or canceling an event.
 
 ## Tools
 
-- `get_current_day`: Resolve relative dates before searching or scheduling.
-- `search_calendar_events`: Find events by title or description using `query`, optionally restricted by `date`.
-- `get_day_calendar_events`: Retrieve appointments for `day` to inspect availability or identify an event.
-- `create_calendar_event`: Create an event only when the user requests creation.
-- `add_calendar_event_participants`: Add participants only when the user requests that addition.
-- `reschedule_calendar_event`: Move an event only when the user requests rescheduling.
-- `cancel_calendar_event`: Cancel an event only when the user requests cancellation.
+- `get_current_day`: Choose when interpreting relative dates.
+- `search_calendar_events`: Choose when identifying an existing event by title or description.
+- `get_day_calendar_events`: Choose when checking a day's availability.
+- `create_calendar_event`: Choose for requested creation, including events with copied participants.
+- `add_calendar_event_participants`: Choose for requested additions to an existing event.
+- `reschedule_calendar_event`: Choose for requested changes to an event's time.
+- `cancel_calendar_event`: Choose for requested cancellation.
 
 ## Workflows
 
 ### Check Availability
 
-1. Identify the requested interval and any user-supplied alternative. Call `get_current_day` when resolving relative dates.
-2. Call `get_day_calendar_events` with `day` for each day touched by the interval.
-3. Compare the interval against returned events’ `start_time` and `end_time`. Ignore canceled events; treat active all-day events as occupying their covered days. Adjacent intervals do not overlap.
-4. If the primary slot conflicts, use `get_day_calendar_events` to check the supplied alternative. Report which slot is free or describe the conflicts. An empty appointment list means no recorded conflicts; an error means availability was not established.
+1. Call `get_day_calendar_events` for the requested day.
+2. Compare the requested slot with returned `start_time` and `end_time`, accounting for `all_day` and ignoring events whose `status` is canceled.
+3. If busy and the user supplied an alternative slot, compare that slot too; call `get_day_calendar_events` if its day differs. Report availability and relevant conflicts without creating an event.
 
 ### Create Event
 
-1. Extract the supplied `title`, `start_time`, `end_time`, `description`, `participants`, and `location`. Use `get_current_day` for relative dates. Do not invent required details.
-2. Call `get_day_calendar_events` to check the proposed interval. If busy, check a user-supplied alternative; if no supplied option is free, report the conflict instead of choosing another time.
-3. Only when creation is requested and required details are established, call `create_calendar_event`. Omit unspecified optional details rather than fabricating them. The calendar owner is included automatically.
-4. Report creation only after a successful result. If required details cannot be determined, or the tool returns an error or empty result, explain that creation was not completed or verified.
+1. Assemble the supplied `title`, `start_time`, `end_time`, `description`, `participants`, and `location`. Leave unspecified optional fields at their defaults.
+2. Once the event is identified from these details and the user has requested creation, call `create_calendar_event` once.
+3. Report the returned creation outcome.
 
 ### Copy Participants
 
-1. Find the source event with `search_calendar_events`, using `query` and, when appropriate, `date`. Use `get_current_day` for relative dates and select the best-supported match.
-2. Read the source event’s `participants`. If the search is empty, errors, or does not establish a usable source, report that participants could not be retrieved.
-3. Obtain the new event details from the request and check its interval with `get_day_calendar_events`, including a supplied alternative if necessary.
-4. Only when the user requests the new event, call `create_calendar_event` with the source participants in `participants` and the requested new details. Report the returned event, or explain any failure without claiming creation.
+1. Call `search_calendar_events` using the source event's title or description and `date` when supplied.
+2. Identify the source from returned details. Use its `participants` for the new event, together with the new event details supplied by the user.
+3. Once the source and new event are identified and the user has requested creation with copied participants, call `create_calendar_event` once. Report the returned outcome.
 
 ### Add Participants
 
-1. Locate the target with `search_calendar_events`; use `get_current_day` to resolve any relative `date`. Match the request against returned details.
-2. Compare the requested additions with existing `participants`. Use participant addresses supplied by the user or established in tool results; do not invent them.
-3. Only when additions are requested, call `add_calendar_event_participants` with `event_id` from the selected record’s `id_` and the new `participants`. If everyone is already included, report that no addition was needed.
-4. Summarize confirmed additions. Report an unmatched event, unresolved participant details, error, or empty change result instead of claiming success.
+1. Call `search_calendar_events` using the target event's title or description and `date` when supplied.
+2. Identify the target from returned details and collect the additional `participants` supplied by the user.
+3. Once the target is identified and the user has requested the addition, call `add_calendar_event_participants` once. Report the returned outcome.
 
 ### Reschedule Event
 
-1. Find the event with `search_calendar_events`, resolving relative dates with `get_current_day`.
-2. Establish `new_start_time` and `new_end_time`. If the user specifies only a new start, omit `new_end_time` or use null to preserve duration.
-3. Call `get_day_calendar_events` for the destination interval, excluding the event being moved from conflict comparisons. Check a supplied alternative if the primary interval conflicts.
-4. Only when rescheduling is requested and the destination is suitable, call `reschedule_calendar_event` with the selected `event_id`. Report the confirmed new interval; otherwise report conflicts, lookup failures, or an unverified change.
+1. Call `search_calendar_events` using the target event's title or description and `date` when supplied.
+2. Identify the target and resolve `new_start_time` and `new_end_time`. If no new end was requested, leave `new_end_time` unset to preserve duration.
+3. Once the target is identified and the user has requested rescheduling, call `reschedule_calendar_event` once. Report the returned outcome.
 
 ### Cancel Event
 
-1. Resolve relative dates with `get_current_day` and locate the requested event with `search_calendar_events`.
-2. Select the best-supported match. If none is found, report that no matching event was found. If already canceled, report its existing status.
-3. Only when cancellation is requested, call `cancel_calendar_event` with the selected `event_id`. Confirm cancellation only on success; report errors or empty results as unverified.
+1. Call `search_calendar_events` using the target event's title or description and `date` when supplied.
+2. Identify the target from returned event details.
+3. Once the target is identified and the user has requested cancellation, call `cancel_calendar_event` once. Report the returned outcome.
 
 ## Common Pitfalls
 
-- Do not interpret search errors as an empty calendar.
-- Do not substitute an unrequested time or fabricate event details.
-- Do not treat a lookup as authorization to change an event.
-- Use date arguments in YYYY-MM-DD format and time arguments in YYYY-MM-DD HH:MM format.
+- Use the identified event's returned `id_` as `event_id`.
+- Do not repeat a data-changing call after an uncertain result.
+- Keep availability checks separate from changes unless the request asks for both.
 
 ## Output Requirements
 
-State the availability finding or confirmed change concisely, including relevant event details and the chosen interval. Disclose interpretations used for ambiguity. Clearly distinguish completed actions, unchanged events, conflicts, and actions that could not be verified.
+State the availability finding or returned change outcome, with enough event details to identify it. For ambiguity, use the most reasonable interpretation and state it. Report errors, empty results, or uncertain outcomes directly instead of claiming availability or success.

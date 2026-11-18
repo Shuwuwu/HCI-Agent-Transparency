@@ -1,7 +1,7 @@
 {
     "skill_id": "calendar-scheduling",
     "kind": "write",
-    "summary": "Change the user's calendar when asked: check whether a time is free, then create events, add participants, reschedule or cancel.",
+    "summary": "Answer whether a time is free when asked, and create events, add participants, reschedule or cancel events when asked.",
     "yang": [
         {
             "subtopic": "Calendar Management",
@@ -285,7 +285,7 @@
         }
     ],
     "provenance": {
-        "definition_sha256": "3e1a81b6b8b07c91824b5f1f84d755a54504aad5a501fb680ff0af03ce297623",
+        "definition_sha256": "d0122b0df170e989f81809b17c2157809384ed589662a0be9671959995e0142c",
         "repo": "https://github.com/ethz-spylab/agentdojo",
         "commit": "af7266303c748a9cf0442d71ceabc9d2488d7188",
         "source_files": {

@@ -2,66 +2,36 @@
     "skills": [
         {
             "skill_id": "calendar-lookup",
-            "attempts": 3,
-            "accepted_attempt": 3,
+            "attempts": 7,
+            "accepted_attempt": 7,
             "status": "accepted",
             "reported_models": [
                 "gpt-6.1-sol"
             ],
             "usage_total": {
-                "input_tokens": 5043,
-                "output_tokens": 4718,
-                "reasoning_tokens": 1261
+                "input_tokens": 13352,
+                "output_tokens": 10415,
+                "reasoning_tokens": 3695
             },
             "last_attempt_errors": []
         },
         {
             "skill_id": "calendar-scheduling",
-            "attempts": 1,
-            "accepted_attempt": 1,
+            "attempts": 4,
+            "accepted_attempt": 4,
             "status": "accepted",
             "reported_models": [
                 "gpt-6.1-sol"
             ],
             "usage_total": {
-                "input_tokens": 1773,
-                "output_tokens": 1748,
-                "reasoning_tokens": 516
+                "input_tokens": 8960,
+                "output_tokens": 6287,
+                "reasoning_tokens": 2518
             },
             "last_attempt_errors": []
         },
         {
             "skill_id": "document-content",
-            "attempts": 1,
-            "accepted_attempt": 1,
-            "status": "accepted",
-            "reported_models": [
-                "gpt-6.1-sol"
-            ],
-            "usage_total": {
-                "input_tokens": 1300,
-                "output_tokens": 1709,
-                "reasoning_tokens": 516
-            },
-            "last_attempt_errors": []
-        },
-        {
-            "skill_id": "drive-file-management",
-            "attempts": 2,
-            "accepted_attempt": 2,
-            "status": "accepted",
-            "reported_models": [
-                "gpt-6.1-sol"
-            ],
-            "usage_total": {
-                "input_tokens": 2626,
-                "output_tokens": 3289,
-                "reasoning_tokens": 1032
-            },
-            "last_attempt_errors": []
-        },
-        {
-            "skill_id": "email-correspondence",
             "attempts": 3,
             "accepted_attempt": 3,
             "status": "accepted",
@@ -69,24 +39,54 @@
                 "gpt-6.1-sol"
             ],
             "usage_total": {
-                "input_tokens": 6749,
-                "output_tokens": 5123,
-                "reasoning_tokens": 1668
+                "input_tokens": 4576,
+                "output_tokens": 5244,
+                "reasoning_tokens": 2466
             },
             "last_attempt_errors": []
         },
         {
-            "skill_id": "email-lookup",
-            "attempts": 1,
-            "accepted_attempt": 1,
+            "skill_id": "drive-file-management",
+            "attempts": 4,
+            "accepted_attempt": 4,
             "status": "accepted",
             "reported_models": [
                 "gpt-6.1-sol"
             ],
             "usage_total": {
-                "input_tokens": 1712,
-                "output_tokens": 1573,
-                "reasoning_tokens": 369
+                "input_tokens": 5957,
+                "output_tokens": 6729,
+                "reasoning_tokens": 2891
+            },
+            "last_attempt_errors": []
+        },
+        {
+            "skill_id": "email-correspondence",
+            "attempts": 7,
+            "accepted_attempt": 7,
+            "status": "accepted",
+            "reported_models": [
+                "gpt-6.1-sol"
+            ],
+            "usage_total": {
+                "input_tokens": 17264,
+                "output_tokens": 12188,
+                "reasoning_tokens": 5462
+            },
+            "last_attempt_errors": []
+        },
+        {
+            "skill_id": "email-lookup",
+            "attempts": 4,
+            "accepted_attempt": 4,
+            "status": "accepted",
+            "reported_models": [
+                "gpt-6.1-sol"
+            ],
+            "usage_total": {
+                "input_tokens": 8764,
+                "output_tokens": 5085,
+                "reasoning_tokens": 1432
             },
             "last_attempt_errors": []
         }

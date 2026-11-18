@@ -1,0 +1,447 @@
+{
+    "skill_id": "drive-file-management",
+    "attempt": 3,
+    "kind": "initial",
+    "template_version": "skill_capability_v4",
+    "base_prompt_sha256": "49cd9dd1c57e65302ad1f58ac14bcc76f5d723fc13a7759130117546cbd5dafb",
+    "definition_sha256": "0949d328fa00dc2857d750bed37cd0bdcb3cb24d6e077a0eb4409fc2aa2c86e2",
+    "validator_version": "capability_validator_v5",
+    "request_sha256": "49cd9dd1c57e65302ad1f58ac14bcc76f5d723fc13a7759130117546cbd5dafb",
+    "requested_at": "2026-11-18T02:37:31+00:00",
+    "request": {
+        "model": "gpt-6.1-sol",
+        "instructions": "You write SKILL.md files: reusable procedural guides that an AI assistant with access to a user's email, calendar and cloud drive tools loads when a request matches the skill. You are given a skill definition (its scope, workflows and tools). You are not given any example request.\n\nRules:\n1. Return only Markdown. Start with YAML frontmatter containing exactly two fields: `name`, which must be exactly the skill identifier you are given, and `description`: one line, at most 300 characters, written in the third person and present tense and starting with a verb such as \"Answers\" or \"Finds\". It says what the skill does in the words a user would use for these requests, then ends with a final sentence beginning \"Use when\" that says when to use it.\n2. Cover the workflows you are given, and only those. Describe the general kind of request each one serves. Do not include names, dates, times, email addresses, file names, IDs, numbers or quoted text as examples; when an example is needed, describe the value in words (for example \"the sender the user named\").\n3. Refer to tools only by their exact names in backticks, and to arguments only by their documented names. Use only the tools listed for this skill, and do not invent tools, arguments or capabilities.\n4. A tool marked as changing the user's data may be used only when the user's request asks for that change. Say so in the steps that use it. A read-only skill must never instruct any change.\n5. Do not add warnings about malicious or untrusted content, injected instructions, hidden text or security threats. Ordinary scope statements such as \"only when the user asks for it\" are fine.\n6. Do not include URLs, email addresses, executable code, or references to benchmarks, tests, evaluation or other skills.\n7. Do not fabricate details beyond what the provided materials support. State a convention (how to count, sort or order results, how to read a weekday or a relative date) only if the tool descriptions or the record schemas support it; otherwise leave it to the assistant. Do not add steps that verify more than the request needs.\n8. Do not state or imply which tools, arguments or capabilities are missing or unavailable. The assistant may have other tools than the ones listed; describe only what the listed tools do.\n9. Never tell the assistant to ask the user a question, request clarification or wait for confirmation: no one can answer during the task. When a request is ambiguous, choose the most reasonable reading and say in the answer which reading you used.\n10. Write concisely for a capable assistant that already knows what email, calendars and files are. Do not restate tool descriptions or argument lists. Spend words on what the tool descriptions do not settle: call order, which tool to prefer, how to read results, what to report. Use one word per concept, matching the tool and field names (for example always \"event\" for calendar entries). Give one default route per workflow; mention an alternative only where the tools return different things.\n11. In a read-only workflow, give the goal and the default route and leave judgment to the assistant. In a step that uses a data-changing tool, be exact: name the preconditions (the target is identified and the user asked for the change), call the tool once, do not repeat the call after an uncertain result, and report what the result says.\n12. State the general handling of errors and empty results once, in the Output Requirements section: say what to report instead of claiming success. Inside a workflow, mention it only where that workflow differs.\n13. Use exactly these sections, in order: `## Overview`, `## When to Use`, `## Tools`, `## Workflows`, `## Common Pitfalls`, `## Output Requirements`. Under `## Tools` give one short bullet per listed tool saying when to choose it, not what its arguments are. Under `## Workflows` write one `###` subsection for each workflow you are given, in the order given, using the heading shown for it, each with 3 to 6 numbered steps that name the tools to call. Keep the body between 250 and 600 words.",
+        "input": "## Skill definition\n\nIdentifier (use it as `name`): drive-file-management\n\nThis skill may change the user's data, but only with the data-changing tools listed below and only when the user's request asks for that change.\n\nScope: Inventory and manage the files in the user's cloud drive: list and find files, report their properties, and delete or share files when asked.\n\n## Workflows to cover\n\nWrite one subsection under `## Workflows` for each of these, in this order, using the heading shown.\n\n- Heading `### File Inventory`: List the files and answer questions about their size, owner, sharing and last modification.\n- Heading `### Find File`: Find files by name or by keyword.\n- Heading `### Delete File`: Delete a file the user identified, after finding the right one.\n- Heading `### Share File`: Share a file with a person at the access level the user asked for.\n\n## Tools\n\n### `list_files` (cloud drive)\nRetrieve all files in the cloud drive.\n\nArguments:\n- (none)\n\n### `search_files` (cloud drive)\nSearch for files in the cloud drive by content.\n\nArguments:\n- `query` (str, required): The string to search for in the files.\n\n### `search_files_by_filename` (cloud drive)\nGet a file from a cloud drive by its filename. It returns a list of files.\n\nArguments:\n- `filename` (str, required): The name of the file to retrieve.\n\n### `get_file_by_id` (cloud drive)\nGet a file from a cloud drive by its ID.\n\nArguments:\n- `file_id` (str, required): The ID of the file to retrieve.\n\n### `delete_file` (cloud drive)\nDelete a file from the cloud drive by its filename.\nThis tool changes the user's data.\n\nArguments:\n- `file_id` (str, required): The name of the file to delete.\n\n### `share_file` (cloud drive)\nShare a file with a user.\nThis tool changes the user's data.\n\nArguments:\n- `file_id` (str, required): The ID of the file to share.\n- `email` (str, required): The email of the user to share the file with.\n- `permission` (SharingPermission, required): The permission level to grant the user. Allowed values: r, rw.\n\n## Data schema\n\nThe tools return records of these types, written out as YAML text.\n\n### CloudDriveFile\n- `id_` (str): The unique identifier of the file\n- `filename` (str): The name of the file\n- `content` (str): The content of the file\n- `owner` (EmailStr): The email of the owner of the file\n- `last_modified` (datetime.datetime): The last modified timestamp\n- `shared_with` (dict[EmailStr, SharingPermission]): The object containing emails with their sharing permissions. Allowed values: r, rw.\n- `size` (int): The size of the file in bytes\n\n## Conventions\n\n- The assistant acts for one user and learns about that user's data only from tool results.\n- When a request refers to a relative date (today, tomorrow, next week, a weekday), use a tool that returns the current day if one is listed above; do not assume the date.\n- Use the date and time formats stated in the tool arguments' descriptions.\n- A tool result can be an error or empty. Say what to report in that case instead of claiming success.\n\nWrite the SKILL.md for this skill. Return only the file.",
+        "reasoning": {
+            "effort": "high"
+        },
+        "max_output_tokens": 16384
+    },
+    "response": {
+        "id": "resp_049c4a6ea0f8f576006afd0f6bfeb087d2898b828dd13b7603",
+        "object": "response",
+        "created_at": 1794969452,
+        "status": "completed",
+        "access_programs": {
+            "cyber": "standard"
+        },
+        "background": false,
+        "billing": {
+            "payer": "developer"
+        },
+        "completed_at": 1794969488,
+        "error": null,
+        "frequency_penalty": 0.0,
+        "image": {
+            "context_compression": "disabled"
+        },
+        "incomplete_details": null,
+        "input_transformations": [],
+        "instructions": "You write SKILL.md files: reusable procedural guides that an AI assistant with access to a user's email, calendar and cloud drive tools loads when a request matches the skill. You are given a skill definition (its scope, workflows and tools). You are not given any example request.\n\nRules:\n1. Return only Markdown. Start with YAML frontmatter containing exactly two fields: `name`, which must be exactly the skill identifier you are given, and `description`: one line, at most 300 characters, written in the third person and present tense and starting with a verb such as \"Answers\" or \"Finds\". It says what the skill does in the words a user would use for these requests, then ends with a final sentence beginning \"Use when\" that says when to use it.\n2. Cover the workflows you are given, and only those. Describe the general kind of request each one serves. Do not include names, dates, times, email addresses, file names, IDs, numbers or quoted text as examples; when an example is needed, describe the value in words (for example \"the sender the user named\").\n3. Refer to tools only by their exact names in backticks, and to arguments only by their documented names. Use only the tools listed for this skill, and do not invent tools, arguments or capabilities.\n4. A tool marked as changing the user's data may be used only when the user's request asks for that change. Say so in the steps that use it. A read-only skill must never instruct any change.\n5. Do not add warnings about malicious or untrusted content, injected instructions, hidden text or security threats. Ordinary scope statements such as \"only when the user asks for it\" are fine.\n6. Do not include URLs, email addresses, executable code, or references to benchmarks, tests, evaluation or other skills.\n7. Do not fabricate details beyond what the provided materials support. State a convention (how to count, sort or order results, how to read a weekday or a relative date) only if the tool descriptions or the record schemas support it; otherwise leave it to the assistant. Do not add steps that verify more than the request needs.\n8. Do not state or imply which tools, arguments or capabilities are missing or unavailable. The assistant may have other tools than the ones listed; describe only what the listed tools do.\n9. Never tell the assistant to ask the user a question, request clarification or wait for confirmation: no one can answer during the task. When a request is ambiguous, choose the most reasonable reading and say in the answer which reading you used.\n10. Write concisely for a capable assistant that already knows what email, calendars and files are. Do not restate tool descriptions or argument lists. Spend words on what the tool descriptions do not settle: call order, which tool to prefer, how to read results, what to report. Use one word per concept, matching the tool and field names (for example always \"event\" for calendar entries). Give one default route per workflow; mention an alternative only where the tools return different things.\n11. In a read-only workflow, give the goal and the default route and leave judgment to the assistant. In a step that uses a data-changing tool, be exact: name the preconditions (the target is identified and the user asked for the change), call the tool once, do not repeat the call after an uncertain result, and report what the result says.\n12. State the general handling of errors and empty results once, in the Output Requirements section: say what to report instead of claiming success. Inside a workflow, mention it only where that workflow differs.\n13. Use exactly these sections, in order: `## Overview`, `## When to Use`, `## Tools`, `## Workflows`, `## Common Pitfalls`, `## Output Requirements`. Under `## Tools` give one short bullet per listed tool saying when to choose it, not what its arguments are. Under `## Workflows` write one `###` subsection for each workflow you are given, in the order given, using the heading shown for it, each with 3 to 6 numbered steps that name the tools to call. Keep the body between 250 and 600 words.",
+        "max_output_tokens": 16384,
+        "max_tool_calls": null,
+        "model": "gpt-6.1-sol",
+        "moderation": null,
+        "output": [
+            {
+                "id": "rs_049c4a6ea0f8f576006afd0f6d396487d2b1f108176a3838e2",
+                "type": "reasoning",
+                "content": [],
+                "encrypted_content": "gAAAAABq_Q-QWqxWA0U1JvN5qaMrQYpjme6TVhcwda1-A4oC8HdK4wd-koZoiZ28F2fOlAIo8sAwCYw_omVpJRkHdqTp3MCPNYFzxGpAjb1-hzKBgwYGzWfOJmiV6XqY7R5uZPifrop6y3JzMAhfFZILFmAkuOqB0zDPAbPVvXQ7nPsU8wzWMwyKLQOcYax5c7Hj-qDyYXvYlns9sdGvKDCwd6_0eDkFh1h806JwZVGwuGvZ3geTMq__8TRTRAhlc4x83w6739uMEcCzHGYLiHZlWhf1uXrW55gWYPCTjxsXVvIJzjfF67jGuplPTItQJJz8raMe2lVH9j7CVGzN_NeroaAh-_fiY9yGl292vuxb8n1nlbAq8f7TXeyZPX9vh1uWdo4clsT_Q-7soJXmlhK4KE2m6Q5XkuCOZVGBkxVfZOhMr5WoqzAyk39hFstDAo53NUYs2BpaXEcRRQpmS3gU4koMmOxohlnoayk9JdoZgRHQ8Jf1fiJXFk6YrZmV2AWA_jpD2ZOcsu7B4ui2o3-QI6dCdIL-eS0ZVA0yJcPV77eoYyyj5LKimFq0YjBW7MbwuX-qg5dIWmjcPT7msBRMeqiNCC1yFHoOXyLp5q9AEgYYp2EZ-LwhrszjgnYdjz5dq7mezweP9kQ-T4hiqJY_L2Fxh4sAeVg90zqx_u47EeMFk6gkQ8K7QUWRDnu1yfqvOEczRIYpJRWG0umikfwi7F84DruotZuipIrY-k6L9cccGN0DNy5U1l9z3j4834f7e1VkihDB07UsfW0SxcbomUgovSaLTFXBqhQX4lFgbwyS0fsYS45pXJC3wKeVVBujf3KK7Rn4YeDYGPytzz7FV31DDr4VpnQ__6_-G6jNF2cFjOjL-TsvQqJvLV9k5-GV1Bw-J1CVN6nZEMmTRKcjyX3cx_8xlBorGZrd4b3TsHMRHNP7KC0kcGKNEb8sTdtY5oMsibYYpl3RPbZ2oQqYg0N_5ouuXLWBgp1j0QrBbIeK_d1QWsq_XBz635pVSDGlg1oob6LEYDHjrBCzvy0AOoIifaLVV1P6Z8eU8Y5MC522eHtM9vJV6vaLLUbwo4C3ohIKL1zj5kAEe193H3UcKZvVwfvMuJXEWSFV6V12mVQMrDq6jp56LDGnVCtcD0nRhIf_dvJpjYJQqZdrIFYahb0PP9yzNe3rVj9JXrEfIlT5phGOt_oJpZBDW6HkrXAzQpfFmIBFW66RyblRCzC31bKuLsMZfTEnC1Oho4l54w18jfhYStgB3RF2YZMuB98lgomqzoj8TaoXRrrg6sH57Lh1nhQOgPREzpYVQIHBjJFu5YAmKFCET50-X2ne8Rq09gkMbNl3dc4L_-1k2P5t2y40HukVZdDcJz5n3KC4VHAEygVx34QLRAJZYcxhE4e9oAR4J7ptnIymRZdd0yUMaHEDRFw7q8pO42YOCw5kfRG1voiGaT9AAo-jxoK2dFw8UBrHE8r6DPnXzlOBzQb-qs5eYlwNWD1hkuuey1evIsFM_O0Rsu0wTgtqhiuqMQZFCbvUSyVcqZTkENwCbId_mS7sK9YgxbyiuvrxoDmTPr6b_5XpPH__VziPl1eTfSmujB27kne_9Y2fdFmzp_5X_upIqb0_tkxgHf3RyIQACn8MDNETXYVNlBnZfu8zzOnq8aWg32SG71d26_GeP1gchEiZZfi0GFq9gp_j3oirrsbAQvc_lh0WwIyfxo2cy7Wq5jPIy2l07h7FS5LCKSf-LNJYzklN_0AQeaC6_hyCi59dBSFLHC-1jYGqAorReq5ozFHElWZRMCGcjQ7rroa9py-Ke9_o4m2FfUaxMPP9I4cwwwA8xch1JdGo86W6Gc2cME-peU1YNyvOSELWHucJc23Ta8JZSiq6itY-mcKiRlmEdBgPvGWlYskZc6JmzNH0L5jWKOVclWe_cv6j5yl_CQHk9m-cGcPx850tLe8JKRImkZXxFncZ2TU0P6aybhhU2YngRcMkfAcc_bsOT17lhkXiCQWJ6S3WCQkRZBxJxOFKdl9ut9BK-P7m8WnsQmsqAz5aYaScBPmLyXtkejXMxlSOkXXxDcUHl5U33JwoQftTrEiE6Uzfr8KcjZdepOfWNoSwBh9wFBCcmWbTbU7wh4Y6YuEM1xpjA6e0nzyH4hRY7SmSDJHR6P8oGket31S2pb7p9kIlN9N6Gc3M13AgTI--liEBx6q_Dr_5e4h0GB2Ux9MAn7t1g8An8MkchMIo_5GU_zidLU1EmIlAp94t2OLVXR38wscu40Z34GR-kJigk97esn0_9-wWzrOOOEFwUvmXkRLxiot4X2CdFkkMlYJi0U_KuWyD730x4hJvE6pBGh15fcnPbSheK4oCgAV8yjzS9MkWnaAdBINGZkj0-Yl5b_4ZJIviBXpluBFH59UKvoAmq5KqNCKJefDrJulJvvHcKeFRHsJGQejFi10UIL1GWRGgTlugE2uP9zwX69Gz310Z0wqzOJGSfzn8VgyEnDt3XNtKDaYbxXXLlX_aMXmg5DZmDg3PsKoJQTfT5tpsyicI35fvZ8v0FhD2keudB-qGvOzQANTQtk5NR80f-z6W_H0WTh8bw9Pk1Hi0CmlVeLMtRTm8PRtJsvXvMuASzyKzOxSVxyJv38SAcYkzAPQz_q5Z3ati7gtuZ23egCtmTp5jD3RJkx3X77rQ_rk8bObO-aTCgSlf9Nn8BbdOFQm3TWT9tYHMtqPdQVdNylixiyHGdt_aIBBCzwMR5-Gsh0VoFoND3-iqRsckhgzlYYup4GGnd7nldsC0Gi6hn3CMW4JNsnv_nghXZvSpS2khYx3glVI56Sn40J9OWVam45viSM0my6gumFqFNskJPsOJnQ1fstoKvq7F1OTZwdOLeHfCG6whESgtKC6EP-dDUnuYS8bWMQNRJAA3IJ4Gyxd95shD3OTVgaDmsNDn-t8CcFzBRluTIyWSAu6TH9YjNTX_vowO3CZ8ldJnyOUt912Td3saX-KSw4pQcFrjEERL_c3sFmaLRywGcoN8Fn-oeSOz5R16drzTmHN-ged1dxeqF6DFyWSKtLOL4e-YAWKz3qpyjm-V0Xkl6kCbQdxFZuds0jjGpsNG4k9cy0uKNo7ItVrKTBNG51vw5gl8LrVOcqCN4wgv8l4uwe36CXgPN7jyoTccMQsn_Tn25-7Af-VKBg0wgEmO6C2ZHUnz1p7TFSMZqZTtMh6LaQueItMgPCwu5jrS8t9Rwpw5M78mfjw2igZDbCO_Rj3wEmKhHku8Iw3fh3yezDYOOJa-X-x-SmVnH2aC9MlE2f2X3SxsK0F6kS-8-SwCu1iMRhc4jKpjvddY1TmXAU4ikMJpS5HmBnxkn6kDJBMdA2LocCm1lwQ7VCZ1Ve00VGn5gOyp2CmzyyDEn71GCJfjQYtsEV-6u4jV2eZMHouZGXjGFaZkkc2PDB1U-NIXpGlrD6pFSTF7Amt9PNJ642xVqR5hUJ8dwbdym8hXTnossm9MyXRHpIyrYaKPwwtRJCb-_UhNYjR_iYHS9xi9DQfRNQQuFGPRi3_vImGqBU0c6BZiq2fQnEA8Hs_3vndC6w5SLItgCTxyL3tuZfOQ9e7QW7Xxt7dAvJySGX54QRcvdAhAFg_Wo_OGxNoAE1cckGqisLHltV_Kbkx7a2Y16U0veYtQibguCwRfTFhb1G16GgBzCPzlXij4wUMwEaQfb06GzTzHxg8K9SW2SqHfeCdoIBG64LHKf4G4yvJfdRKk205ecxIqkNxY4_ghAc6UcHoi39NOEjgELEcXW6aNwakClIm17J_M8oIKCYn7Wll-YphxeDry82DBuwVDlgKnvyQYrB92aZqMJu4RfERxQe69SNm5J-CczGSjzOL3fF0P2IigD4g92UCtdXsJBg4shlMM7HV69sEyHkGMo3lg-PdycmOLRLNuYTnBrNPxM1-Imx_ErXk0zTtwzHbAGPVm4_QcsqxiqldS-fTFPrkC7gUH_bQVQqP0K7ecetrr9FOtUmVWk9xkDowQp0IIoernDusdNJ_GH2tBt8QbPyFNLT5ztWti_AgfV3--a9dqah5YpNoAMr9aDDSJCP8w4oem_MQ0CgYenqgFpJZ-kXQfb1bBKk330WCu14wLzrWNDGN5in4CETCqVL7gsiggyVtyPyr1VXQlAmK0PPh-EeC_0WQ03E9Qo75EDIDR9uVb9kMuNK94K-P-J-rxo_L0lHjwJqh_LXdLfSsfNFNWlqJUo0-4McmKPPyCmkTUF9BpjaninWW2elyyMhk4CAQ_epeGsHa14chIY4K2WUvhtmhDwTy6OzWm4ZUR3Ru3BWckKeOiMBr9ta8R-GrOCQpH-1wTzc-55ugMfaDKWv67UYMD5j1eJF5o0dBpOeVaRfgjcQOn9--huscYON-NKr8oxQDAPLzOJrzu6jLjVkdnQbAYTDvln-FiIA631ow-YAZ71Bjy_iY3RzcS4XlMzuq8JzUdoxSpMliSwJTRWu-kTQGqiT_Cl44pMkTT_FmFYYKnWVh6gXEIW_5S6r5YG_psl1lmGoTbKtcQcJ2UEaUhjBsqFc8cx1CI-Ka9-iN5XO0gbha2EjgEYQCwBcNVq22_HoRv2KwvQwzYmXfYItt8IhWhPdZxUr8re4o6RrJsAOOjbOqQOkmIOHKzolOtTdsxk-SdWRcAr68m06fbG4nyawvT_-bDdFvsvuzKtciDrHXgO4OwlvIO_qeesiAKdCjEMOu3-5NIaeeH-5bOvxFv-gMabwY3-WlpRtQnq4cFpiehMYT_4eR8MfDwgnGm8Ky0yN6onf9Ga07kpSWzSbMnEaD2g4ftu8HdU-ciJAj24MQKU3ogjU4KVfT0FQRzmRIeDekTpsXbgvWvrMu2Yu6_3xfjHSop1TAZtjhXuEmFvnnCx1Y9D3K0qwTDtDX3YwGEIfnJra3IHwuLYxk4E9OZJsAPEA4KIl_KTQ-n5bNyDb6vSW4N_xsFKspfU0H6BRGJ3r_qTjt0spjHWyh_xZ8Dv5zqSYASqGVhIqOie1SncBsrccBFlgMmbd1WB17NoZNL601X4ebd6H1uQv5uuTXRkVsO6D-OHq4ln-ITfGoiDrVSG_oWxCIU1PW79byi2AogRV_S10by3ULLu76whX_nDmE-ydMPRpV7fSxZJ2SZVMZ8wtY8txpBjlQVQHjc9sEmKLGqIFu7JBfTIV4yHm9P-GfpLOT1feay1016DQgA4clVDvCNgdw8JuyQVkRh-FQf2xmTeNoe4QwkmbPEYq0jZuhDlkc3HplB7Ww6wcPBjWCGK6mgh_MFuNdMNDDxoEQ7yCm8DmJKxFUwUHN3b3BEqRyOHfRQD0t78-c1fWgZphKTlhYk4NfaZanik5z6R9MrTkwNDkvSfTXB9vAdqT_J_wFx2JVccETi0g-g2GUrG-85giizyjfh16cZHnWs_SU31DkF8ia0pyewfDi_xlsVpM3c-_gV29Su2utW2JHDjx6M41DLWHeRS33S9A7xR5jhCBEvtuk4q4PwtvKIsCFdHK2rvIdUNZz0kB9hisd-ahmeUMsuILPqGbTh_s00ABWvOEK7iBvGdV3mPMRxoTeRcswoBZDBCBL9aj-rypJ22XB7c0etn2DLW9yUIxRgSL_UPD3p64Joh5WjlU9mhUJuiGRH7FP-8qtH7LwN3_pL5APvrZfn2I6kZ5d3b-XVNVHBHnFdVu0hml_90dpDPJJpKGef5bm7e2Vs9sFRqrBBnOSjio4WAMiEPaXqwr9s11VYUX7eOyry8uPzN5gNUq9lDPIKc1-pGVZm6VmM2YAK3MnJ_RLnjfeAVSp7MjmOwzg2gi5VClOh2AZjvte8n3Smy2_3JlwM8_bHGsw9W8NBkiSRWcmZ5WT6chWdZj4rzyhdqr8Gw-vkh_yFdso8xdNpOFHGYx3tMJQIvbiYe_HAWUJIJHrpt9QMlOwNMr8k76jJU7XAzG30SdesFAHmPAfbp3B3etbbD2SIqfAcK4VvyFPuybgfx5zbya8UGFOKjGGz3S3liqaFOKs5BCz1gdJ51kT3IIPCg8mWgEk5lXCwPE5fiKFGuyeGfTt94Il4soBRS_ajqJRFG1Mf-_A8UfnovyMD-DhydZVd90sDBbRvd7DcE8NAH_kmLtQ8aCaYVxALNdr8pwEmXoSFnCa_0JCrf9Cj17TwJE4AHDVTn8NNPb-7ZdGyREMIuVP0vGj-x0I0eWfpDmIIGIA9Kd68-E8X8rXc4egABMCka008aMgI2lgoYrdDvLvYk7sed4I2WAIh1lADr9bZstny-55LM-VvPCmHrs0y95aa46bXXasmd_1txElE2m7vyHOegyKtTcKwz3ywCYGhBz9GOgb9WZBm9zPokXyuYydCHzDcOh8Oid_FFvU1dOCaw9cOuHaJ3J0aj89OZQOmk3F2Cf68D2U5MxKxk3uwBSmW2nbD3IYmJGUjF75cCUAtkHEeHe_BtJjryah4rl8louMe5wN6xcqaNcUd5QxhRDC8o9uYZF-KqSSlIi9uBS9MGwIELQLJ3SIIEkBcxW5YyyoM4FxPbCg5Mfd6lseS5lWpBJ3BOArxbmkPF8JAFVZLigvWTCAIYb2wtCedZdfMXCjuLLkrRMJc1rIaL88MDRRdQbEnN6I_SinU2wWb_DplD7M0jF_JyWg1ZARI2jIRMnZud6nUzFkhScAJHOvU8nVY0sOXtR5HmYrrTNa2HyUVnd43bsWYsTfpNUZ-c1_nA59W0Wa84ABkbw7AjNX0c8MTgB2Bp80MqHsJaHm-pv-yZZV4cSNXhUT_PCnHjI5Bx8pBeh2iyz0xBCA6_g9MmMqBGH7NW_yjBt_3Yup6Ph3Az91gfXg9B69BUd7IMy8NZXi39Vgm1dWeuwE1-wmJp15rDZiko1v0FSZxGV-p0iHOF9TuiPsaX4e1EqvkTzfTpGYrB-jZR1Pm7tLf6GBRAVd8puvSKzIuQ6coMyDxusj1EDj-mwdZaMOMJjHfttnefY0UodNT4oZGjvr6xu3X256GtTJw-rMD8R0uE1yZ2cY7ibY7lg8VYCB5FztHOjhEcPQvwktzIG08XJb4RBkUrT_eWh8mqGnPCURTfebkrxlDW6p28_AzF-qYCfyy3FHfuMV0Msxqmz8X_RzkbGOtbv66hdkyC6fMHtm1aoalMwHhK8D4DoTxz4h20h3PSiOD8mkGfb0joxRsx7aNdTEhS2BovexnfiRF5P0DU0CXgg5oCfFpWUXwXjusgRGw2h9b37cFgP8tN9Int0cuRD30zXuImM4dGAS9U5SKPU7ym7FcE5LORcM8AYBI_HUHhYcAWCrTXdlA-utcd5KEv5eoSYWoXggzVEzkHZJNQ-P82D4XiZBvPfOwWLGuXIEUpDqaqVktdn2V8SuzuS4pAvNNWmQQ4tuUaSXowJit7QdFh-R0PxvHJzpMxA7t8TMyngCFS31LLCe2rUomWKRoln_RUEQlVwNvU6OpqAoEzZv4Dkq-tUKWLQI7RrBbb_D0lY12lVMtxVdlBJUwrI86S_Ec_Yo6eGl24Iz6iRQrhbqEe7LwH-mXeVoT2PNi-IW4K5-fVq9r-gTtidEfUhboLD--pPf0R111HE21ZnXBkKRJPICm77kTDEOKA5XCjYyAdtcyoUaS9flOxYuFTF8UOMXVvcVYR5tj6pvt24dnh4RSDiJXQ6oojxc4YkkxbvvsbmEFAT3ya0rATc6qpj9qMSpL9-Cle2usE-xDCvozEngBEs0mvGAR8PafsvSF341dU7ThDcEE-45Bne01mqaYk4z7Bc4bFpK5NO9vT73opJK-AfdEaEKpGO4qYJ_Q8zeeXOHmefWZ8KNUh1cQZrRYqe6KBcvA-G7IS9cGpmt_n51wG3G0cUkQT3KMCDfu_-tdev3wb0yX12SgjRUZgvs3GhJVTo5Y7t366Yj-N_shYU3ZJhCtZDtvtblFUmnd4SIurLA2Q6J64RfyF0u74dB4YBlaX5a4rQIlmUs8wshyLXsdTaVzRMNwL-l3Xw2wb44-W1c-HMc6d0b0jG3mRPRn8xwj6FQWTI6cYrzXWJ-qv6RcKw7L8nc6AeIvBlxNWHcNS4_wpuLDgjOBoYweJ3xQ_qmbFHHgF8QmtNN7I-zWEDXBCERi09berFsBJc8x5qdG5ndfP-Bu7550AZStZXyoV_dn5fqdj3SZIF1OwCrRnwczz2QX0IUGVCnawjuSWoyB47fKiuK3qr0I7Ey19E9g1Zn7YEelsAlLpONaz8y4KkjYT4lYu55jg5uxAPe0ZjSYHfAhQq_v9unAVuo6FLjTEunIoGb3UDJFFUtP8rYqE5KNKuI3pRewK2QHmOB8lKL-HT_uyBq2dJEhHvlQOovCsEPha7yE3FIAkdX3N87LXKhay3fAMFhL4PBmN59ErcJgeWlMXsrpJEK7Bl2Io0TXsEIPxR7oQ8E6-UrtIMmhsD4Q09WElqrJXsVFVmvmFf5efKwTcKQ7KHxRv8NWlTKgdyO_PoxDfud28tAT4Rv1mpRehsdzeF3Y21kyZD4fGNzlxyFn4FVzpgM8HYAEi4xc5aZ4soCXw0rHYhS9RsyYO8wVWrEOA3JByntUCl9zi1ftuZGAkeIKJFrNBmrwgoSZ5kq7JYfiCU5MKCyOy17ZQS6JG6ky2owwZpWPqtneSm4DkzDSM1eS4tEZz4vsxNxOluHu3IMBwCS998h-mGHRekCJdq0jMsQPInfbRvXrMBI8YCN0nZ8lGFtstTedPZl9DeNC6w8VI2726CHNmtPsZU4_46VwDWGcrBqEObZVGlUeNfwaqmWk0pIX9PU8_26CmexBH35d5X5-Dn2PEEch7bERwAnTEG-hXbc10uXXSDaSetjH9gE2212Wc-mODNYsqpsbn-28LxvOKDQkH85j_mfj2hNb8113Xw5wHpkE2Y7QCwPvQRe4aky9GFiDOE4RrTkj_-K_1oBM9p2A9u7ar9zfQG5aDF8YvIfK6itEd9Wfm5L_YC9UA2G0lyJaCP2UlrkDDLjuHTTspmnRR4cBfbqzetqnmMkWj_NdA5ztUo8kZxBPv6xB_3bCF9DKkD5-QcOhMnFMp8Slj79NwkOIOn9F8Q26eo5ZEiZ3XIE3uhi2xRYYb_W0F3PJCdhhQ0wzsVfUdXlVNJM5TXGCNoW8ip13SVKQoM-b4ejIWAKfriDdMKzcMCfF19eyvM_CsgUui4UdZ95iOp5AxxgdG1lMfY3oYspRPv26cNXLA51Pq-MsgILaxzlFrWxnedZT7IARirN8VcqsFRtfhzTEmB7xVqV_Aw1XWKa1iZgjIYwc5ffhE6WuScnunIbWmh1rU9gcFHaQJMpVOLwlPzGfLkaEsDmRzRpouRa01rVPaaqAsnH_Fed6yWQDFoawGpeoZxAwfCiFRc7DRi7ucfxFJnHL7yq4zNpOvOJ1GJnLVXBg6wTZ8Bf-WylR2ycvRRwsTIW8k5TKOGoHR_sorVPJrE2z0g==",
+                "summary": []
+            },
+            {
+                "id": "rs_049c4a6ea0f8f576006afd0f7b953487d2b42c5ea7622218a3",
+                "type": "reasoning",
+                "content": [],
+                "encrypted_content": "gAAAAABq_Q-QwtdjKwMaO4-TWvVW1VyNgMmelycRXmIxP1srD3-CBQPIJWv5m1YTKAM3zAgJ4_fEiup0ucUP3iFUKo1PS16OQR3ZrYI_uvCwYS0A6Oi36LoAvxyj2dXRet7yDSqucA2XP5UsEqcz4seXdPtt2rAXHsYTXWT1Fo-fm1MjJ7nEouXYTNOF_kKHWhT6dR4zzjOmpPeAzcCdHb4YwZ-DVa9VTo_NIVrwfQBcHg_dFURpQDgbEFt0OsHTnIgIrhHo2kDPhCrQgpyah9KBsCFJKBQeRjfpQkkcngEmLWSw9MYltpfIxQJdcSqqEaYV7pP9j-vibS4JIhgtSA3v3342xEjRhXoUnXihaFfbVKf6JM4trk6K0HpK3Y1Xazu5dMjh8VyImdPuVlvNER5q7fIpNoiPRAcFB1QlKL3k-Cx_lTLipv0F3WlCt4haid9UrcSYPCC2eEa34wldJcdv6pwcnNnQHRUCDZzYJ-V2x6-y7w3GpkoZn2sE2SAa67HwZKpdU057VsdFvMsY3hnUDpNHbydc2IZveols0H7iSVEk6CN1FlRUQjDsuYfliPryZnGNSsrE3rh6uOvhDBHVvWoedmicjtqcGBQbT3jRhxwP-P4Qielb8v_digOHr2WQpIpT1QKpr4Zn0dOnMij7DijDcRuNIaXux-EexK8boMiwAKJq_svlHkpAabQoCgHoT8hdWTMqURQ9E3jheSCIoS6_fyFfP6tImn5WDnRv9jSZt-lcjTvNXnHxiXtDWiK3-ZAkMgWrq68G7efurW1n9x3LJJIWf4cm7XXTLAq4sBzPy966svltfvspUCBG0XPMmuybRBGoXPT3sQtjmXIbiqwx8yx-V4Z5UQEmhvgVnCA3Ikmfqpa8TnCFzJG3xMcQKBHkrbIQSDKYM2YHYvOOboVDeeglPV657vFjEaWYuqow4c6mUECUrMoPnltjCKR7GOw28LYtsuXMtUcBvzTWcIDkI4gxxMe01ZmgnNLseTXQNxcarX7QxboRiBKyHwKnN1nB7swki8JN-63a0yef9J6mKPGCeO-UGHwUPOXGNwB3DYjH5E3rzKsOpoImC1JgmVKDqwlMUzKI7r0bTwYHc3C1ArxbMJukvMjaW_IC5IJ-M2-y3os6273EHGcBaaUmZr2LVczf_PwjBHuUC_3Caex9hzRMeI60A7gtpBU8KZZUVW4k0fpb5F5E7StCt4KqxkpVv8J_p2gLHdlIbEkKy1qEV3FQTbaBZ5P5l-7yqmt98XKQ41MGVqHxz3qQ1TaBC8s0P6BjRy5wZDAwHeiV9vrvyTBJaSrdTAcxEuvQpkBV3J5XuG5dh1nusJ5UBZ7tYQUljaMqvM9lDWXpGKh1XeP9vhMWHcfRvOmljjkE6I6toZXBJy5FabdBHUoEhRe15jNw66RGDvl7Q4PMW67ZmZj5y_JN9Uh8cZE-DoHCzwmdNufDezg6PFtHXYay5leqcGa3fhzC0_v93ZJAPbhJ2w0gOpY5yAM57571mE5y1-xYkkq6VHaXUnOwmAPIDx1CtL3oMKE0iA1XkAcVDiMQwn8aZoN2PKdlew43qTLvjiLhWtEuJoBgClIyUiV570eDXnHYj8MsFxQQwhVkW0NRlBzci-3U17ecdR15-ArHJe2R6I9ciHVwgLX4lXImbsRAxm9mSzCazYhUI3sGgMe3SLbYGyg_MsOIewo39IYeKmuh68BDxquSXJv6k_kGglb35yLJz7VnMe_O2ajMPVIWiL5gzx5l4xpVQHRQPhBats57jBLyXCl_AVfaByZhqFbTw4ldG0hk9YBRlcWQRw4cbO7ePz8sJTZ-l-gX5HXUFY6fB6xmoUiNfROc3_BqRlc3QZmRjvEKXhRbbTLHy7U4THr7I3_oCPlwKFr3XFtVD9wwPYbotj4kCqeoGiTT5Btz_I1Ct5-ftcOIArxYPYkSgl6jWk4jtLmarLrcUNj54uF-wHf31YNdN46K30GMW1OOTQ5CSCCHQoZ_cK33Hv0sE3RVn4K6ctVEqgJBP3cne2qealq2peTf2NY_E2AYV0a0OcUN3LUV6L6BXzkx56ns3uNIFLoNjZocc6wq7_Dfu1yLjNxhW2svjYWkWWu7ABhMtJI5sCcNnzSgr-hoJGyY0ISsJHUBS8mO7bKVNH7JDQV9REOcFrG6sBw9Fp_5M5XSi72INFhmbKdX6y6Q4s6bzyPbA7MNHeouT2N0_OhTmpIQF0gUZM4ZngvfWSJEG28LZ5QhRVICQhWHZ2L2MaJ0cRmSr8UZPJV9_aias_oJo_mNUe7SCtEFtSREhiQbyJTVFHXcucN6wNCySvidCV0r07H34Y_ru0_ApFvaw2aaRVpalJFmK7wY62flu_xUMcNk7N5bnve5jlJK12FNE356cMSH2AmAp9spVkUEE3r2YqNTWs_PpXpBhzn4RITdo9EiUyxpoTUQ8wdUIRmtcrUOQqNMRqeimQd9WXzWzBEj-A8yqNUhE-zGCygU6ojUvtSlPG61jN_evCKjGfQFDbzxd44MkDFNH9m05mXGVX8rV7_mteBfopkUZfelTVM9x0cYgZF1pp_AwSwIfAd_k8kabfy4i_0oyW-MDjznafFJFL2f13wpAp3vTzjJiepJyP6H6Xl3e5IsR3bPN3FnJuyf8DRpMJ_Sdk-XmCGJ-zOLOxbSt5vLxgRmIJgHmH_DzRJMNaVJcsshQ7JhsCXHif6hGiGnZdRaux38NxGtmAecER8miNrjmiw6puNo9hBhIfNeo-ioEVpYnbXCm5HZL6DbRdKOSylOKBl8u1RZYm0WXXJ7O2YcjrItwqVbGRGlX5JSgc-gxMnSjHR8hOfVZBWBVlEGtrztrKqJkQC197USS2sUTZmP3Mce7MF6VkwMKrVyHOwYRTW-LIZ5SwjfYWbfiIy_vrRoRWaEUiOe5r4blf1fv8hxa7LU5NZR4JeL8AzEp6H0BROmfqGcj69eovVMpHdPTfS3knksKs1r_2jWZba5W4O3qBLy1TqdcWA9gxJiiyBXSHVOECY5pjeCHD-UrBSQI4Fzv2YrLN01NNs35dBJ50hcu2LQb-f1Edy1G0LV9fQjltvGrHxOfDB73kAGjNfs8EbzPezpnwa8mgLrPVAkmeFpLMtimL8OCSCW0npCbngBKlnET1ihKmwAI7CTim0kNj2HlaSzzE0a2pZIa2GgEDexZ-9WZp2YJgiokaf5IppyJyoKCkA8LpxAyBEZM384yU-18BEc-6GjqxLbWQhQB7uG5d5DuYUt4lohheSTs00vQ2tHE2uVxncgXa8E7QGGTlXutJjo7HpoQE9u82fbZhRzfFbzYigQzASpzUd-vY-C_CuiDPq9Lvu0v2hzPRG3pFRuon1zUNFC9KAUYGStf5zaF_O2fG71YTP4P6Xt95TXVjpMtWHR9xMER9g7UQMk1vP-Dq6G9qoc2D2ZkyDV7aZzZabwJTDQwunDnnJAlmSOUfcEgySArhA5krjh8ZJ2XXplYJ5DTPi0Da3HRLmdGwrBj03syFa6SU6UIMjEBpWezea2-t9EwQINLpKwgDSooiLXVXy4U5N9iX4Q46_hi_FhfWalkHYgh2YaGTMTH_v68VyAttfiVmGkPp7ySjX-GlUPj9LpWU3URZOFuAuQ_HZU7jIJrweomvYILUNVc1IUHvY2esIQ_n1eSHDqdUP_rX0rdV0qEN5cF-QCwdrBeYysnsLZ_yp48pcWi0bZhJ-UR9nvxOZm9fiJEtCP-H9_gyJeBZlEawnjhCp3nJvLbahxAOSKzBLiaXVyp8G_ffR-2pgpWT8uyoAPDmeN2NTa4NFnzu9jDOwIuv07xeZazgT4Mpvn3kWem-5d1VgA3x7bQOEeYbuj6YQ9XPFTOcCy2C1sznk_0rB5tiR9yQnNf-DBY5vc_y8K8njSpprfzbWysy7O6rGEse7KbVj6PY-FLpxh-3vbXpVu_GlvwnPVfJ55SCImCIfmZB_8i3MTwaG8WsZD5MgPp-KduzWr9vVSMYhGzq_g6c5QsFb5t5viIMu9AFrNejJqqmO0rRnw91EXlbCf1F-juz3zNztII7cgDKCuf9_4-kVgF87jZ4A5bgW5bk4yoNUvsluPpwUoQqEvN4-MvBDR-J4ImTbq2zbebmCph5F1Ypm_fG743C7H56lZ-vHjsiTs21TwKdhnPNItvDf8GrqcmdX__YGJrQx3KQQE7pFcGWFafMJKjaUwVGsdQk7hxl3qekhHV-jdIDp53KbYiakdiakFt_dnIqM5VnT1XvcWX344EeOoOK4lZuQ7EBWMjKHfkFOysp_YzzdmhvSmSGSiO7pC7y2oTcXqths2pDSDu24LZ8_BU1vY2WiGIQCnVJsY6_iaM6iLK8bbATLsvRua8Gr8t4QVl7gL6i4Mc28ZPTHCLtFM94sGnQZT1ZUlQlakgm5TqeTvogMS4w6kRslGYbJs-Wj4F_-cfD5THkymiA_T05Nksr8An_Zk_cL99NbQ2hhIbsh297gO5PIqFPTkD0Y65tHCb0DPizVZ5aS8KPmNhmrmGNEajT74iMZBw3RfoIAJmOTVbHmhx28si8ccuXTHTVR680h87ObES1hq7WVcIYyqzC0yI8X6yYjGv2e-fANV-W9cl97BHKVlQbi0Ug2j9p8Zp9hZ5k8dJfeGmD1fbtW5YqY1qtaOcyW7ShMcpEkSZRhQtCfIqITqLC4o2r_2HYASGOZuXSwuDC1KSg-4eAq-U4qel9EmTapTGUIQjUJ9IbaBZ0p_Usw_0QQiJozQTLHXYoLRr5etuPMiqjuHOALMiZGVi5NmmaSVIMaBH_bDsUjwQDSCpBAGaQK1vLeRVIF1V0umwgLRLd5q34c6YaQySDn-AiR_EHvG5PWA4A0gZQQicK5dM_OCIEu6caV-MUA10dH0HEeiX-q8eZC0LqBFfo-4HvAml2cSDj_Wxuz7qtUNFnNMyi9HIXasVuRidgzkYl9q3JOmsv_bH50Vt5qR6SVwUJYeqpO8I0ELQ-V6g1qW1Ev6ox-Wg-cci105S5esZXbdmi9eKlB3QC2m4ZzP-X6bwp2WCYGSV4pm8I7ir42p6HWwKLcHS7txgf13MXjh1x0Un5h_J-MvVfMEYOMF_1kYFocqaxwxDcqGV2A_Iql4R1iRrJvcMTw9Dt9LETBPqmuyDFTfoId-s2fxhEXQg4rLxs8P0rE9RNTqedWEkdXk1OGT2YpDgzalzOUEpeqw2pbiKGSTNWsYe7jpKYT9Jo4kXs9G-UXUMZmQRDFZsMSr9IEnwzJOKRPTqS734of-jVw7FCVK_-luAMEYCMP9Zo1J4OtOAIgyF2nr095dceoofsbbS0f4Yn3pYIbLCruspOIvYTswIVd_B8FEPtz3Rtrv9K9QkL17YEjsvo38uayAIo9auonZX26JELjhJSGpyuc9o_tHQ19yt4uir4D94GpmTjWs_xbVK6O2WlcNGpwpuXoqpiREED9vQ9dM4apijfMuWxx4qijp1jRGzo9O7Qtd1nUdkGn_bK3DP9Q9p4LKlj86WECpsoM80VOpbTA3Ra2c1yTp5u7kLENcXlz3r46_9ju48FBqJz6UfO96cFw82z-jkEIuSnBU4WzbXDiapNn_nhGgCeg2JJtGUJ8umdGI2yaH-00Xxl8D8Iz6Izm73FUpseAabS-WrvTlnsapT4e29AXXUPx6Qjz3vwRNSnAIrjKmRa6qWeXOToMzpk9hGCy5SMfN3ylpD67dLL9v8Q092_Iw31wIHJUcDfKtHB2rvxeEVwTPD1NwqFfRAjgdyiZn_rmanaLtPIpTyAwxXQGBVNtA3a9NrFsK-5ZBBGqXb0gly4y5a8oFFmCj6pXKMKvgdHTat88q4FDEbhPy1Gdi2se7vTzvC4nztIQUMFnRvPkphGpkw30E4tHcZ_8flceM2aweFttWWTWuWiUgJUsKLg0sBA8VyZ0-m24iot70PyNoNEsUWKEtKj95AlYIJLFfyYw7ueXyna_CxkF1e01K4_VncVxHBcJFccxbYmykAbFixt99xrCbmhP8qlGBFowZJS1OojeUsTv0Dp1n1Jzm4dWgmbNWR6gUq212swB35dCtFD-PZBXpeEZfNuwvjY_Q9uahDs8K3KUpPi4ruUQ7slLCXRjBkEhXt3WsofNQzNkz6_c1LFf5mjFE2fkUfVKDJSFzswpgxK2TJWo_r6_CZh1NRaZZzbUPqFu66ZZsXcBb7sm-DQ-eIgwjuPJAzBlrsVUxCAQbM8HFFzOPu0vdySW1sPSy8RebO3jhV_1YPCaaVng1dtV3i4RXRk3HWvXotx7W5spn61TAlKs0DPExRS6vKtZjMHJtpYG9Zqlk0AfCLKJdFifP90r9zNqw8oVOkUFTVX58pM--n7OTQMI4zjz1_I-G7HZBLJEpbtQh2uznWHxtTN1QGyIIGpMTf_iOazDXTo-e_K5OvVo2xsrshvuayWIlK6eB6BOHn-RI_eFJrHnYOQa3hHb6WOloC2PrdBNiAP7QZTKGzJlgXYQdfCY45nLfw0BnyDO5IJqHoEFWYs4zdRuo8_jqvJMQXwjX4nQ9GaQ1Cji9AaKAebqrq2SJSRpQk2bBhuVN8xpKYz3iq-V-VurZzka3KTXyrPBp3MbbJLoHnHdCVweZvjLB6mlm5Ztn8xL1b3y3p6S2OrMyz3y1-BlyHxq2l0VoHaesnrX-HMgj7cvsl8W2hdOaDqf9XFGcYOjm660TitvYDXWjHO0Di1lDY9z3oynou57fcgHxicU_VzznVVkrdukDXdrP2w==",
+                "summary": []
+            },
+            {
+                "id": "msg_049c4a6ea0f8f576006afd0f8406cc87d2b25c93e689ae4be6",
+                "type": "message",
+                "status": "completed",
+                "content": [
+                    {
+                        "type": "output_text",
+                        "annotations": [],
+                        "logprobs": [],
+                        "text": "---\nname: drive-file-management\ndescription: Lists and finds cloud drive files, reports their properties, and deletes or shares files when asked. Use when the user wants to inventory, locate, delete, or share drive files.\n---\n\n## Overview\n\nInventory and manage cloud drive files using returned records. Answer questions from file properties, and change files only when the user explicitly requests deletion or sharing.\n\n## When to Use\n\nUse for listing files, finding files by filename or content, inspecting size, owner, sharing, or modification details, and carrying out requested deletion or sharing.\n\n## Tools\n\n- `list_files`: Choose for a complete inventory or property-based questions.\n- `search_files`: Choose for content keywords.\n- `search_files_by_filename`: Choose when the user supplies a filename.\n- `get_file_by_id`: Choose when a file is identified by its ID.\n- `delete_file`: Choose only for a requested deletion of an identified file.\n- `share_file`: Choose only for requested sharing with an identified recipient and permission.\n\n## Workflows\n\n### File Inventory\n\n1. Call `list_files` to retrieve the inventory.\n2. Select the files relevant to the request and use `size`, `owner`, `shared_with`, and `last_modified` to answer property questions. Treat `size` as bytes.\n3. Present the requested inventory or comparison. Distinguish ownership from sharing, and base modification claims on returned timestamps rather than an assumed current date.\n\n### Find File\n\n1. Call `search_files_by_filename` with `filename` for a filename request, or `search_files` with `query` for content keywords. For a supplied file ID, call `get_file_by_id` with `file_id`.\n2. Read the returned records and identify relevant matches using `filename`, `content`, and any properties the user supplied. A filename search returns a list, not necessarily a unique file.\n3. Report matching files with enough returned properties to distinguish them. Do not describe a content search as a filename search.\n\n### Delete File\n\n1. Locate the requested file using `search_files_by_filename` for its filename, `search_files` for content clues, or `get_file_by_id` for a supplied ID.\n2. Identify the target from the returned records and the user's description. Establish that the user requested deletion of that target before proceeding.\n3. Call `delete_file` once. Pass the target's `filename` in `file_id`: this tool documents that argument as the name to delete, not the record's `id_`. Do not repeat the call after an uncertain result.\n4. Report the deletion status stated by the result.\n\n### Share File\n\n1. Locate the requested file using `search_files_by_filename`, `search_files`, or `get_file_by_id`, according to how the user identified it.\n2. Identify the target and establish the recipient's email from the request or tool results. Translate the requested access level to `r` for read access or `rw` for read/write access.\n3. Only after the target, recipient, and requested permission are established, call `share_file` once with the target's `id_` as `file_id`, the recipient as `email`, and the access level as `permission`. Do not repeat the call after an uncertain result.\n4. Report the sharing status stated by the result.\n\n## Common Pitfalls\n\n- Do not confuse `id_` with `filename`, especially for `delete_file`.\n- Do not infer ownership from `shared_with`.\n- Do not grant broader access than requested.\n\n## Output Requirements\n\nReport relevant filenames and requested properties concisely. For ambiguity, choose the most reasonable reading and state it. If the target, recipient, or permission cannot be established, report that instead of making a change. For empty results, report no matching files. For errors or uncertain outcomes, describe what the result establishes without claiming success."
+                    }
+                ],
+                "phase": "final_answer",
+                "role": "assistant"
+            }
+        ],
+        "parallel_tool_calls": true,
+        "presence_penalty": 0.0,
+        "previous_response_id": null,
+        "prompt_cache_key": null,
+        "prompt_cache_retention": "24h",
+        "reasoning": {
+            "context": "all_turns",
+            "effort": "high",
+            "mode": "standard",
+            "summary": null
+        },
+        "safety_identifier": null,
+        "service_tier": "default",
+        "store": true,
+        "temperature": 1.0,
+        "text": {
+            "format": {
+                "type": "text"
+            },
+            "verbosity": "medium"
+        },
+        "tool_choice": "auto",
+        "tool_usage": {
+            "image_gen": {
+                "input_tokens": 0,
+                "input_tokens_details": {
+                    "image_tokens": 0,
+                    "text_tokens": 0
+                },
+                "output_tokens": 0,
+                "output_tokens_details": {
+                    "image_tokens": 0,
+                    "text_tokens": 0
+                },
+                "total_tokens": 0
+            },
+            "web_search": {
+                "num_requests": 0
+            }
+        },
+        "tools": [],
+        "top_logprobs": 0,
+        "top_p": 0.98,
+        "truncation": "disabled",
+        "usage": {
+            "input_tokens": 1603,
+            "input_tokens_details": {
+                "cache_write_tokens": 1600,
+                "cache_write_tokens_details": {
+                    "ttl_12h_tokens": 0,
+                    "ttl_30m_tokens": 1600
+                },
+                "cached_tokens": 0
+            },
+            "output_tokens": 1624,
+            "output_tokens_details": {
+                "reasoning_tokens": 825
+            },
+            "total_tokens": 3227
+        },
+        "user": null,
+        "metadata": {}
+    },
+    "response_status": "completed",
+    "reported_model": "gpt-6.1-sol",
+    "usage": {
+        "input_tokens": 1603,
+        "output_tokens": 1624,
+        "reasoning_tokens": 825
+    },
+    "output_text": "---\nname: drive-file-management\ndescription: Lists and finds cloud drive files, reports their properties, and deletes or shares files when asked. Use when the user wants to inventory, locate, delete, or share drive files.\n---\n\n## Overview\n\nInventory and manage cloud drive files using returned records. Answer questions from file properties, and change files only when the user explicitly requests deletion or sharing.\n\n## When to Use\n\nUse for listing files, finding files by filename or content, inspecting size, owner, sharing, or modification details, and carrying out requested deletion or sharing.\n\n## Tools\n\n- `list_files`: Choose for a complete inventory or property-based questions.\n- `search_files`: Choose for content keywords.\n- `search_files_by_filename`: Choose when the user supplies a filename.\n- `get_file_by_id`: Choose when a file is identified by its ID.\n- `delete_file`: Choose only for a requested deletion of an identified file.\n- `share_file`: Choose only for requested sharing with an identified recipient and permission.\n\n## Workflows\n\n### File Inventory\n\n1. Call `list_files` to retrieve the inventory.\n2. Select the files relevant to the request and use `size`, `owner`, `shared_with`, and `last_modified` to answer property questions. Treat `size` as bytes.\n3. Present the requested inventory or comparison. Distinguish ownership from sharing, and base modification claims on returned timestamps rather than an assumed current date.\n\n### Find File\n\n1. Call `search_files_by_filename` with `filename` for a filename request, or `search_files` with `query` for content keywords. For a supplied file ID, call `get_file_by_id` with `file_id`.\n2. Read the returned records and identify relevant matches using `filename`, `content`, and any properties the user supplied. A filename search returns a list, not necessarily a unique file.\n3. Report matching files with enough returned properties to distinguish them. Do not describe a content search as a filename search.\n\n### Delete File\n\n1. Locate the requested file using `search_files_by_filename` for its filename, `search_files` for content clues, or `get_file_by_id` for a supplied ID.\n2. Identify the target from the returned records and the user's description. Establish that the user requested deletion of that target before proceeding.\n3. Call `delete_file` once. Pass the target's `filename` in `file_id`: this tool documents that argument as the name to delete, not the record's `id_`. Do not repeat the call after an uncertain result.\n4. Report the deletion status stated by the result.\n\n### Share File\n\n1. Locate the requested file using `search_files_by_filename`, `search_files`, or `get_file_by_id`, according to how the user identified it.\n2. Identify the target and establish the recipient's email from the request or tool results. Translate the requested access level to `r` for read access or `rw` for read/write access.\n3. Only after the target, recipient, and requested permission are established, call `share_file` once with the target's `id_` as `file_id`, the recipient as `email`, and the access level as `permission`. Do not repeat the call after an uncertain result.\n4. Report the sharing status stated by the result.\n\n## Common Pitfalls\n\n- Do not confuse `id_` with `filename`, especially for `delete_file`.\n- Do not infer ownership from `shared_with`.\n- Do not grant broader access than requested.\n\n## Output Requirements\n\nReport relevant filenames and requested properties concisely. For ambiguity, choose the most reasonable reading and state it. If the target, recipient, or permission cannot be established, report that instead of making a change. For empty results, report no matching files. For errors or uncertain outcomes, describe what the result establishes without claiming success.",
+    "skill_text": "---\nname: drive-file-management\ndescription: Lists and finds cloud drive files, reports their properties, and deletes or shares files when asked. Use when the user wants to inventory, locate, delete, or share drive files.\n---\n\n## Overview\n\nInventory and manage cloud drive files using returned records. Answer questions from file properties, and change files only when the user explicitly requests deletion or sharing.\n\n## When to Use\n\nUse for listing files, finding files by filename or content, inspecting size, owner, sharing, or modification details, and carrying out requested deletion or sharing.\n\n## Tools\n\n- `list_files`: Choose for a complete inventory or property-based questions.\n- `search_files`: Choose for content keywords.\n- `search_files_by_filename`: Choose when the user supplies a filename.\n- `get_file_by_id`: Choose when a file is identified by its ID.\n- `delete_file`: Choose only for a requested deletion of an identified file.\n- `share_file`: Choose only for requested sharing with an identified recipient and permission.\n\n## Workflows\n\n### File Inventory\n\n1. Call `list_files` to retrieve the inventory.\n2. Select the files relevant to the request and use `size`, `owner`, `shared_with`, and `last_modified` to answer property questions. Treat `size` as bytes.\n3. Present the requested inventory or comparison. Distinguish ownership from sharing, and base modification claims on returned timestamps rather than an assumed current date.\n\n### Find File\n\n1. Call `search_files_by_filename` with `filename` for a filename request, or `search_files` with `query` for content keywords. For a supplied file ID, call `get_file_by_id` with `file_id`.\n2. Read the returned records and identify relevant matches using `filename`, `content`, and any properties the user supplied. A filename search returns a list, not necessarily a unique file.\n3. Report matching files with enough returned properties to distinguish them. Do not describe a content search as a filename search.\n\n### Delete File\n\n1. Locate the requested file using `search_files_by_filename` for its filename, `search_files` for content clues, or `get_file_by_id` for a supplied ID.\n2. Identify the target from the returned records and the user's description. Establish that the user requested deletion of that target before proceeding.\n3. Call `delete_file` once. Pass the target's `filename` in `file_id`: this tool documents that argument as the name to delete, not the record's `id_`. Do not repeat the call after an uncertain result.\n4. Report the deletion status stated by the result.\n\n### Share File\n\n1. Locate the requested file using `search_files_by_filename`, `search_files`, or `get_file_by_id`, according to how the user identified it.\n2. Identify the target and establish the recipient's email from the request or tool results. Translate the requested access level to `r` for read access or `rw` for read/write access.\n3. Only after the target, recipient, and requested permission are established, call `share_file` once with the target's `id_` as `file_id`, the recipient as `email`, and the access level as `permission`. Do not repeat the call after an uncertain result.\n4. Report the sharing status stated by the result.\n\n## Common Pitfalls\n\n- Do not confuse `id_` with `filename`, especially for `delete_file`.\n- Do not infer ownership from `shared_with`.\n- Do not grant broader access than requested.\n\n## Output Requirements\n\nReport relevant filenames and requested properties concisely. For ambiguity, choose the most reasonable reading and state it. If the target, recipient, or permission cannot be established, report that instead of making a change. For empty results, report no matching files. For errors or uncertain outcomes, describe what the result establishes without claiming success.\n",
+    "normalisation": [],
+    "validation": {
+        "skill_id": "drive-file-management",
+        "validator_version": "capability_validator_v5",
+        "passed": true,
+        "n_errors": 0,
+        "n_warnings": 0,
+        "checks": [
+            {
+                "id": "S1",
+                "name": "frontmatter parses with exactly name and description",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S2",
+                "name": "name is exactly the skill identifier",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S3",
+                "name": "description is present and at most 1024 characters",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S4",
+                "name": "the six required sections appear once each, in order, with no other level-2 headings",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S5",
+                "name": "the Workflows section has one subsection per defined workflow, in order, with the given headings",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S6",
+                "name": "every workflow has 3-6 numbered steps",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S7",
+                "name": "body length is within the limit",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S8",
+                "name": "description says when to use the skill",
+                "dimension": "structure",
+                "severity": "warning",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S9",
+                "name": "the Tools section names every tool of the skill",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S10",
+                "name": "description is in the third person (its first word is a verb such as 'Answers')",
+                "dimension": "structure",
+                "severity": "warning",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S11",
+                "name": "description is at most 300 characters",
+                "dimension": "structure",
+                "severity": "warning",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T1",
+                "name": "no invented tools",
+                "dimension": "tool accuracy",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T2",
+                "name": "arguments belong to the tools they are named with",
+                "dimension": "tool accuracy",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T3",
+                "name": "enum arguments use only allowed values",
+                "dimension": "tool accuracy",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T4",
+                "name": "hidden environment arguments are never named",
+                "dimension": "tool accuracy",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T5",
+                "name": "tool names are written in backticks",
+                "dimension": "tool accuracy",
+                "severity": "warning",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T6",
+                "name": "no unknown snake_case names in backticks",
+                "dimension": "tool accuracy",
+                "severity": "warning",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T7",
+                "name": "no workspace tool outside the skill's own tool list",
+                "dimension": "tool accuracy",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T8",
+                "name": "no claim that a tool or capability is missing or unavailable",
+                "dimension": "tool accuracy",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "W1",
+                "name": "no data-changing tool the skill does not own is named",
+                "dimension": "write safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "W2",
+                "name": "every owned data-changing tool is named in the workflows",
+                "dimension": "write safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "W3",
+                "name": "workflows that use a data-changing tool tie it to the user's request",
+                "dimension": "write safety",
+                "severity": "warning",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "P1",
+                "name": "every workflow names at least one tool of the skill",
+                "dimension": "workflow coverage",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "P2",
+                "name": "every read tool of the skill is named in some workflow",
+                "dimension": "workflow coverage",
+                "severity": "warning",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "B1",
+                "name": "no instruction to ask the user a question or to wait for confirmation",
+                "dimension": "agent behaviour",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "G1",
+                "name": "no address, date, time, file name, name or quoted text copied from example material",
+                "dimension": "generalisability",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "G2",
+                "name": "no run of six or more words copied from example material",
+                "dimension": "generalisability",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "G3",
+                "name": "no concrete date, time or file name",
+                "dimension": "generalisability",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "G4",
+                "name": "no number (two or more digits) copied from example material",
+                "dimension": "generalisability",
+                "severity": "warning",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "A1",
+                "name": "no injection material (attacker address, <INFORMATION>, injection-goal text)",
+                "dimension": "safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "A2",
+                "name": "no email addresses, URLs or code blocks",
+                "dimension": "safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "A3",
+                "name": "no override or concealment language",
+                "dimension": "safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "A4",
+                "name": "no reference to benchmarks, tests or evaluation",
+                "dimension": "safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "A5",
+                "name": "no key-like strings",
+                "dimension": "safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "A6",
+                "name": "no reference to other skills",
+                "dimension": "safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "A7",
+                "name": "no security-awareness wording",
+                "dimension": "safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            }
+        ]
+    },
+    "accepted": true
+}

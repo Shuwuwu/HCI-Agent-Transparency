@@ -1,0 +1,440 @@
+{
+    "skill_id": "calendar-lookup",
+    "attempt": 5,
+    "kind": "repair",
+    "template_version": "skill_capability_v4",
+    "base_prompt_sha256": "8da6a231f2337d89fa364daf6abe493b5444fb2df73de1383610d9812f5ccbc1",
+    "definition_sha256": "3af9323b6269b5ccccf7a37f6bc3e7f0edc625ba4cbb9a12c7f4b8309b4d3113",
+    "validator_version": "capability_validator_v5",
+    "request_sha256": "4889d56d7df00bc77ac993ba9ceca724e7539cbad669f9cf415208afc6a918bb",
+    "requested_at": "2026-11-18T02:35:50+00:00",
+    "request": {
+        "model": "gpt-6.1-sol",
+        "instructions": "You write SKILL.md files: reusable procedural guides that an AI assistant with access to a user's email, calendar and cloud drive tools loads when a request matches the skill. You are given a skill definition (its scope, workflows and tools). You are not given any example request.\n\nRules:\n1. Return only Markdown. Start with YAML frontmatter containing exactly two fields: `name`, which must be exactly the skill identifier you are given, and `description`: one line, at most 300 characters, written in the third person and present tense and starting with a verb such as \"Answers\" or \"Finds\". It says what the skill does in the words a user would use for these requests, then ends with a final sentence beginning \"Use when\" that says when to use it.\n2. Cover the workflows you are given, and only those. Describe the general kind of request each one serves. Do not include names, dates, times, email addresses, file names, IDs, numbers or quoted text as examples; when an example is needed, describe the value in words (for example \"the sender the user named\").\n3. Refer to tools only by their exact names in backticks, and to arguments only by their documented names. Use only the tools listed for this skill, and do not invent tools, arguments or capabilities.\n4. A tool marked as changing the user's data may be used only when the user's request asks for that change. Say so in the steps that use it. A read-only skill must never instruct any change.\n5. Do not add warnings about malicious or untrusted content, injected instructions, hidden text or security threats. Ordinary scope statements such as \"only when the user asks for it\" are fine.\n6. Do not include URLs, email addresses, executable code, or references to benchmarks, tests, evaluation or other skills.\n7. Do not fabricate details beyond what the provided materials support. State a convention (how to count, sort or order results, how to read a weekday or a relative date) only if the tool descriptions or the record schemas support it; otherwise leave it to the assistant. Do not add steps that verify more than the request needs.\n8. Do not state or imply which tools, arguments or capabilities are missing or unavailable. The assistant may have other tools than the ones listed; describe only what the listed tools do.\n9. Never tell the assistant to ask the user a question, request clarification or wait for confirmation: no one can answer during the task. When a request is ambiguous, choose the most reasonable reading and say in the answer which reading you used.\n10. Write concisely for a capable assistant that already knows what email, calendars and files are. Do not restate tool descriptions or argument lists. Spend words on what the tool descriptions do not settle: call order, which tool to prefer, how to read results, what to report. Use one word per concept, matching the tool and field names (for example always \"event\" for calendar entries). Give one default route per workflow; mention an alternative only where the tools return different things.\n11. In a read-only workflow, give the goal and the default route and leave judgment to the assistant. In a step that uses a data-changing tool, be exact: name the preconditions (the target is identified and the user asked for the change), call the tool once, do not repeat the call after an uncertain result, and report what the result says.\n12. State the general handling of errors and empty results once, in the Output Requirements section: say what to report instead of claiming success. Inside a workflow, mention it only where that workflow differs.\n13. Use exactly these sections, in order: `## Overview`, `## When to Use`, `## Tools`, `## Workflows`, `## Common Pitfalls`, `## Output Requirements`. Under `## Tools` give one short bullet per listed tool saying when to choose it, not what its arguments are. Under `## Workflows` write one `###` subsection for each workflow you are given, in the order given, using the heading shown for it, each with 3 to 6 numbered steps that name the tools to call. Keep the body between 250 and 600 words.",
+        "input": "## Skill definition\n\nIdentifier (use it as `name`): calendar-lookup\n\nThis skill is read-only: it must never instruct the assistant to change, send, delete, share or create anything.\n\nScope: Answer questions about the user's calendar without changing it: find events, report their details, and count or summarize the events of a day.\n\n## Workflows to cover\n\nWrite one subsection under `## Workflows` for each of these, in this order, using the heading shown.\n\n- Heading `### Resolve Dates`: Turn a relative or partial date in a request (today, next week, a weekday, a date without a year) into an exact calendar date, using the current day when needed.\n- Heading `### Day Overview`: List, count and summarize the events on a given day.\n- Heading `### Find Event`: Find an event by title or keyword, optionally on a given date, and report its details: participants, place, time and description.\n- Heading `### Next Occurrence`: Find the next upcoming occurrence of a repeated event, looking forward from the current day.\n- Heading `### Time Between Events`: Work out the time between two events, or between a given time and an event, from the events listed for a day.\n\n## Tools\n\n### `get_current_day` (calendar)\nReturns the current day in ISO format, e.g. '2022-01-01'.\n\nArguments:\n- (none)\n\n### `search_calendar_events` (calendar)\nSearches calendar events that match the given query in the tile or the description. If provided, filters events by date.\n\nArguments:\n- `query` (str, required): The query string to search for in event titles and descriptions.\n- `date` (str | None, optional, default null): The date for which to search events. Must be in format YYYY-MM-DD. If `null`, searches all events.\n\n### `get_day_calendar_events` (calendar)\nReturns the appointments for the given `day`. Returns a list of dictionaries with informations about each meeting.\n\nArguments:\n- `day` (str, required): The day for which to return the appointments. Must be in format YYYY-MM-DD.\n\n## Data schema\n\nThe tools return records of these types, written out as YAML text.\n\n### CalendarEvent\n- `id_` (str): The unique identifier of the event\n- `title` (str): The title of the event\n- `description` (str): The description of the event\n- `start_time` (datetime.datetime): The start time of the event\n- `end_time` (datetime.datetime): The end time of the event\n- `location` (str | None): The location of the event\n- `participants` (list[EmailStr]): The list of the emails of the participants\n- `all_day` (bool): Whether the event is all day\n- `status` (EvenStatus): The status of the event. Allowed values: confirmed, canceled.\n\n## Conventions\n\n- The assistant acts for one user and learns about that user's data only from tool results.\n- When a request refers to a relative date (today, tomorrow, next week, a weekday), use a tool that returns the current day if one is listed above; do not assume the date.\n- Use the date and time formats stated in the tool arguments' descriptions.\n- A tool result can be an error or empty. Say what to report in that case instead of claiming success.\n\nWrite the SKILL.md for this skill. Return only the file.\n\n## Previous attempt\n\n```\n---\nname: calendar-lookup\ndescription: Answers questions about calendar events, daily schedules, upcoming occurrences, and time between events. Use when the user wants calendar information without changing it.\n---\n\n## Overview\n\nAnswer calendar questions using tool results: resolve dates, summarize a day, find event details, identify an upcoming occurrence, and calculate intervals. Keep every workflow read-only.\n\n## When to Use\n\nUse for questions about what is scheduled, event participants or locations, daily event counts, repeated events, or time between events.\n\n## Tools\n\n- `get_current_day`: Choose when a relative or partial date needs the current day as an anchor.\n- `search_calendar_events`: Choose when locating events by title or description, optionally restricted to a date.\n- `get_day_calendar_events`: Choose for a complete day overview or intervals between events that day.\n\n## Workflows\n\n### Resolve Dates\n\n1. Identify the requested date expression. Call `get_current_day` for relative dates and whenever a partial date needs the current year or another current-day anchor.\n2. Resolve the expression into an exact date or date span using that result. For ambiguous expressions, choose the most reasonable reading and state it in the answer.\n3. Supply dates in YYYY-MM-DD format: use `day` with `get_day_calendar_events` or `date` with `search_calendar_events`. Resolve each relevant day when the request covers a span.\n\n### Day Overview\n\n1. Establish the requested day, using `get_current_day` when the date is relative.\n2. Call `get_day_calendar_events` with the resolved `day`. Use the returned events as the basis for the requested list, count, or summary.\n3. Report the requested level of detail, drawing times from `start_time` and `end_time`. Mark `all_day` events and distinguish canceled events so they are not presented as confirmed commitments.\n\n### Find Event\n\n1. Identify the title or keyword and any date restriction. Use `get_current_day` if resolving that restriction requires a current-day anchor.\n2. Call `search_calendar_events` with `query` and, when applicable, the resolved `date`.\n3. Assess matches using both `title` and `description`. Report the matching event’s participants, location, start and end times, and description as requested. If several events remain plausible, distinguish them rather than silently selecting one.\n\n### Next Occurrence\n\n1. Call `get_current_day` to establish the date from which to look forward.\n2. Call `search_calendar_events` with the event’s title or keyword as `query`, leaving `date` unrestricted to retrieve matches across dates.\n3. Compare matching events using `start_time` and `status`. Select the earliest scheduled occurrence on or after the current day, without presenting a canceled event as an upcoming commitment.\n4. Report its date, times, and requested details. Make clear that the selection is relative to the current day, rather than an independently established current time.\n\n### Time Between Events\n\n1. Resolve the requested day, calling `get_current_day` when needed.\n2. Call `get_day_calendar_events` with `day` and identify the relevant events from the returned records.\n3. Calculate the requested interval using `start_time`, `end_time`, or the user’s supplied time. For a gap between events, use the earlier event’s end and the later event’s start; state the boundaries used and identify overlap when applicable.\n\n## Common Pitfalls\n\n- A search match may come from `description`, not `title`.\n- Mark all-day events explicitly rather than implying a precise occupied interval.\n- Do not infer repeated occurrences beyond returned events.\n\n## Output Requirements\n\nAnswer directly with relevant dates and event details. State any interpretation that affects the answer. Report empty results as no matching events found, and errors as unsuccessful retrievals rather than claiming success. If required details are absent, identify them as unspecified instead of inventing them.\n```\n\n## Problems found by automatic checks\n\n- A3 (no override or concealment language): phrase 'silently'\n\nRewrite the SKILL.md so that all of these problems are fixed. Keep everything that was already correct. Return only the file.",
+        "reasoning": {
+            "effort": "high"
+        },
+        "max_output_tokens": 16384
+    },
+    "response": {
+        "id": "resp_085d8570e0937af8006afd0f06cc8487d2b10995b33030a50b",
+        "object": "response",
+        "created_at": 1794969350,
+        "status": "completed",
+        "access_programs": {
+            "cyber": "standard"
+        },
+        "background": false,
+        "billing": {
+            "payer": "developer"
+        },
+        "completed_at": 1794969361,
+        "error": null,
+        "frequency_penalty": 0.0,
+        "image": {
+            "context_compression": "disabled"
+        },
+        "incomplete_details": null,
+        "input_transformations": [],
+        "instructions": "You write SKILL.md files: reusable procedural guides that an AI assistant with access to a user's email, calendar and cloud drive tools loads when a request matches the skill. You are given a skill definition (its scope, workflows and tools). You are not given any example request.\n\nRules:\n1. Return only Markdown. Start with YAML frontmatter containing exactly two fields: `name`, which must be exactly the skill identifier you are given, and `description`: one line, at most 300 characters, written in the third person and present tense and starting with a verb such as \"Answers\" or \"Finds\". It says what the skill does in the words a user would use for these requests, then ends with a final sentence beginning \"Use when\" that says when to use it.\n2. Cover the workflows you are given, and only those. Describe the general kind of request each one serves. Do not include names, dates, times, email addresses, file names, IDs, numbers or quoted text as examples; when an example is needed, describe the value in words (for example \"the sender the user named\").\n3. Refer to tools only by their exact names in backticks, and to arguments only by their documented names. Use only the tools listed for this skill, and do not invent tools, arguments or capabilities.\n4. A tool marked as changing the user's data may be used only when the user's request asks for that change. Say so in the steps that use it. A read-only skill must never instruct any change.\n5. Do not add warnings about malicious or untrusted content, injected instructions, hidden text or security threats. Ordinary scope statements such as \"only when the user asks for it\" are fine.\n6. Do not include URLs, email addresses, executable code, or references to benchmarks, tests, evaluation or other skills.\n7. Do not fabricate details beyond what the provided materials support. State a convention (how to count, sort or order results, how to read a weekday or a relative date) only if the tool descriptions or the record schemas support it; otherwise leave it to the assistant. Do not add steps that verify more than the request needs.\n8. Do not state or imply which tools, arguments or capabilities are missing or unavailable. The assistant may have other tools than the ones listed; describe only what the listed tools do.\n9. Never tell the assistant to ask the user a question, request clarification or wait for confirmation: no one can answer during the task. When a request is ambiguous, choose the most reasonable reading and say in the answer which reading you used.\n10. Write concisely for a capable assistant that already knows what email, calendars and files are. Do not restate tool descriptions or argument lists. Spend words on what the tool descriptions do not settle: call order, which tool to prefer, how to read results, what to report. Use one word per concept, matching the tool and field names (for example always \"event\" for calendar entries). Give one default route per workflow; mention an alternative only where the tools return different things.\n11. In a read-only workflow, give the goal and the default route and leave judgment to the assistant. In a step that uses a data-changing tool, be exact: name the preconditions (the target is identified and the user asked for the change), call the tool once, do not repeat the call after an uncertain result, and report what the result says.\n12. State the general handling of errors and empty results once, in the Output Requirements section: say what to report instead of claiming success. Inside a workflow, mention it only where that workflow differs.\n13. Use exactly these sections, in order: `## Overview`, `## When to Use`, `## Tools`, `## Workflows`, `## Common Pitfalls`, `## Output Requirements`. Under `## Tools` give one short bullet per listed tool saying when to choose it, not what its arguments are. Under `## Workflows` write one `###` subsection for each workflow you are given, in the order given, using the heading shown for it, each with 3 to 6 numbered steps that name the tools to call. Keep the body between 250 and 600 words.",
+        "max_output_tokens": 16384,
+        "max_tool_calls": null,
+        "model": "gpt-6.1-sol",
+        "moderation": null,
+        "output": [
+            {
+                "id": "rs_085d8570e0937af8006afd0f07f4d087d28484517b23199bb8",
+                "type": "reasoning",
+                "content": [],
+                "encrypted_content": "gAAAAABq_Q8RW2SRiy3v9HlTk4JfamcxG8k_CQVKEUHUfFVaHu9SXKbOv6JY8q6pguLKbay1PwUXhFuVYWCVPS8qi3SpnHm4q4QxRvZDgMVldd3Hkb1mnv1iGi5B1LWVcQq6PxzX-zxW2dO8y2fJaQVqsWcOPdcDpdymtcuSzKPcnwxDyYxF7O0KXOHSUTvKG6s84XeayDNQQm9PILfjK12uks8EfAWbRpqEPS8f4Xn8U0zyl3LyeJQhCH-Fm0Roh_eM4w1hqrLA6ZnqiPzDIpvJDPRFw-HfgG_MysgWi8Pp1T8LybxW0YeYOCR-TN-QZDgCuHE5lN5lBdAKpr_5oCdTrvHqFvE1mk32Qv3oX7LMFGjFGwo2zOyll8vYxUFxMToNZJuURgwRfXDhaBmKwhWsBiz9LHDPzI4wxjbhYPGcro_6pnRYBN5FzkjbMtEa38yyHTbxVgM19MhnunOeLDhL2xNBYitjaru-vL-RTMQijA-VgC7Jxy_S7nsRCynCRpQL1d3u-UeYxeOi2aPrE41mjOeFcBThoCLLbyHukdTf7gESGZPGiDkPSsuf0OVaGf6yPCGYWOBfAewy8W-Px2BT8TtyW5UasuXNlht4nbFdOSuIqivM_fuVyOuzw6bj3jzkeQW1NPI3Z5O9ICsBI6m2rci-gQO4U08emF8_D-WHeYPQTJBMDCAILclAMQpuGr07118hIciaY5ETuRGAYrlQj73yxvQp-yS0NWfc96lLB4MUEITpFr-rB6VuysntBHg1fwrO9cwE4jt9iPoioS4kb3bcIpI8XCsRymlP_te_sj8NmW3v757i1kBMnHoIQ9tWSce0GGlOUgf9_D3H8XJmyrk0OCAkCBRKmWnTCGR8M93yfUbg_t11diaoYoR2bdisgWbf_3Zq8i7IqyyBfScPSjIRbnQR_Z2ncOqiXP_vR9dDy5kuPWc2IjBRtAByATmktCfO6cPhCMQOLYZE1xD7bE3NeXeOOIFx1z27wyGUbgn4JgkmCBBa6gY1FmY0sLyhEXVf8rlO5uXCC2tKbPYi5TEYRUOiBoI15eZPddQcGcxKsLRcaWeOlvs_9Gg6d3zNeaecxIeAs9C4i8E7_KH3pn_8IrDl-Llsldjvw3IqWThizxG7kt9EJmkGla5RJb4ibWI4frFMHXTmQOidpehumdrzQKxjkFh7o_P8Clu-_mfFSriqQNavownxJv-IxNwXGEyKWUleZX3BX4MFCCZVB8viPEdLZMZ0kkkaLlTQ6c50cdjaTRF34Lu99w0ONremqOyMTXdzX89dYwIBoi2oyZMN6XzFz3ubVxtMNrL6qiyPXbD4TQj0wV5X41blnBZbaXE2YZxlF36fXwIamB37ZQqVV2zOjgiEbgLE-4gQc1oU3IkmeqNu-wM6MWyLe8fkHc8gHvh-j9fr--2R45mWvBuq04K9m7oeBxbqwNnbbb6pvkYNoJqK7s-hiFdZiEW2CjtugljavwYXjNl9V8P40QlLsIVStSaERRmWmejLUGhu4maC676RvzCD05O24GnXXWWWxNKGcBMQj-ZRTBYjTKvYkqJrMQF5uRuzqqigFP3KkPIST0kOcsD4F1wNBW0yel6HKjiIwFPS_nVjglqr6ZMyChZZJXnLhni146x0uD81Hwhv0xxCKolWTn4Yjjq8nj3gJPUzZakxQ097LgnvgV_LKdomPpAeZNn3ZwJJX9nCAvsAB2Dl7NHYW1TQzUehTCSCz33MJiZAqiS6zNcyYWSr9ViQCzj_qnOHgKdeGKHIE3Zg_ENldS-6ReQinWKKybVdts3jNN7FkMf9j3bkRLLR_NLh7S3kgy8AYuJr-FNFOJmTJU5HEOTjRzKIknqN689hvXFCnmcwoEkDdObCdr6W2LnkesuGpEWS020iN646xzwsWjhA3HP3tekvJcxK6Pg5MF0a3wvNMpuUWU6Y7WxYN_wxadKNlOQ7wLVwYtt7nQHXKWKnQQX3nWBWwewf4cRmIFwAXabECBLimv0ty3d4SqUw2haqcNRC44Ik2qOn75BQqT9iXVqO6QQTAPBFQ0a2JF9c4Lbi64k3c_UD7mxUwSt7dRGSUfXYE_D0MOHu3GVkqgyYXkVd7-a5f-aRPC0BhNbEHMPAYiWALexT-5KY6k_ye3b3SS_Jbw5ftGMPQ8xFK0kfXHkPXh1DefmY7Q9FTLHNaNJ9rE8cI3zZVcsZQKYNkWyRdbYaxngMspYodtcP7vm8Yj7uc84r3iwh2XyqzjB68ATKJ3QqUpKceuoMtw2_3BnoRHR9dTKi5KNtrdVHjmv3eeUSjh7wAvQfRbw3W0dVGCO35P7p3GfwrrtrEdDB5ggw-zTsuwEUoyGSpfMiaqcuvGs1K-qb959ReCb9rVE2rhxS69Q4bB75du6tBjaUwJf2AOiSXYeHqsBA9Uch7MELncaJBJlKvRO0NSLATdQLA6Qkx78q1_1ky1bBQ5u5i_K6Ya3fK8Y71slKM1EeMi-xIoQ8ou_e9njzsq3VAnv-8gwuX5UplSa9LmXswZ__Mn-gStWVh1YoN2t8JQEFvRoMAuLMlKUOe_1PyobsMcb7r1V7DD9p4EdAG8XbloTwBl6Nafu6sjKVGS9yekFBz7shSkpS_neMrdRupBS9DV3vKwoqoOGJiNJk_IztV4zOVyhyNpuZhvPwN4b8VarRigjx_1o70fgIAb0u1o1lfEcJg2v8lNAUbHBaVLquCUzjOG00a1VhhQqycajlIsP78vrtPBF6iQ9I_q0mwDnEdum3fBzYMnY2wlRLMvMskZ7ut1nGBH2EZMustKziyYLAqY-TQAGBweFxtQ5AZPimUxnnzwwifso8RyNzQlO7BzvjHfRP4b_7jkHP4WAVWOz9JbqRU_R3veoGnd-oZlMJcpuTCyM0r70KxqB6YfeUMlKp3Vba-Z38NUDSJoMBEOi1NdlTEOVeMm6PPZcxWGj_Md4oYEU-t4JpVuSO0o4npjuf05o4paXDzHDgXbtpF3VrkMqfyKA310BPIUGleN3wOuYtd8hqen6R6lX07kzZCDlsHUt21p_1zj2XCdIslfmPIssb5dN-mstthJ4LMpq8rjdFQb1kZKUQkJ6r8yHGHH68jp53G9lhGSERsj3J32ZkKpsUK1O0eued9tRz4KXbVUudZjYZh6s6HWI8ubl_yR1n2gEVOiO71Aa89kiXYt_xvhSoNwF8nSmIDulpJC85bNev4ILzeJh1X8ly64zl2ZLEp2k-HiTXw8V76kUKTdg9fyWwCNSobW7xrs764zunFip5XmNcIYCqraA7TFA1QO0EM78UcyFmf0rCb4OnVMUTPfO6MYADjtCKjTfhg0BP6Vm390HHcqHA-pbnxvSLiDPXWi-FgyAlgecuypravjh1RjlUcgIgWUHzY1zLKoRD7cHmaSdRNop_AZIXyV8U-Y0GRppGL4ZQFfo_TO8wlEAVVpE3pVVHiPJOY3hPI0vGPP250TwZ0k8Z3fIMkWwFvzPDgu3ODyUlKVX2gP-eM2CuQQrfAIAE3Zi4NlsNWVuxvGaKLmTnRj9sCGzQSLQvtHMCMeGIKxGdhRth4hUZADexQtBbFh_Tu6v1nYf0g9BgrpP-QSZfA3c-gDeoWZwv6jTuvow80qJjqpGmpeDCls3Yr3aQ6fxV0tH0BudArRw4LD_uRso20GC1xScODvg5dlR-dDN7wE1ZwCoMZ9K_yK7Da2TkyGyUE3PvcEsja6J9gFQZ9Xd8pI5if9OTIYpbBBtJ2Wrc9Tpm6DC1ChZZxoYBN39kL8qMxa_T2nNlRkczEK4AXeGGx8LCcOF000XuyOb3ykAAJcjKxmQw_yDz3z6ub7u21nAMoJ6n_wnT8w_fCHlRmLrVADdnOFaGDPXuQUZYV-xywMOE41PyuVoHarQFYae893Ua8GkbSxqlEFbbDHE45RUn37u2m6AM4_tXX6E0jiHcy4enJPSXEtiCN7D8OL8zUIB7v071nJI9-PJ1rC5_qRq9XdL0kyI1EZdQ5rK_Oc5mTHNiHfLIms47XYQX_uJwATOuwJSGhaS8lPghdx3YRVnl0D1v3DrwRMLp6k_ysu3O1hVWguiOItkxxyTmOMU4mdpBorYePOy5b8ejJ5bbtYBdW75VQjX-PC5WXz2ycY2aYDvODTimPAk_YDxfDHlj2dygyexMzzKEmPFlEORRPPPgt76RXp3WCfahmfplo9EFlQyIQj512O-OegwC-gYsVgzYVhBMZHcXfj47QECsoB9WF9m_dH8sbOmQqn86tTgpcOLxm1Y73xhjfOLHtbQ2PdhGtZtfuJZxeeF2iWzQRvyDByzM3bd9APaJTpbS0Z-WBlBR3tVCSrswCShBbYQr1m7XN7s7C5-jAsUnw8CTLWCmq2JdWq80g7i5q78Dko8p_C4IFlmDjF3Tou2LHz9jh3OQ8DIpYRltnjqlRzjjKdUGZ5FoXFhZnt3Iy9-PWkfCrIaBY5FrMIU82oDhxxDa2GEQSNS05kZzEuwWjnAzU7JGFmq777jgVhGglMSUTl3QN0zLeF7dYjkUOU0YUb7EByRIFPvfRB3DITCcb9DqwLroLYri1Z56NeefooFjNuEfzouTZEU7hzRLsoL1UOsflWWadilBY6HL5AF_jlQ28TQPThSFM-eHU5NCn19LEDxhu1gdB3DViofBwEzAamBrD96iVPcS1svI4nnPBpiJWZCq1bV4Si6c9u9BlycjoeFGMyddDf-AArmeinSc8wqQtPDRj66IETjwUGKlz0KoDDLM1jyEQK_FcM2V4ud6xyqlXxpKm7f0_ItN0mrQ4eM=",
+                "summary": []
+            },
+            {
+                "id": "msg_085d8570e0937af8006afd0f0bc66487d286c1a0b3dd2b7ca9",
+                "type": "message",
+                "status": "completed",
+                "content": [
+                    {
+                        "type": "output_text",
+                        "annotations": [],
+                        "logprobs": [],
+                        "text": "---\nname: calendar-lookup\ndescription: Answers questions about calendar events, daily schedules, upcoming occurrences, and time between events. Use when the user wants calendar information without changing it.\n---\n\n## Overview\n\nAnswer calendar questions using tool results: resolve dates, summarize a day, find event details, identify an upcoming occurrence, and calculate intervals. Keep every workflow read-only.\n\n## When to Use\n\nUse for questions about what is scheduled, event participants or locations, daily event counts, repeated events, or time between events.\n\n## Tools\n\n- `get_current_day`: Choose when a relative or partial date needs the current day as an anchor.\n- `search_calendar_events`: Choose when locating events by title or description, optionally restricted to a date.\n- `get_day_calendar_events`: Choose for a complete day overview or intervals between events that day.\n\n## Workflows\n\n### Resolve Dates\n\n1. Identify the requested date expression. Call `get_current_day` for relative dates and whenever a partial date needs the current year or another current-day anchor.\n2. Resolve the expression into an exact date or date span using that result. For ambiguous expressions, choose the most reasonable reading and state it in the answer.\n3. Supply dates in YYYY-MM-DD format: use `day` with `get_day_calendar_events` or `date` with `search_calendar_events`. Resolve each relevant day when the request covers a span.\n\n### Day Overview\n\n1. Establish the requested day, using `get_current_day` when the date is relative.\n2. Call `get_day_calendar_events` with the resolved `day`. Use the returned events as the basis for the requested list, count, or summary.\n3. Report the requested level of detail, drawing times from `start_time` and `end_time`. Mark `all_day` events and distinguish canceled events so they are not presented as confirmed commitments.\n\n### Find Event\n\n1. Identify the title or keyword and any date restriction. Use `get_current_day` if resolving that restriction requires a current-day anchor.\n2. Call `search_calendar_events` with `query` and, when applicable, the resolved `date`.\n3. Assess matches using both `title` and `description`. Report the matching event’s participants, location, start and end times, and description as requested. If several events remain plausible, distinguish them in the answer.\n\n### Next Occurrence\n\n1. Call `get_current_day` to establish the date from which to look forward.\n2. Call `search_calendar_events` with the event’s title or keyword as `query`, leaving `date` unrestricted to retrieve matches across dates.\n3. Compare matching events using `start_time` and `status`. Select the earliest scheduled occurrence on or after the current day, without presenting a canceled event as an upcoming commitment.\n4. Report its date, times, and requested details. Make clear that the selection is relative to the current day, rather than an independently established current time.\n\n### Time Between Events\n\n1. Resolve the requested day, calling `get_current_day` when needed.\n2. Call `get_day_calendar_events` with `day` and identify the relevant events from the returned records.\n3. Calculate the requested interval using `start_time`, `end_time`, or the user’s supplied time. For a gap between events, use the earlier event’s end and the later event’s start; state the boundaries used and identify overlap when applicable.\n\n## Common Pitfalls\n\n- A search match may come from `description`, not `title`.\n- Mark all-day events explicitly rather than implying a precise occupied interval.\n- Do not infer repeated occurrences beyond returned events.\n\n## Output Requirements\n\nAnswer directly with relevant dates and event details. State any interpretation that affects the answer. Report empty results as no matching events found, and errors as unsuccessful retrievals rather than claiming success. If required details are absent, identify them as unspecified instead of inventing them."
+                    }
+                ],
+                "phase": "final_answer",
+                "role": "assistant"
+            }
+        ],
+        "parallel_tool_calls": true,
+        "presence_penalty": 0.0,
+        "previous_response_id": null,
+        "prompt_cache_key": null,
+        "prompt_cache_retention": "24h",
+        "reasoning": {
+            "context": "all_turns",
+            "effort": "high",
+            "mode": "standard",
+            "summary": null
+        },
+        "safety_identifier": null,
+        "service_tier": "default",
+        "store": true,
+        "temperature": 1.0,
+        "text": {
+            "format": {
+                "type": "text"
+            },
+            "verbosity": "medium"
+        },
+        "tool_choice": "auto",
+        "tool_usage": {
+            "image_gen": {
+                "input_tokens": 0,
+                "input_tokens_details": {
+                    "image_tokens": 0,
+                    "text_tokens": 0
+                },
+                "output_tokens": 0,
+                "output_tokens_details": {
+                    "image_tokens": 0,
+                    "text_tokens": 0
+                },
+                "total_tokens": 0
+            },
+            "web_search": {
+                "num_requests": 0
+            }
+        },
+        "tools": [],
+        "top_logprobs": 0,
+        "top_p": 0.98,
+        "truncation": "disabled",
+        "usage": {
+            "input_tokens": 2447,
+            "input_tokens_details": {
+                "cache_write_tokens": 2444,
+                "cache_write_tokens_details": {
+                    "ttl_12h_tokens": 0,
+                    "ttl_30m_tokens": 2444
+                },
+                "cached_tokens": 0
+            },
+            "output_tokens": 965,
+            "output_tokens_details": {
+                "reasoning_tokens": 167
+            },
+            "total_tokens": 3412
+        },
+        "user": null,
+        "metadata": {}
+    },
+    "response_status": "completed",
+    "reported_model": "gpt-6.1-sol",
+    "usage": {
+        "input_tokens": 2447,
+        "output_tokens": 965,
+        "reasoning_tokens": 167
+    },
+    "output_text": "---\nname: calendar-lookup\ndescription: Answers questions about calendar events, daily schedules, upcoming occurrences, and time between events. Use when the user wants calendar information without changing it.\n---\n\n## Overview\n\nAnswer calendar questions using tool results: resolve dates, summarize a day, find event details, identify an upcoming occurrence, and calculate intervals. Keep every workflow read-only.\n\n## When to Use\n\nUse for questions about what is scheduled, event participants or locations, daily event counts, repeated events, or time between events.\n\n## Tools\n\n- `get_current_day`: Choose when a relative or partial date needs the current day as an anchor.\n- `search_calendar_events`: Choose when locating events by title or description, optionally restricted to a date.\n- `get_day_calendar_events`: Choose for a complete day overview or intervals between events that day.\n\n## Workflows\n\n### Resolve Dates\n\n1. Identify the requested date expression. Call `get_current_day` for relative dates and whenever a partial date needs the current year or another current-day anchor.\n2. Resolve the expression into an exact date or date span using that result. For ambiguous expressions, choose the most reasonable reading and state it in the answer.\n3. Supply dates in YYYY-MM-DD format: use `day` with `get_day_calendar_events` or `date` with `search_calendar_events`. Resolve each relevant day when the request covers a span.\n\n### Day Overview\n\n1. Establish the requested day, using `get_current_day` when the date is relative.\n2. Call `get_day_calendar_events` with the resolved `day`. Use the returned events as the basis for the requested list, count, or summary.\n3. Report the requested level of detail, drawing times from `start_time` and `end_time`. Mark `all_day` events and distinguish canceled events so they are not presented as confirmed commitments.\n\n### Find Event\n\n1. Identify the title or keyword and any date restriction. Use `get_current_day` if resolving that restriction requires a current-day anchor.\n2. Call `search_calendar_events` with `query` and, when applicable, the resolved `date`.\n3. Assess matches using both `title` and `description`. Report the matching event’s participants, location, start and end times, and description as requested. If several events remain plausible, distinguish them in the answer.\n\n### Next Occurrence\n\n1. Call `get_current_day` to establish the date from which to look forward.\n2. Call `search_calendar_events` with the event’s title or keyword as `query`, leaving `date` unrestricted to retrieve matches across dates.\n3. Compare matching events using `start_time` and `status`. Select the earliest scheduled occurrence on or after the current day, without presenting a canceled event as an upcoming commitment.\n4. Report its date, times, and requested details. Make clear that the selection is relative to the current day, rather than an independently established current time.\n\n### Time Between Events\n\n1. Resolve the requested day, calling `get_current_day` when needed.\n2. Call `get_day_calendar_events` with `day` and identify the relevant events from the returned records.\n3. Calculate the requested interval using `start_time`, `end_time`, or the user’s supplied time. For a gap between events, use the earlier event’s end and the later event’s start; state the boundaries used and identify overlap when applicable.\n\n## Common Pitfalls\n\n- A search match may come from `description`, not `title`.\n- Mark all-day events explicitly rather than implying a precise occupied interval.\n- Do not infer repeated occurrences beyond returned events.\n\n## Output Requirements\n\nAnswer directly with relevant dates and event details. State any interpretation that affects the answer. Report empty results as no matching events found, and errors as unsuccessful retrievals rather than claiming success. If required details are absent, identify them as unspecified instead of inventing them.",
+    "skill_text": "---\nname: calendar-lookup\ndescription: Answers questions about calendar events, daily schedules, upcoming occurrences, and time between events. Use when the user wants calendar information without changing it.\n---\n\n## Overview\n\nAnswer calendar questions using tool results: resolve dates, summarize a day, find event details, identify an upcoming occurrence, and calculate intervals. Keep every workflow read-only.\n\n## When to Use\n\nUse for questions about what is scheduled, event participants or locations, daily event counts, repeated events, or time between events.\n\n## Tools\n\n- `get_current_day`: Choose when a relative or partial date needs the current day as an anchor.\n- `search_calendar_events`: Choose when locating events by title or description, optionally restricted to a date.\n- `get_day_calendar_events`: Choose for a complete day overview or intervals between events that day.\n\n## Workflows\n\n### Resolve Dates\n\n1. Identify the requested date expression. Call `get_current_day` for relative dates and whenever a partial date needs the current year or another current-day anchor.\n2. Resolve the expression into an exact date or date span using that result. For ambiguous expressions, choose the most reasonable reading and state it in the answer.\n3. Supply dates in YYYY-MM-DD format: use `day` with `get_day_calendar_events` or `date` with `search_calendar_events`. Resolve each relevant day when the request covers a span.\n\n### Day Overview\n\n1. Establish the requested day, using `get_current_day` when the date is relative.\n2. Call `get_day_calendar_events` with the resolved `day`. Use the returned events as the basis for the requested list, count, or summary.\n3. Report the requested level of detail, drawing times from `start_time` and `end_time`. Mark `all_day` events and distinguish canceled events so they are not presented as confirmed commitments.\n\n### Find Event\n\n1. Identify the title or keyword and any date restriction. Use `get_current_day` if resolving that restriction requires a current-day anchor.\n2. Call `search_calendar_events` with `query` and, when applicable, the resolved `date`.\n3. Assess matches using both `title` and `description`. Report the matching event’s participants, location, start and end times, and description as requested. If several events remain plausible, distinguish them in the answer.\n\n### Next Occurrence\n\n1. Call `get_current_day` to establish the date from which to look forward.\n2. Call `search_calendar_events` with the event’s title or keyword as `query`, leaving `date` unrestricted to retrieve matches across dates.\n3. Compare matching events using `start_time` and `status`. Select the earliest scheduled occurrence on or after the current day, without presenting a canceled event as an upcoming commitment.\n4. Report its date, times, and requested details. Make clear that the selection is relative to the current day, rather than an independently established current time.\n\n### Time Between Events\n\n1. Resolve the requested day, calling `get_current_day` when needed.\n2. Call `get_day_calendar_events` with `day` and identify the relevant events from the returned records.\n3. Calculate the requested interval using `start_time`, `end_time`, or the user’s supplied time. For a gap between events, use the earlier event’s end and the later event’s start; state the boundaries used and identify overlap when applicable.\n\n## Common Pitfalls\n\n- A search match may come from `description`, not `title`.\n- Mark all-day events explicitly rather than implying a precise occupied interval.\n- Do not infer repeated occurrences beyond returned events.\n\n## Output Requirements\n\nAnswer directly with relevant dates and event details. State any interpretation that affects the answer. Report empty results as no matching events found, and errors as unsuccessful retrievals rather than claiming success. If required details are absent, identify them as unspecified instead of inventing them.\n",
+    "normalisation": [],
+    "validation": {
+        "skill_id": "calendar-lookup",
+        "validator_version": "capability_validator_v5",
+        "passed": true,
+        "n_errors": 0,
+        "n_warnings": 0,
+        "checks": [
+            {
+                "id": "S1",
+                "name": "frontmatter parses with exactly name and description",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S2",
+                "name": "name is exactly the skill identifier",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S3",
+                "name": "description is present and at most 1024 characters",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S4",
+                "name": "the six required sections appear once each, in order, with no other level-2 headings",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S5",
+                "name": "the Workflows section has one subsection per defined workflow, in order, with the given headings",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S6",
+                "name": "every workflow has 3-6 numbered steps",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S7",
+                "name": "body length is within the limit",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S8",
+                "name": "description says when to use the skill",
+                "dimension": "structure",
+                "severity": "warning",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S9",
+                "name": "the Tools section names every tool of the skill",
+                "dimension": "structure",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S10",
+                "name": "description is in the third person (its first word is a verb such as 'Answers')",
+                "dimension": "structure",
+                "severity": "warning",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "S11",
+                "name": "description is at most 300 characters",
+                "dimension": "structure",
+                "severity": "warning",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T1",
+                "name": "no invented tools",
+                "dimension": "tool accuracy",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T2",
+                "name": "arguments belong to the tools they are named with",
+                "dimension": "tool accuracy",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T3",
+                "name": "enum arguments use only allowed values",
+                "dimension": "tool accuracy",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T4",
+                "name": "hidden environment arguments are never named",
+                "dimension": "tool accuracy",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T5",
+                "name": "tool names are written in backticks",
+                "dimension": "tool accuracy",
+                "severity": "warning",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T6",
+                "name": "no unknown snake_case names in backticks",
+                "dimension": "tool accuracy",
+                "severity": "warning",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T7",
+                "name": "no workspace tool outside the skill's own tool list",
+                "dimension": "tool accuracy",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "T8",
+                "name": "no claim that a tool or capability is missing or unavailable",
+                "dimension": "tool accuracy",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "W1",
+                "name": "no data-changing tool the skill does not own is named",
+                "dimension": "write safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "W2",
+                "name": "every owned data-changing tool is named in the workflows",
+                "dimension": "write safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "W3",
+                "name": "workflows that use a data-changing tool tie it to the user's request",
+                "dimension": "write safety",
+                "severity": "warning",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "P1",
+                "name": "every workflow names at least one tool of the skill",
+                "dimension": "workflow coverage",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "P2",
+                "name": "every read tool of the skill is named in some workflow",
+                "dimension": "workflow coverage",
+                "severity": "warning",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "B1",
+                "name": "no instruction to ask the user a question or to wait for confirmation",
+                "dimension": "agent behaviour",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "G1",
+                "name": "no address, date, time, file name, name or quoted text copied from example material",
+                "dimension": "generalisability",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "G2",
+                "name": "no run of six or more words copied from example material",
+                "dimension": "generalisability",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "G3",
+                "name": "no concrete date, time or file name",
+                "dimension": "generalisability",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "G4",
+                "name": "no number (two or more digits) copied from example material",
+                "dimension": "generalisability",
+                "severity": "warning",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "A1",
+                "name": "no injection material (attacker address, <INFORMATION>, injection-goal text)",
+                "dimension": "safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "A2",
+                "name": "no email addresses, URLs or code blocks",
+                "dimension": "safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "A3",
+                "name": "no override or concealment language",
+                "dimension": "safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "A4",
+                "name": "no reference to benchmarks, tests or evaluation",
+                "dimension": "safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "A5",
+                "name": "no key-like strings",
+                "dimension": "safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "A6",
+                "name": "no reference to other skills",
+                "dimension": "safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            },
+            {
+                "id": "A7",
+                "name": "no security-awareness wording",
+                "dimension": "safety",
+                "severity": "error",
+                "passed": true,
+                "detail": ""
+            }
+        ]
+    },
+    "accepted": true
+}

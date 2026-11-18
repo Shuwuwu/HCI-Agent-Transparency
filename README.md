@@ -20,9 +20,10 @@ documents the agent is said to have followed.
 | `src/data/skill_library/review/` | The manual review sheet for the six skills (CSV files for two raters and a guide); see `review_guide.md`. |
 | `src/data/execution/` | The execution evaluation: `plan.json` (runs to execute), `runs/<run_id>.json` (one record per run: system message, AgentDojo trace, utility, model calls and tokens), `model_access.json`, `summary.json`. |
 | `src/data/stimuli/<stimulus_id>/` | Participant-facing material built from one execution: `low.json` (request + final response), `high.json` (adds the action log), plus researcher-only `provenance.json` and `preview.txt`. |
-| `src/data/skills/<skill>/SKILL.md` | The generated capability skills (empty until generated), with `manifest.json` tying each file to the request, response and validator version that produced it. Attempt logs are in `src/data/skill_library/runs/`. |
+| `src/data/explorer/` | Gitignored. Output of `export_explorer_traces.py`: `hci-stimuli-poc.jsonl` (traces plus stimulus annotations, for upload to a local Invariant Explorer) and `comparison.md` (original vs Explorer vs stimulus). |
+| `src/data/skills/<skill>/SKILL.md` | The generated capability skills (prompt v4, validator v5), with `manifest.json` tying each file to the request, response and validator version that produced it. Attempt logs are in `src/data/skill_library/runs/`. |
 | `src/data/experiment/user_task_N/` | Stimuli of each of the 25 safe-candidate scenarios: `metadata.json`, `no_attack_execution_trace.json`, `skills.json`, `action_log.json` (placeholder). |
-| `docs/` | Design notes, such as the postponed skill-generation improvements (`postponed_skill_generation_improvements.md`). |
+| `docs/` | Design notes, such as the skill-generation improvements that became prompt v4 and validator v5 (`postponed_skill_generation_improvements.md`). |
 | `archive/` | Superseded research outputs kept as provenance (not read by any script). |
 | `Skills collection/` | Original and prompt-injected skill examples from SkillJect (see `Option_A/description.txt`). |
 | `tests/` | Unit tests, one file per script. |
@@ -50,7 +51,7 @@ Capability skills:
 |---|---|
 | `check_skill_map.py` | Checks the taxonomy: write-tool ownership, scenario map against each recorded trace, and that the skill definitions contain nothing taken from the scenarios. |
 | `build_skill_sources.py` | Builds the source package of each skill (definition, full tool specs, record schemas) from the taxonomy's `skills` section and AgentDojo's tool code. Never reads the scenario map. |
-| `build_capability_prompts.py` | Builds the exact request for each skill from its source package and the templates in `src/prompts/skill_capability_*_v3.md`. Needs neither the clone nor the network. |
+| `build_capability_prompts.py` | Builds the exact request for each skill from its source package and the templates in `src/prompts/skill_capability_*_v4.md`. Needs neither the clone nor the network. |
 | `prompt_utils.py` | Helpers shared by the source builder, the prompt builder and the generator (settings, hashing, templates, record schemas). |
 | `skill_text.py` | Text analysis shared by the validator and the taxonomy checker: parsing a skill file, finding tool names and specific values, comparing texts, and the generic tool-accuracy and safety checks. |
 | `generate_skills.py` | Sends each skill's saved request to the OpenAI Responses API (`gpt-6.1-sol`), validates the answer, repairs it up to twice, logs every call, and writes `SKILL.md`, the manifest and a summary. Needs `OPENAI_API_KEY`; has `--dry-run` and `--check-access`. |
@@ -61,6 +62,7 @@ Capability skills:
 | `run_executions.py` | Runs the plan in AgentDojo (default pipeline, no defence) with the environment's Python; one record per run; stops at the budget; never repeats a finished or failed run without `--force`. Also `--check-access MODEL...` and `--ground-truth-check SCENARIO` (no model call). |
 | `summarize_executions.py` | Puts the runs of each scenario side by side (utility, tool calls, differences from each other and from the recorded gpt-4o run, tokens). |
 | `build_stimuli.py` | Turns one execution trace (a run record or an AgentDojo trace, safe or attacked) into the low- and high-transparency stimuli by fixed rules; writes `src/data/stimuli/`. |
+| `export_explorer_traces.py` | Researcher-side only: exports traces to Invariant Explorer's JSONL format, annotating each tool call and result with the stimulus log entry derived from it, and writes a comparison of original, Explorer view and stimulus. Needs the stimulus to exist (run `build_stimuli.py` first). No API calls. |
 | `stimulus_text.py` | The wording rules of the action log (action sentence, shown arguments, outcome summary per tool); never copies free text from results. |
 | `tool_result_parser.py` | Reads AgentDojo's YAML-style tool result text with the standard library only; checked against PyYAML on every recorded result. |
 
@@ -80,7 +82,7 @@ Done: taxonomy, scenario map and checker; scenario stimuli folders with `skills.
 generation prompts; the per-skill static validator; the generator. The prompts are task-agnostic: the generator is shown a skill's scope, workflows, tool
 specifications and record schemas, and no scenario, example request, trace or answer.
 
-All six skills are generated and pass the validator (`capability_validator_v4`). The review sheet is built and waiting for the two raters. The execution pipeline is built and has run once as a pilot (one scenario, two runs; see `src/data/execution/summary.json`). The trace-to-stimulus pipeline is built and tested on the pilot executions and on all recorded runs. Not implemented yet: selecting the experiment's scenarios and unsafe executions, injected skill variants, the experiment app.
+All six skills are generated and pass the validator (`capability_validator_v5`, generated with prompt `skill_capability_v4`). The review sheet is built and waiting for the two raters. The execution pipeline is built and has run once as a pilot (one scenario, two runs; see `src/data/execution/summary.json`); the pilot records and `plan.json` refer to the previous skills (prompt v3), recoverable from the attempt logs. The trace-to-stimulus pipeline is built and tested on the pilot executions and on all recorded runs. Not implemented yet: selecting the experiment's scenarios and unsafe executions, injected skill variants, the experiment app.
 
 ## Running things
 
@@ -97,6 +99,7 @@ python3 -B src/scripts/build_execution_plan.py --scenarios user_task_1 --models 
 .venv-agentdojo/bin/python -B src/scripts/run_executions.py --dry-run     # then without --dry-run (needs OPENAI_API_KEY)
 python3 -B src/scripts/summarize_executions.py
 python3 -B src/scripts/build_stimuli.py src/data/execution/runs/*.json   # stimuli from the pilot executions (no API call)
+python3 -B src/scripts/export_explorer_traces.py SOURCE ...   # Explorer upload file + comparison.md in src/data/explorer/
 python3 -B src/scripts/generate_skills.py --dry-run  # show what would be sent (sends nothing, needs no key)
 OPENAI_API_KEY=... python3 -B src/scripts/generate_skills.py --skills calendar-lookup email-correspondence  # pilot run
 ```
