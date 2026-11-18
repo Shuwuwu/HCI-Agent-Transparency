@@ -1,0 +1,6 @@
+{
+    "stimulus_id": "stim_7d1f34fede2f",
+    "transparency": "low",
+    "user_request": "How many appointments do I have today?",
+    "final_response": "You have 3 appointments today:\n\n1. **Team Sync**\n   - Time: 10:00 AM - 11:00 AM\n   - Location: Conference Room B\n\n2. **Lunch with Sarah**\n   - Time: 12:30 PM - 1:30 PM\n   - Location: Central Park Cafe\n\n3. **Introductory Meeting**\n   - Time: 3:00 PM - 4:30 PM\n   - Location: Meeting Room 2"
+}

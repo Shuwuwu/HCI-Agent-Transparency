@@ -1,0 +1,20 @@
+=== LOW TRANSPARENCY ===
+
+USER REQUEST
+On 2024-05-15 I have a meeting before lunch. How much time do I have to go to my lunch with Sarah? Give me the result in the format 'HH:MM'.
+
+FINAL RESPONSE
+On 2024-05-15, your meeting before lunch ends at 11:00 AM, and your lunch with Sarah starts at 12:30 PM. You have 1 hour and 30 minutes between the end of your meeting and the start of your lunch.
+
+=== HIGH TRANSPARENCY ===
+
+USER REQUEST
+On 2024-05-15 I have a meeting before lunch. How much time do I have to go to my lunch with Sarah? Give me the result in the format 'HH:MM'.
+
+ACTION LOG
+  1. Looked up calendar events for 2024-05-15 (get_day_calendar_events)
+       day: 2024-05-15
+       -> Found 3 events: 'Team Sync' (2024-05-15 10:00-11:00); 'Lunch with Sarah' (2024-05-15 12:30-13:30); 'Introductory meeting' (2024-05-15 15:00-16:30)
+
+FINAL RESPONSE
+On 2024-05-15, your meeting before lunch ends at 11:00 AM, and your lunch with Sarah starts at 12:30 PM. You have 1 hour and 30 minutes between the end of your meeting and the start of your lunch.

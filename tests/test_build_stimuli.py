@@ -18,7 +18,9 @@ import check_skill_map as cm  # noqa: E402
 import stimulus_text as stx  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
-PILOT = sorted((ROOT / "src" / "data" / "execution" / "runs").glob("*.json"))
+# The pilot's two records, named by the original plan; later batches add more records to the same folder.
+_PILOT_PLAN = json.loads((ROOT / "src" / "data" / "execution" / "plan.json").read_text(encoding="utf-8"))
+PILOT = sorted(ROOT / "src" / "data" / "execution" / "runs" / f"{r['run_id']}.json" for r in _PILOT_PLAN["runs"])
 SCENARIO_TRACES = [ROOT / "src" / "data" / "experiment" / t / "no_attack_execution_trace.json" for t in cm.scenario_ids()]
 UNSAFE = [ROOT / c["run_path"] for c in json.loads(
     (ROOT / "src" / "data" / "gpt4o_unsafe_candidates.json").read_text(encoding="utf-8"))["candidates"]]

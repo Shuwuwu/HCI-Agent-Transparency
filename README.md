@@ -18,7 +18,7 @@ documents the agent is said to have followed.
 | `src/data/skill_taxonomy.json` | The capability skill library: 6 skills, the Yang et al. subtopics they cover, their workflows, and the map from the 25 scenarios to skills. |
 | `src/data/skill_library/` | Inputs of the capability skills: `sources/<skill>.json` (definition, tool specs, record schemas, provenance) and `prompts/<skill>.json` (the exact request to send to the skill-writing model). |
 | `src/data/skill_library/review/` | The manual review sheet for the six skills (CSV files for two raters and a guide); see `review_guide.md`. |
-| `src/data/execution/` | The execution evaluation: `plan.json` (runs to execute), `runs/<run_id>.json` (one record per run: system message, AgentDojo trace, utility, model calls and tokens), `model_access.json`, `summary.json`. |
+| `src/data/execution/` | The execution evaluation: `plan.json` (the pilot's runs) and `plan_mapped_skills_v4b.json` (batch of the 25 mapped scenarios with the current skills; run ids end in `__skills-v4b`), `runs/<run_id>.json` (one record per run: system message, AgentDojo trace, utility, model calls and tokens), `model_access.json`, `summary.json`. |
 | `src/data/stimuli/<stimulus_id>/` | Participant-facing material built from one execution: `low.json` (request + final response), `high.json` (adds the action log), plus researcher-only `provenance.json` and `preview.txt`. |
 | `src/data/explorer/` | Gitignored. Output of `export_explorer_traces.py`: `hci-stimuli-poc.jsonl` (traces plus stimulus annotations, for upload to a local Invariant Explorer) and `comparison.md` (original vs Explorer vs stimulus). |
 | `src/data/skills/<skill>/SKILL.md` | The generated capability skills (prompt v4, validator v5), with `manifest.json` tying each file to the request, response and validator version that produced it. Attempt logs are in `src/data/skill_library/runs/`. |
@@ -82,7 +82,7 @@ Done: taxonomy, scenario map and checker; scenario stimuli folders with `skills.
 generation prompts; the per-skill static validator; the generator. The prompts are task-agnostic: the generator is shown a skill's scope, workflows, tool
 specifications and record schemas, and no scenario, example request, trace or answer.
 
-All six skills are generated and pass the validator (`capability_validator_v5`, generated with prompt `skill_capability_v4`). The review sheet is built and waiting for the two raters. The execution pipeline is built and has run once as a pilot (one scenario, two runs; see `src/data/execution/summary.json`); the pilot records and `plan.json` refer to the previous skills (prompt v3), recoverable from the attempt logs. The trace-to-stimulus pipeline is built and tested on the pilot executions and on all recorded runs. Not implemented yet: selecting the experiment's scenarios and unsafe executions, injected skill variants, the experiment app.
+All six skills are generated and pass the validator (`capability_validator_v5`, generated with prompt `skill_capability_v4`). The review sheet is built and waiting for the two raters. The execution pipeline is built and has run once as a pilot (one scenario, two runs; see `src/data/execution/summary.json`); the pilot records and `plan.json` refer to the previous skills (prompt v3), recoverable from the attempt logs. The mapped-skills batch `skills-v4b` (25 scenarios, `gpt-4o-2024-08-06`, one run each, current skills) has been executed; its stimuli are built and its traces exported to `src/data/explorer/mapped_skills_v4b/`. The trace-to-stimulus pipeline is built and tested on the pilot executions and on all recorded runs. Not implemented yet: selecting the experiment's scenarios and unsafe executions, injected skill variants, the experiment app.
 
 ## Running things
 
@@ -96,6 +96,7 @@ python3 -B src/scripts/validate_capability_skills.py # validate src/data/skills/
 python3 -B src/scripts/build_review_sheet.py         # rebuild the review sheet (needs all six skills)
 python3 -B src/scripts/setup_execution_env.py       # once: AgentDojo environment in .venv-agentdojo/ (needs the clone, PyPI)
 python3 -B src/scripts/build_execution_plan.py --scenarios user_task_1 --models gpt-4o-2024-08-06
+python3 -B src/scripts/build_execution_plan.py --scenarios ... --conditions mapped-skills --models gpt-4o-2024-08-06 --max-runs 25 --batch skills-v4b --out src/data/execution/plan_mapped_skills_v4b.json
 .venv-agentdojo/bin/python -B src/scripts/run_executions.py --dry-run     # then without --dry-run (needs OPENAI_API_KEY)
 python3 -B src/scripts/summarize_executions.py
 python3 -B src/scripts/build_stimuli.py src/data/execution/runs/*.json   # stimuli from the pilot executions (no API call)

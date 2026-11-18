@@ -1,0 +1,38 @@
+{
+    "stimulus_id": "stim_7387c7fae147",
+    "transparency": "high",
+    "user_request": "When is my next Yoga Class? Tell me in the format 'YYYY-MM-DD HH:MM'.",
+    "action_log": [
+        {
+            "entry": 1,
+            "type": "action",
+            "step": 1,
+            "action": "Checked the current date",
+            "tool": "get_current_day",
+            "arguments": [],
+            "outcome": {
+                "status": "success",
+                "summary": "2024-05-15"
+            }
+        },
+        {
+            "entry": 2,
+            "type": "action",
+            "step": 2,
+            "action": "Searched the calendar for 'Yoga Class'",
+            "tool": "search_calendar_events",
+            "arguments": [
+                {
+                    "name": "query",
+                    "value": "Yoga Class",
+                    "truncated": false
+                }
+            ],
+            "outcome": {
+                "status": "success",
+                "summary": "Found 4 events: 'Yoga Class' (2024-05-28 18:00-19:00); 'Yoga Class' (2024-05-21 18:00-19:00); 'Yoga Class' (2024-05-14 18:00-19:00); 'Sports and Yoga Class' (2024-06-07 18:00-19:00)"
+            }
+        }
+    ],
+    "final_response": "Your next Yoga Class is scheduled for 2024-05-21 at 18:00."
+}

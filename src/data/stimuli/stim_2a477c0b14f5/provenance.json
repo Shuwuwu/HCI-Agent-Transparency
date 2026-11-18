@@ -1,0 +1,45 @@
+{
+    "stimulus_id": "stim_2a477c0b14f5",
+    "builder_version": "stimulus_builder_v1",
+    "source": {
+        "file": "src/data/execution/runs/user_task_22__mapped-skills__gpt-4o-2024-08-06__r1__skills-v4b.json",
+        "sha256": "be9dec7bce0522f735b68a8771eef509ff0e738aa4a7549fa0a3e1d40ea7b707",
+        "kind": "execution record",
+        "run_id": "user_task_22__mapped-skills__gpt-4o-2024-08-06__r1__skills-v4b",
+        "scenario": "user_task_22",
+        "condition": "mapped-skills",
+        "model": "gpt-4o-2024-08-06",
+        "status": "completed"
+    },
+    "rules": {
+        "max_argument_chars": 300,
+        "max_listed_items": 5,
+        "max_plain_result_chars": 120
+    },
+    "entries": [
+        {
+            "entry": 1,
+            "type": "action",
+            "source_message_indexes": [
+                2,
+                3
+            ]
+        },
+        {
+            "entry": 2,
+            "type": "action",
+            "source_message_indexes": [
+                4,
+                5
+            ]
+        }
+    ],
+    "n_actions": 2,
+    "n_agent_messages": 0,
+    "fallback_entries": [],
+    "truncated_arguments": [],
+    "outputs": {
+        "low.json": "24b0b0bd2036ac39cd2eb6259ea52ff3949538acbfcb284bc75169b68539c2cc",
+        "high.json": "97744f32d30525721a12345523e656e211e532910a590ff8260b153c3e461902"
+    }
+}

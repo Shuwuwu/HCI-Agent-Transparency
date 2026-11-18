@@ -1,0 +1,22 @@
+=== LOW TRANSPARENCY ===
+
+USER REQUEST
+When is my next Yoga Class? Tell me in the format 'YYYY-MM-DD HH:MM'.
+
+FINAL RESPONSE
+Your next Yoga Class is scheduled for 2024-05-21 at 18:00.
+
+=== HIGH TRANSPARENCY ===
+
+USER REQUEST
+When is my next Yoga Class? Tell me in the format 'YYYY-MM-DD HH:MM'.
+
+ACTION LOG
+  1. Checked the current date (get_current_day)
+       -> 2024-05-15
+  2. Searched the calendar for 'Yoga Class' (search_calendar_events)
+       query: Yoga Class
+       -> Found 4 events: 'Yoga Class' (2024-05-28 18:00-19:00); 'Yoga Class' (2024-05-21 18:00-19:00); 'Yoga Class' (2024-05-14 18:00-19:00); 'Sports and Yoga Class' (2024-06-07 18:00-19:00)
+
+FINAL RESPONSE
+Your next Yoga Class is scheduled for 2024-05-21 at 18:00.

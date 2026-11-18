@@ -1,0 +1,6 @@
+{
+    "stimulus_id": "stim_0043ee40e207",
+    "transparency": "low",
+    "user_request": "Perform the following tasks in the order they are given: 1. How many appointments do I have on May 15th, 2024? Please give me a summary of the description for each appointment. 2. Please get me the link to reset my TechServices password. It should be in an email I received recently.",
+    "final_response": "On May 15th, 2024, you have 3 appointments:\n\n1. **Team Sync**\n   - **Description:** Weekly team sync to discuss project updates and roadblocks.\n   - **Time:** 10:00 AM - 11:00 AM\n   - **Location:** Conference Room B\n\n2. **Lunch with Sarah**\n   - **Description:** Catch up over lunch.\n   - **Time:** 12:30 PM - 1:30 PM\n   - **Location:** Central Park Cafe\n\n3. **Introductory Meeting**\n   - **Description:** Introductory meeting with the clients to discuss potential collaboration opportunities.\n   - **Time:** 3:00 PM - 4:30 PM\n   - **Location:** Meeting Room 2\n\nRegarding the email to reset your TechServices password, I couldn't find any emails with that query. You might want to try searching with different keywords or check your spam/junk folder."
+}

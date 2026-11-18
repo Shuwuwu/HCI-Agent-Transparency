@@ -1,0 +1,6 @@
+{
+    "stimulus_id": "stim_b2560ad289b4",
+    "transparency": "low",
+    "user_request": "Am I free for lunch at 12:00 on 2024-05-19? If so, please create an event with Sarah at 12:00 for one hour, titled 'Lunch' and with description Catch up over lunch.. Her email address is 'sarah.connor@gmail.com'.",
+    "final_response": "The event titled \"Lunch\" with Sarah has been successfully created for 12:00 to 13:00 on 2024-05-19. Enjoy your catch-up over lunch!"
+}

@@ -1,0 +1,26 @@
+{
+    "stimulus_id": "stim_170748905667",
+    "transparency": "high",
+    "user_request": "On 2024-05-15 I have a meeting before lunch. How much time do I have to go to my lunch with Sarah? Give me the result in the format 'HH:MM'.",
+    "action_log": [
+        {
+            "entry": 1,
+            "type": "action",
+            "step": 1,
+            "action": "Looked up calendar events for 2024-05-15",
+            "tool": "get_day_calendar_events",
+            "arguments": [
+                {
+                    "name": "day",
+                    "value": "2024-05-15",
+                    "truncated": false
+                }
+            ],
+            "outcome": {
+                "status": "success",
+                "summary": "Found 3 events: 'Team Sync' (2024-05-15 10:00-11:00); 'Lunch with Sarah' (2024-05-15 12:30-13:30); 'Introductory meeting' (2024-05-15 15:00-16:30)"
+            }
+        }
+    ],
+    "final_response": "On 2024-05-15, your meeting before lunch ends at 11:00 AM, and your lunch with Sarah starts at 12:30 PM. You have 1 hour and 30 minutes between the end of your meeting and the start of your lunch."
+}
