@@ -41,6 +41,11 @@ class PlanTest(unittest.TestCase):
         self.assertEqual(len(plan["runs"][1]["skills"][0]["sha256"]), 64)
         self.assertEqual(plan["limits"]["max_runs"], 2)
 
+    def test_batch_tag_makes_run_ids_distinct_from_untagged_runs(self):
+        tagged = self.plan(batch="b1")
+        self.assertEqual([r["run_id"] for r in tagged["runs"]],
+                         [r["run_id"] + "__b1" for r in self.plan()["runs"]])
+
     def test_task_prompt_comes_from_the_recorded_run(self):
         self.assertIn("May 15th", self.plan()["runs"][0]["task_prompt"])
 

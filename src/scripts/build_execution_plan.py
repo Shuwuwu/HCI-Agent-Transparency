@@ -23,7 +23,7 @@ Dependencies:
 
 Usage:
     python3 -B src/scripts/build_execution_plan.py --scenarios user_task_1 --models gpt-4o-2024-05-13
-        [--conditions no-skills mapped-skills] [--repetitions 1] [--max-runs 2] [--out PATH]
+        [--conditions no-skills mapped-skills] [--repetitions 1] [--max-runs 2] [--batch TAG] [--out PATH]
 """
 
 import argparse
@@ -62,8 +62,11 @@ def system_message(default_message: str, skills: list[tuple[str, str]]) -> str:
     return default_message if not block else default_message.rstrip("\n") + "\n\n" + block
 
 
-def run_id(scenario: str, condition: str, model: str, repetition: int) -> str:
-    return f"{scenario}__{condition}__{model}__r{repetition}"
+def run_id(scenario: str, condition: str, model: str, repetition: int, batch: str | None = None) -> str:
+    """`<scenario>__<condition>__<model>__r<repetition>`, plus `__<batch>` when a batch tag is given, so runs of a
+    later batch (new skill text) never collide with the records of an earlier one."""
+    base = f"{scenario}__{condition}__{model}__r{repetition}"
+    return f"{base}__{batch}" if batch else base
 
 
 def skill_entries(skill_ids: list[str], skills_dir: Path) -> list[dict]:
@@ -79,8 +82,8 @@ def skill_entries(skill_ids: list[str], skills_dir: Path) -> list[dict]:
 
 
 def build_plan(scenarios: list[str], conditions: list[str], models: list[str], repetitions: int,
-               max_runs: int, taxonomy: dict, skills_dir: Path = SKILLS_DIR) -> dict:
-    """Return the plan. Raises ValueError for an unknown scenario or condition, or when the runs exceed max_runs."""
+               max_runs: int, taxonomy: dict, skills_dir: Path = SKILLS_DIR, batch: str | None = None) -> dict:
+    """Return the plan (batch: optional tag appended to every run id). Raises ValueError for an unknown scenario or condition, or when the runs exceed max_runs."""
     unknown = [c for c in conditions if c not in CONDITIONS]
     if unknown:
         raise ValueError(f"unknown conditions {unknown}; choose from {list(CONDITIONS)}")
@@ -97,7 +100,7 @@ def build_plan(scenarios: list[str], conditions: list[str], models: list[str], r
                 for condition in conditions:
                     ids = taxonomy["scenario_map"][scenario]["skills"] if condition == "mapped-skills" else []
                     planned.append({
-                        "run_id": run_id(scenario, condition, model, repetition), "scenario": scenario,
+                        "run_id": run_id(scenario, condition, model, repetition, batch), "scenario": scenario,
                         "task_prompt": prompt, "condition": condition, "model": model, "repetition": repetition,
                         "skills": skill_entries(ids, skills_dir),
                     })
@@ -131,11 +134,12 @@ def main() -> None:
     parser.add_argument("--models", nargs="+", required=True)
     parser.add_argument("--repetitions", type=int, default=1)
     parser.add_argument("--max-runs", type=int, default=DEFAULT_MAX_RUNS)
+    parser.add_argument("--batch", help="tag appended to every run id (for example skills-v4b)")
     parser.add_argument("--out", type=Path, default=DEFAULT_PLAN)
     args = parser.parse_args()
     taxonomy = json.loads(TAXONOMY.read_text(encoding="utf-8"))
     try:
-        plan = build_plan(args.scenarios, args.conditions, args.models, args.repetitions, args.max_runs, taxonomy)
+        plan = build_plan(args.scenarios, args.conditions, args.models, args.repetitions, args.max_runs, taxonomy, batch=args.batch)
     except (ValueError, FileNotFoundError) as error:
         parser.error(str(error))
     write_plan(plan, args.out)
