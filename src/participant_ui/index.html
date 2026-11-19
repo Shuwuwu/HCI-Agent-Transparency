@@ -8,10 +8,24 @@
 </head>
 <body>
 <!-- Participant chat page. Data comes from /api/stimulus; see app.js. -->
-<header class="topbar"><span class="logo">✦</span> Workspace Assistant</header>
-<main id="chat" class="chat" aria-live="polite"></main>
-<footer class="composer"><input type="text" disabled placeholder="This is a recorded conversation" aria-label="Message input (disabled)"></footer>
+<header class="topbar">
+  <span class="topbar-title"><span class="logo">✦</span> Workspace Assistant</span>
+  <span class="topbar-buttons">
+    <button id="ws-toggle" class="panel-toggle" hidden aria-controls="workspace" aria-expanded="false">Workspace</button>
+  </span>
+</header>
+<div class="layout">
+  <div class="chat-col">
+    <main id="chat" class="chat" aria-live="polite"></main>
+    <footer class="composer"><input type="text" disabled placeholder="This is a recorded conversation" aria-label="Message input (disabled)"></footer>
+  </div>
+  <aside id="workspace" class="workspace" aria-label="Workspace (read-only)"></aside>
+</div>
 <script src="/static/markdown.js"></script>
+<script src="/static/previews.js"></script>
+<script src="/static/interaction.js"></script>
+<script src="/static/workspace.js"></script>
+<script src="/static/skills.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>

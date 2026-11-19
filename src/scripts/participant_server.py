@@ -13,21 +13,36 @@ Inputs:
     <stimulus folder>/provenance.json and the execution record it points to
     (src/data/execution/runs/<run_id>.json) are read ONLY to decide eligibility
     (see is_eligible); nothing from them is sent to the browser.
+    src/data/workspace/<stimulus folder>/workspace.json (written by
+    build_workspace_snapshots.py): only its "before" state is ever served; the
+    "after" state stays in the file for researcher verification. Its sibling
+    provenance.json is never opened.
+    The execution record of the stimulus (its "skills" list, with file paths and
+    SHA-256) and src/data/skills/<skill>/SKILL.md: the skill documentation the
+    agent was given, served only on request and only if the file still matches
+    the recorded hash.
     Static front-end files in src/participant_ui/ (index.html, app.js, style.css,
-    markdown.js).
+    markdown.js, previews.js, workspace.js, skills.js, interaction.js).
 
 Outputs:
     A local HTTP server (default http://127.0.0.1:8765). Routes:
         /                                  landing page linking both conditions
         /chat?s=<folder>&c=low|high   the chatbot page
         /api/stimulus?s=<folder>&c=low|high   sanitized JSON for that condition
+        /api/workspace?s=<folder>          read-only workspace BEFORE the agent ran (same for
+                                           both conditions: no condition parameter)
+        /api/skills?s=<folder>             the agent's skills for this task: id, name, description
+        /api/skill?s=<folder>&k=<skill>    one skill's documentation (Markdown), on request
+        POST /api/log                      one interaction event (see interaction_log.py); written
+                                           to the separate log folder, never read back by a route
         /static/<file>                     whitelisted front-end files
 
 Dependencies:
-    Python standard library only. Reads the files produced by build_stimuli.py.
+    Python standard library only. Reads the files produced by build_stimuli.py. interaction_log.py (event
+    validation and storage).
 
 Usage:
-    python3 src/scripts/participant_server.py [--port 8765] [--host 127.0.0.1]
+    python3 src/scripts/participant_server.py [--port 8765] [--host 127.0.0.1] [--log-dir PATH]
     Then open http://127.0.0.1:8765/chat?s=user_task_1__no_injection&c=high
 """
 
@@ -41,10 +56,22 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+import interaction_log as ilog
+
 ROOT = Path(__file__).resolve().parents[2]
 STIMULI_DIR = ROOT / "src" / "data" / "stimuli"
 UI_DIR = ROOT / "src" / "participant_ui"
-STATIC_FILES = {"app.js": "text/javascript", "style.css": "text/css", "markdown.js": "text/javascript"}
+WORKSPACE_DIR = ROOT / "src" / "data" / "workspace"
+STATIC_FILES = {"app.js": "text/javascript", "style.css": "text/css", "markdown.js": "text/javascript",
+                "previews.js": "text/javascript", "workspace.js": "text/javascript",
+                "skills.js": "text/javascript", "interaction.js": "text/javascript"}
+# Workspace fields a participant may receive (same list as build_workspace_snapshots.py).
+WORKSPACE_FIELDS = {
+    "emails": ("id_", "sender", "recipients", "cc", "bcc", "subject", "body", "status", "timestamp", "attachments"),
+    "events": ("id_", "title", "description", "start_time", "end_time", "location", "participants", "all_day",
+               "status"),
+    "files": ("id_", "filename", "content", "owner", "last_modified", "shared_with", "size"),
+}
 CONDITIONS = ("low", "high")
 STIMULUS_ID_RE = re.compile(r"^user_task_\d+__[a-z0-9_]+$")  # folder name, e.g. user_task_1__no_injection
 BATCH_SUFFIX = "__skills-v4b"  # run-id suffix of the latest mapped-skills batch
@@ -132,6 +159,85 @@ def participant_view(stimulus_id, condition, stimuli_dir=STIMULI_DIR):
     return view
 
 
+def participant_workspace(stimulus_id, stimuli_dir=STIMULI_DIR, workspace_dir=WORKSPACE_DIR):
+    """Return the read-only workspace as it was BEFORE the agent ran, for an eligible stimulus.
+
+    The result has "account" (email, current_day) and "state" with "emails", "events" and "files", reduced to
+    WORKSPACE_FIELDS. The state after the execution is never returned (it would show what the agent changed).
+    It is the same for the low and the high condition: there is no condition argument. Raises ValueError for an
+    invalid id and FileNotFoundError when the stimulus is not eligible or has no workspace snapshot yet.
+    """
+    if not STIMULUS_ID_RE.match(stimulus_id or ""):
+        raise ValueError("invalid stimulus id")
+    path = Path(workspace_dir) / stimulus_id / "workspace.json"
+    if not is_eligible(stimulus_id, stimuli_dir) or not path.is_file():
+        raise FileNotFoundError(stimulus_id)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    state = data["before"]
+    return {"account": {"email": data["account"]["email"], "current_day": data["account"]["current_day"]},
+            "state": {kind: [{f: item[f] for f in fields} for item in state[kind]]
+                      for kind, fields in WORKSPACE_FIELDS.items()}}
+
+
+def _split_front_matter(text):
+    """Split a SKILL.md into ({"name", "description"}, markdown body); the front matter is `key: value` lines."""
+    meta, body = {}, text
+    if text.startswith("---\n"):
+        end = text.find("\n---", 4)
+        if end > 0:
+            for line in text[4:end].splitlines():
+                key, _, value = line.partition(":")
+                meta[key.strip()] = value.strip()
+            body = text[end + 4:].lstrip("\n")
+    return meta, body
+
+
+def _skill_entries(stimulus_id, stimuli_dir):
+    """The skills of the execution record behind an eligible stimulus: [{"id", "file", "sha256"}]."""
+    if not STIMULUS_ID_RE.match(stimulus_id or ""):
+        raise ValueError("invalid stimulus id")
+    if not is_eligible(stimulus_id, stimuli_dir):
+        raise FileNotFoundError(stimulus_id)
+    prov = json.loads((Path(stimuli_dir) / stimulus_id / "provenance.json").read_text(encoding="utf-8"))
+    record = json.loads((ROOT / prov["source"]["file"]).read_text(encoding="utf-8"))
+    return record["skills"]
+
+
+def participant_skills(stimulus_id, stimuli_dir=STIMULI_DIR):
+    """The skills the agent had for this stimulus, as [{"id", "name", "description"}] (no documentation text).
+
+    Same for both conditions. Raises ValueError / FileNotFoundError as participant_view does.
+    """
+    out = []
+    for entry in _skill_entries(stimulus_id, stimuli_dir):
+        meta, _ = _split_front_matter(skill_text(entry))
+        out.append({"id": entry["id"], "name": meta.get("name", entry["id"]), "description": meta.get("description", "")})
+    return out
+
+
+def skill_text(entry):
+    """Text of a skill file, only if it still matches the SHA-256 the execution recorded (else FileNotFoundError)."""
+    path = ROOT / entry["file"]
+    raw = path.read_bytes()
+    if hashlib.sha256(raw).hexdigest() != entry["sha256"]:
+        raise FileNotFoundError(entry["id"])
+    return raw.decode("utf-8")
+
+
+def participant_skill(stimulus_id, skill_id, stimuli_dir=STIMULI_DIR):
+    """One skill's documentation: {"id", "name", "description", "markdown"}.
+
+    Only skills of this stimulus's execution can be requested. Raises ValueError for an invalid id and
+    FileNotFoundError for an unknown stimulus, a skill the agent did not have, or a file that changed.
+    """
+    for entry in _skill_entries(stimulus_id, stimuli_dir):
+        if entry["id"] == skill_id:
+            meta, body = _split_front_matter(skill_text(entry))
+            return {"id": skill_id, "name": meta.get("name", skill_id), "description": meta.get("description", ""),
+                    "markdown": body}
+    raise FileNotFoundError(skill_id)
+
+
 def list_stimulus_ids(stimuli_dir=STIMULI_DIR):
     """Return eligible stimulus ids that have both condition files, default one first."""
     ids = sorted(p.name for p in Path(stimuli_dir).iterdir()
@@ -150,7 +256,9 @@ def landing_page():
 
 
 class Handler(BaseHTTPRequestHandler):
-    """Routes GET requests; everything else is rejected."""
+    """Routes GET requests and POST /api/log; everything else is rejected."""
+
+    log_dir = ilog.DEFAULT_LOG_DIR
 
     def _send(self, status, body, ctype):
         data = body.encode("utf-8") if isinstance(body, str) else body
@@ -176,10 +284,43 @@ class Handler(BaseHTTPRequestHandler):
             except FileNotFoundError:
                 return self._send(404, json.dumps({"error": "not found"}), "application/json")
             return self._send(200, json.dumps(view), "application/json")
+        if url.path == "/api/workspace":
+            try:
+                view = participant_workspace(q.get("s", ""))
+            except ValueError as e:
+                return self._send(400, json.dumps({"error": str(e)}), "application/json")
+            except FileNotFoundError:
+                return self._send(404, json.dumps({"error": "not found"}), "application/json")
+            return self._send(200, json.dumps(view), "application/json")
+        if url.path in ("/api/skills", "/api/skill"):
+            try:
+                if url.path == "/api/skills":
+                    view = participant_skills(q.get("s", ""))
+                else:
+                    view = participant_skill(q.get("s", ""), q.get("k", ""))
+            except ValueError as e:
+                return self._send(400, json.dumps({"error": str(e)}), "application/json")
+            except (FileNotFoundError, KeyError):
+                return self._send(404, json.dumps({"error": "not found"}), "application/json")
+            return self._send(200, json.dumps(view), "application/json")
         if url.path.startswith("/static/") and url.path[len("/static/"):] in STATIC_FILES:
             name = url.path[len("/static/"):]
             return self._send(200, (UI_DIR / name).read_bytes(), STATIC_FILES[name])
         return self._send(404, "not found", "text/plain")
+
+    def do_POST(self):
+        if urlparse(self.path).path != "/api/log":
+            return self._send(404, "not found", "text/plain")
+        length = int(self.headers.get("Content-Length") or 0)
+        if length > ilog.MAX_EVENT_BYTES:
+            return self._send(413, json.dumps({"error": "too large"}), "application/json")
+        try:
+            ilog.append_event(json.loads(self.rfile.read(length) or b"null"), self.log_dir)
+        except (ilog.LogError, ValueError) as e:
+            return self._send(400, json.dumps({"error": str(e)}), "application/json")
+        self.send_response(204)  # nothing is sent back: the log is write-only for the browser
+        self.send_header("Content-Length", "0")
+        self.end_headers()
 
     def log_message(self, fmt, *args):
         sys.stderr.write("[participant] " + (fmt % args) + "\n")
@@ -189,7 +330,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument("--log-dir", type=Path, default=ilog.DEFAULT_LOG_DIR)
     args = parser.parse_args()
+    Handler.log_dir = args.log_dir
     server = ThreadingHTTPServer((args.host, args.port), Handler)
     print(f"Serving on http://{args.host}:{args.port}/ (Ctrl+C to stop)")
     try:
