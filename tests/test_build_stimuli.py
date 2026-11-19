@@ -179,7 +179,7 @@ class StructureTest(unittest.TestCase):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         path = Path(tmp.name) / "trace.json"
-        path.write_text(json.dumps({"messages": messages, "user_task_id": "t"}), encoding="utf-8")
+        path.write_text(json.dumps({"messages": messages, "user_task_id": "user_task_99"}), encoding="utf-8")
         return path
 
     def test_parallel_calls_keep_their_order_and_pair_with_their_results(self):
@@ -223,11 +223,47 @@ class StructureTest(unittest.TestCase):
                 bs.build_stimulus(path)
 
 
+ACTIVE_SAMPLE = [ROOT / "src/data/execution/runs/user_task_1__mapped-skills__gpt-4o-2024-08-06__r1__skills-v4b.json",
+                 ROOT / "src/data/execution/runs/user_task_13__mapped-skills__gpt-4o-2024-08-06__r1__skills-v4b.json"]
+ATTACKED = ROOT / "src/data/gpt-4o-2024-05-13/workspace/user_task_1/important_instructions/injection_task_0.json"
+
+
+class FolderNameTest(unittest.TestCase):
+    def test_no_attack_runs_are_named_user_task_n_no_injection(self):
+        for path in ACTIVE_SAMPLE + PILOT + SCENARIO_TRACES[:2]:
+            built = bs.build_stimulus(path)
+            self.assertEqual(built["folder"], built["provenance"]["source"]["scenario"] + "__no_injection")
+            self.assertEqual(built["provenance"]["stimulus_folder"], built["folder"])
+            self.assertRegex(built["folder"], r"^user_task_\d+__no_injection$")
+
+    def test_an_attacked_run_gets_its_own_folder_name(self):
+        built = bs.build_stimulus(ATTACKED)
+        self.assertEqual(built["folder"], "user_task_1__important_instructions_injection_task_0")
+
+    def test_same_task_different_executions_would_collide_by_name_but_not_by_id(self):
+        first, second = bs.build_stimulus(PILOT[0]), bs.build_stimulus(PILOT[1])
+        self.assertEqual(first["folder"], second["folder"])
+        self.assertNotEqual(first["id"], second["id"])
+
+    def test_a_folder_holding_another_stimulus_is_never_overwritten(self):
+        with tempfile.TemporaryDirectory() as out:
+            folder = bs.write_stimulus(bs.build_stimulus(PILOT[0]), Path(out))
+            before = {p.name: p.read_bytes() for p in folder.iterdir()}
+            with self.assertRaises(bs.StimulusError):
+                bs.write_stimulus(bs.build_stimulus(PILOT[1]), Path(out))
+            self.assertEqual(before, {p.name: p.read_bytes() for p in folder.iterdir()})
+            bs.write_stimulus(bs.build_stimulus(PILOT[0]), Path(out))  # rebuilding the same stimulus is fine
+
+    def test_unnamed_scenario_is_rejected(self):
+        with self.assertRaises(bs.StimulusError):
+            bs.stimulus_folder_name({"scenario": None})
+
+
 class OutputTest(unittest.TestCase):
     def test_output_is_deterministic_and_complete(self):
         with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as b:
             for out in (a, b):
-                for path in PILOT:
+                for path in ACTIVE_SAMPLE:  # two different tasks, so two different folders
                     bs.write_stimulus(bs.build_stimulus(path), Path(out))
             files = sorted(p.relative_to(a) for p in Path(a).rglob("*") if p.is_file())
             self.assertEqual(len(files), 8)
@@ -247,16 +283,24 @@ class OutputTest(unittest.TestCase):
     def test_sources_are_never_modified(self):
         before = {p: hashlib.sha256(p.read_bytes()).hexdigest() for p in PILOT + SCENARIO_TRACES[:3]}
         with tempfile.TemporaryDirectory() as out:
-            for path in before:
-                bs.write_stimulus(bs.build_stimulus(path), Path(out))
+            for path in before:  # separate folders: the pilot runs and the traces of task 1 share one name
+                bs.write_stimulus(bs.build_stimulus(path), Path(out) / path.name)
         self.assertEqual(before, {p: hashlib.sha256(p.read_bytes()).hexdigest() for p in before})
 
-    def test_committed_pilot_stimuli_match_a_fresh_build(self):
-        for path in PILOT:
-            built = bs.build_stimulus(path)
-            folder = ROOT / "src" / "data" / "stimuli" / built["id"]
+    def test_committed_stimuli_match_a_fresh_build(self):
+        committed = sorted(p.name for p in (ROOT / "src" / "data" / "stimuli").iterdir() if p.is_dir())
+        sources = sorted((ROOT / "src" / "data" / "execution" / "runs").glob("*__skills-v4b.json"))
+        self.assertEqual(len(committed), 20)
+        for folder_name in committed:
+            provenance = json.loads((ROOT / "src/data/stimuli" / folder_name / "provenance.json").read_text("utf-8"))
+            built = bs.build_stimulus(ROOT / provenance["source"]["file"])
+            self.assertEqual(built["folder"], folder_name)
+            self.assertEqual(provenance["stimulus_id"], built["id"])  # the original id is kept for traceability
+            self.assertEqual(provenance["stimulus_folder"], folder_name)
             for name in ("low", "high"):
-                self.assertEqual(json.loads((folder / f"{name}.json").read_text(encoding="utf-8")), built[name])
+                on_disk = json.loads((ROOT / "src/data/stimuli" / folder_name / f"{name}.json").read_text("utf-8"))
+                self.assertEqual(on_disk, built[name])
+            self.assertIn(ROOT / provenance["source"]["file"], sources)
 
     def test_preview_shows_every_log_entry(self):
         built = bs.build_stimulus(PILOT[0])

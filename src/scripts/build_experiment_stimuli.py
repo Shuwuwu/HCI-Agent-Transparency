@@ -1,8 +1,9 @@
 """
 Purpose:
     Create the folder of experiment stimuli: one sub-folder per safe-candidate user task, holding the task's
-    metadata, its original no-attack execution trace, the list of capability skills the task uses, and an empty
-    placeholder for the participant-facing action log that still has to be designed.
+    metadata, its original no-attack execution trace, and the list of capability skills the task uses. (The
+    participant-facing action log is no longer a placeholder here: it is built per execution into
+    src/data/stimuli/ by build_stimuli.py.)
 
 Inputs:
     src/data/gpt4o_workspace_scenarios.json (written by extract_scenarios.py): the tasks flagged
@@ -20,9 +21,9 @@ Outputs:
         skills.json                      {"taxonomy_version", "skills": [skill ids]} from the scenario map. The
                                          skills themselves live in src/data/skills/ (once generated), shared by
                                          all tasks; they are not copied into the task folders.
-        action_log.json                  EMPTY placeholder: the participant-facing log is still to be designed.
-    metadata.json, the trace and skills.json are derived data and are rewritten on every run. The placeholder is
-    only created when missing, so work done in it later is never overwritten by re-running this script.
+    All three files are derived data and are rewritten on every run. (Earlier versions also created an empty
+    action_log.json placeholder in each folder; it was superseded by src/data/stimuli/ and removed, see
+    archive/README.md.)
 
 Dependencies:
     agentdojo_runs.py (location of the run files), extract_scenarios.py's output file, skill_taxonomy.json.
@@ -44,8 +45,6 @@ DEFAULT_TAXONOMY = runs.REPO_ROOT / "src" / "data" / "skill_taxonomy.json"
 METADATA_FILENAME = "metadata.json"
 TRACE_FILENAME = "no_attack_execution_trace.json"
 SKILLS_FILENAME = "skills.json"
-# Created empty, never overwritten (see module docstring).
-PLACEHOLDER_FILENAMES = ("action_log.json",)
 
 
 def safe_scenarios(scenarios_path: Path) -> list[dict]:
@@ -67,12 +66,8 @@ def scenario_skills(taxonomy: dict, user_task_id: str) -> dict:
     return {"taxonomy_version": taxonomy["version"], "skills": list(entry["skills"])}
 
 
-def build_task_folder(scenario: dict, out_dir: Path, taxonomy: dict) -> list[Path]:
-    """Write one task's folder and return the placeholder files that were newly created.
-
-    metadata.json, the trace and skills.json are always (re)written from their sources; a placeholder is created
-    only if it does not exist yet, so a file that has since been filled in is left alone.
-    """
+def build_task_folder(scenario: dict, out_dir: Path, taxonomy: dict) -> None:
+    """Write one task's folder; metadata.json, the trace and skills.json are always (re)written from their sources."""
     task_id = scenario["user_task_id"]
     folder = out_dir / task_id
     folder.mkdir(parents=True, exist_ok=True)
@@ -86,24 +81,15 @@ def build_task_folder(scenario: dict, out_dir: Path, taxonomy: dict) -> list[Pat
         json.dumps(scenario_skills(taxonomy, task_id), indent=4, ensure_ascii=False) + "\n", encoding="utf-8"
     )
 
-    created = []
-    for filename in PLACEHOLDER_FILENAMES:
-        placeholder = folder / filename
-        if not placeholder.exists():
-            placeholder.write_bytes(b"")
-            created.append(placeholder)
-    return created
-
 
 def build_all(scenarios_path: Path = DEFAULT_SCENARIOS, out_dir: Path = DEFAULT_OUT_DIR,
-              taxonomy_path: Path = DEFAULT_TAXONOMY) -> tuple[list[dict], list[Path]]:
-    """Build the folder for every safe-candidate task. Returns (scenarios used, placeholders newly created)."""
+              taxonomy_path: Path = DEFAULT_TAXONOMY) -> list[dict]:
+    """Build the folder for every safe-candidate task. Returns the scenarios used."""
     taxonomy = json.loads(taxonomy_path.read_text(encoding="utf-8"))
     scenarios = safe_scenarios(scenarios_path)
-    created = []
     for scenario in scenarios:
-        created += build_task_folder(scenario, out_dir, taxonomy)
-    return scenarios, created
+        build_task_folder(scenario, out_dir, taxonomy)
+    return scenarios
 
 
 def main() -> None:
@@ -113,8 +99,8 @@ def main() -> None:
     parser.add_argument("--taxonomy", type=Path, default=DEFAULT_TAXONOMY)
     args = parser.parse_args()
 
-    scenarios, created = build_all(args.scenarios, args.out_dir, args.taxonomy)
-    print(f"Wrote {len(scenarios)} task folders to {args.out_dir} ({len(created)} empty placeholder files created)")
+    scenarios = build_all(args.scenarios, args.out_dir, args.taxonomy)
+    print(f"Wrote {len(scenarios)} task folders to {args.out_dir}")
 
 
 if __name__ == "__main__":

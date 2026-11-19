@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Workspace Assistant</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<!-- Participant chat page. Data comes from /api/stimulus; see app.js. -->
+<header class="topbar"><span class="logo">✦</span> Workspace Assistant</header>
+<main id="chat" class="chat" aria-live="polite"></main>
+<footer class="composer"><input type="text" disabled placeholder="This is a recorded conversation" aria-label="Message input (disabled)"></footer>
+<script src="/static/markdown.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>

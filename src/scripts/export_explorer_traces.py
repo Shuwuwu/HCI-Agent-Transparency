@@ -14,9 +14,9 @@ Purpose:
 
 Inputs:
     One or more sources: AgentDojo run records (src/data/execution/runs/*.json) or raw AgentDojo traces
-    (src/data/gpt-4o-2024-05-13/workspace/...). For each source the stimulus folder src/data/stimuli/<id>/ built by
+    (src/data/gpt-4o-2024-05-13/workspace/...). For each source the stimulus folder src/data/stimuli/user_task_<N>__<variant>/ built by
     build_stimuli.py must already exist (the script stops and names the command if it does not, or if the folder was
-    built from a different version of the source file).
+    built from a different version of the source file or from a different execution of the same task).
 
 Outputs:
     <out-dir>/hci-stimuli-poc.jsonl  Explorer dataset: a metadata line, then one trace per source.
@@ -135,14 +135,16 @@ def load_stimulus(source_path: Path, stimuli_dir: Path) -> tuple[dict, dict, dic
     """Return (loaded source, high.json, provenance.json) of the stimulus built from this source file."""
     loaded = bs.load_source(source_path)
     sid = bs.stimulus_id(loaded["source"]["sha256"])
-    folder = stimuli_dir / sid
+    name = bs.stimulus_folder_name(loaded["source"])
+    folder = stimuli_dir / name
     if not (folder / "high.json").exists():
-        raise ExportError(f"no stimulus {sid} for {source_path.name}; build it first with: "
+        raise ExportError(f"no stimulus {name} for {source_path.name}; build it first with: "
                           f"python3 -B src/scripts/build_stimuli.py {source_path}")
     high = json.loads((folder / "high.json").read_text(encoding="utf-8"))
     provenance = json.loads((folder / "provenance.json").read_text(encoding="utf-8"))
-    if provenance["source"]["sha256"] != loaded["source"]["sha256"]:
-        raise ExportError(f"stimulus {sid} was built from a different version of {source_path.name}")
+    if provenance["stimulus_id"] != sid or provenance["source"]["sha256"] != loaded["source"]["sha256"]:
+        # Same folder name, different source: another run of the task, or an edited version of this file.
+        raise ExportError(f"{name} was built from a different execution or version than {source_path.name}")
     return loaded, high, provenance
 
 

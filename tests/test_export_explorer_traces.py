@@ -14,10 +14,12 @@ import agentdojo_runs as runs  # noqa: E402
 import build_stimuli as bs  # noqa: E402
 import export_explorer_traces as ex  # noqa: E402
 
-PILOTS = [ROOT / "src/data/execution/runs/user_task_1__no-skills__gpt-4o-2024-08-06__r1.json",
-          ROOT / "src/data/execution/runs/user_task_1__mapped-skills__gpt-4o-2024-08-06__r1.json"]
+# Two active (v4b) runs, one of them with failed tool calls, and one attacked recorded run. The stimuli are built into
+# a temporary folder (the attacked one is not an active stimulus); a separate test checks the committed ones.
+ACTIVE = [ROOT / "src/data/execution/runs/user_task_1__mapped-skills__gpt-4o-2024-08-06__r1__skills-v4b.json",
+          ROOT / "src/data/execution/runs/user_task_13__mapped-skills__gpt-4o-2024-08-06__r1__skills-v4b.json"]
 ATTACKED = ROOT / "src/data/gpt-4o-2024-05-13/workspace/user_task_1/important_instructions/injection_task_0.json"
-SOURCES = PILOTS + [ATTACKED]
+SOURCES = ACTIVE + [ATTACKED]
 
 
 def explorer_message_problems(message: dict) -> list[str]:
@@ -60,7 +62,15 @@ def sha(path: Path) -> str:
 class ExportTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.built = {p.name: ex.build_trace(p, bs.DEFAULT_OUT_DIR) for p in SOURCES}
+        cls._tmp = tempfile.TemporaryDirectory()
+        cls.stimuli_dir = Path(cls._tmp.name)
+        for p in SOURCES:
+            bs.write_stimulus(bs.build_stimulus(p), cls.stimuli_dir)
+        cls.built = {p.name: ex.build_trace(p, cls.stimuli_dir) for p in SOURCES}
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmp.cleanup()
 
     def test_messages_satisfy_explorer_schema(self):
         for name, built in self.built.items():
@@ -133,11 +143,19 @@ class ExportTests(unittest.TestCase):
         self.assertFalse(any(a["truncated"] for a in sends[0]["arguments"]))
         self.assertTrue(any(f"log entry {sends[0]['entry']}" in a["content"] for a in built["line"]["annotations"]))
 
-    def test_pilot_stimuli_are_the_committed_ones(self):
-        for path in PILOTS:
+    def test_active_stimuli_are_the_committed_ones(self):
+        for path in ACTIVE:
             built = self.built[path.name]
-            on_disk = json.loads((bs.DEFAULT_OUT_DIR / built["high"]["stimulus_id"] / "high.json").read_text("utf-8"))
-            self.assertEqual(built["high"], on_disk)
+            # also proves the exporter finds the committed stimulus by its user_task_<N>__no_injection folder name
+            committed = ex.load_stimulus(path, bs.DEFAULT_OUT_DIR)[1]
+            self.assertEqual(built["high"], committed)
+            self.assertTrue((bs.DEFAULT_OUT_DIR / f"{built['provenance']['source']['scenario']}__no_injection").is_dir())
+
+    def test_other_run_of_the_same_task_is_not_mistaken_for_the_stimulus(self):
+        pilot = ROOT / "src/data/execution/runs/user_task_1__no-skills__gpt-4o-2024-08-06__r1.json"
+        with self.assertRaises(ex.ExportError) as caught:
+            ex.load_stimulus(pilot, bs.DEFAULT_OUT_DIR)  # same folder name as the active user_task_1 stimulus
+        self.assertIn("different execution", str(caught.exception))
 
     def test_jsonl_format_matches_explorer_import_rules(self):
         text = ex.render_jsonl(list(self.built.values()))
@@ -151,8 +169,8 @@ class ExportTests(unittest.TestCase):
     def test_output_is_deterministic_and_sources_are_untouched(self):
         before = {p: sha(p) for p in SOURCES}
         with tempfile.TemporaryDirectory() as one, tempfile.TemporaryDirectory() as two:
-            ex.export(SOURCES, bs.DEFAULT_OUT_DIR, Path(one))
-            ex.export(SOURCES, bs.DEFAULT_OUT_DIR, Path(two))
+            ex.export(SOURCES, self.stimuli_dir, Path(one))
+            ex.export(SOURCES, self.stimuli_dir, Path(two))
             for name in (ex.DATASET_FILE, ex.REPORT_FILE):
                 self.assertEqual((Path(one) / name).read_bytes(), (Path(two) / name).read_bytes())
         self.assertEqual(before, {p: sha(p) for p in SOURCES})
@@ -166,7 +184,7 @@ class ExportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             built = bs.build_stimulus(ATTACKED)
             built["provenance"]["source"]["sha256"] = "0" * 64
-            folder = Path(tmp) / built["id"]
+            folder = Path(tmp) / built["folder"]
             folder.mkdir()
             (folder / "high.json").write_text(json.dumps(built["high"]), encoding="utf-8")
             (folder / "provenance.json").write_text(json.dumps(built["provenance"]), encoding="utf-8")

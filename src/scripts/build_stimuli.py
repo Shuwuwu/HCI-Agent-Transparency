@@ -18,27 +18,34 @@ Inputs:
     src/data/experiment/user_task_N/no_attack_execution_trace.json). They are only read, never changed.
 
 Outputs:
-    <out-dir>/<stimulus_id>/ for each execution (default src/data/stimuli/):
+    <out-dir>/<stimulus_folder>/ for each execution (default src/data/stimuli/), where the folder is named
+    user_task_<N>__<variant> (see stimulus_folder_name): variant "no_injection" for an execution without an attack,
+    "<attack>_<injection task>" for an attacked one. The name is the participant-viewer and Explorer key.
         low.json         participant-facing: {stimulus_id, transparency, user_request, final_response}.
         high.json        participant-facing: the same plus action_log.
         provenance.json  researcher-only: where the stimulus came from (file, SHA-256, run id, condition, attack
                          fields if the source has them), which source message each log entry comes from, rules and
                          limits used, summaries that fell back to generic text, truncated arguments, output hashes.
         preview.txt      both conditions as plain text, for reading and checking.
-    The stimulus id is opaque (a hash of the source file), so file names reveal nothing about the run. Output is
-    deterministic: the same source always gives byte-identical files.
+    The stimulus id (stim_<hash of the source file>) stays inside low.json, high.json and provenance.json, which
+    also records the folder name ("stimulus_folder"), so a stimulus can always be traced from either name.
+    Several executions of one task (a pilot run, a later batch) would map to the same folder name; the builder
+    never overwrites a folder that holds a different stimulus id, and stops with an error instead (also when two
+    sources given in one command collide). Output is deterministic: the same source always gives byte-identical
+    files.
 
 Dependencies:
     stimulus_text.py (wording rules), tool_result_parser.py, agentdojo_runs.py. Standard library only. No network.
 
 Usage:
     python3 -B src/scripts/build_stimuli.py SOURCE [SOURCE ...] [--out-dir PATH]
-    python3 -B src/scripts/build_stimuli.py src/data/execution/runs/*.json
+    python3 -B src/scripts/build_stimuli.py src/data/execution/runs/*__skills-v4b.json
 """
 
 import argparse
 import hashlib
 import json
+import re
 from pathlib import Path
 
 import stimulus_text as stx
@@ -112,6 +119,22 @@ def build_entries(messages: list[dict]) -> dict:
     return {"user_request": messages[users[0]]["content"], "final_response": last["content"], "entries": entries}
 
 
+def stimulus_folder_name(source: dict) -> str:
+    """Folder name user_task_<N>__<variant> for a loaded source's provenance facts (the "source" dict).
+
+    The variant is "no_injection" when the source has no attack (attack missing or "none"), otherwise
+    "<attack>_<injection task>" so an attacked run of the same task gets its own folder.
+    Raises StimulusError if the source has no user task id.
+    """
+    scenario = source.get("scenario")
+    if not scenario or not re.fullmatch(r"user_task_\d+", scenario):
+        raise StimulusError(f"cannot name a stimulus folder: scenario is {scenario!r}")
+    attack = source.get("attack")
+    if attack in (None, "none"):
+        return f"{scenario}__no_injection"
+    return f"{scenario}__{attack}_{source.get('injection_task') or 'unknown'}"
+
+
 def stimulus_id(source_sha256: str) -> str:
     return "stim_" + hashlib.sha256(("stimulus:" + source_sha256).encode()).hexdigest()[:12]
 
@@ -121,6 +144,7 @@ def build_stimulus(path: Path) -> dict:
     loaded = load_source(path)
     parts = build_entries(loaded["messages"])
     sid = stimulus_id(loaded["source"]["sha256"])
+    folder = stimulus_folder_name(loaded["source"])
     log = []
     for number, entry in enumerate(parts["entries"], start=1):
         shown = {"entry": number, **{k: v for k, v in entry.items() if not k.startswith("_")}}
@@ -130,7 +154,7 @@ def build_stimulus(path: Path) -> dict:
     high = {"stimulus_id": sid, "transparency": "high", "user_request": parts["user_request"],
             "action_log": log, "final_response": parts["final_response"]}
     provenance = {
-        "stimulus_id": sid, "builder_version": BUILDER_VERSION, "source": loaded["source"],
+        "stimulus_id": sid, "stimulus_folder": folder, "builder_version": BUILDER_VERSION, "source": loaded["source"],
         "rules": {"max_argument_chars": stx.MAX_ARGUMENT_CHARS, "max_listed_items": stx.MAX_LISTED,
                   "max_plain_result_chars": stx.MAX_PLAIN_RESULT_CHARS},
         "entries": [{"entry": i, "type": e["type"], "source_message_indexes": e["_from"]}
@@ -141,7 +165,7 @@ def build_stimulus(path: Path) -> dict:
         "truncated_arguments": [{"entry": i, "argument": a["name"]} for i, e in enumerate(parts["entries"], start=1)
                                 for a in e.get("arguments", []) if a["truncated"]],
     }
-    return {"id": sid, "low": low, "high": high, "provenance": provenance, "preview": render_preview(low, high)}
+    return {"id": sid, "folder": folder, "low": low, "high": high, "provenance": provenance, "preview": render_preview(low, high)}
 
 
 def render_text(stimulus: dict) -> str:
@@ -166,8 +190,17 @@ def render_preview(low: dict, high: dict) -> str:
 
 
 def write_stimulus(built: dict, out_dir: Path) -> Path:
-    """Write the four files of one stimulus into <out_dir>/<id>/ and return that folder."""
-    folder = out_dir / built["id"]
+    """Write the four files of one stimulus into <out_dir>/<folder name>/ and return that folder.
+
+    Raises StimulusError if that folder already holds a different stimulus (another stimulus id), so a second
+    execution of the same task can never silently replace the first. Rewriting the same stimulus is allowed.
+    """
+    folder = out_dir / built["folder"]
+    existing = folder / "provenance.json"
+    if existing.is_file():
+        held = json.loads(existing.read_text(encoding="utf-8")).get("stimulus_id")
+        if held != built["id"]:
+            raise StimulusError(f"{built['folder']} already holds {held}; refusing to overwrite it with {built['id']}")
     folder.mkdir(parents=True, exist_ok=True)
     texts = {name: json.dumps(built[name], indent=4, ensure_ascii=False) + "\n" for name in ("low", "high")}
     built["provenance"]["outputs"] = {f"{name}.json": hashlib.sha256(text.encode("utf-8")).hexdigest()
@@ -186,14 +219,17 @@ def main() -> None:
     parser.add_argument("--out-dir", type=Path, default=DEFAULT_OUT_DIR)
     args = parser.parse_args()
     failed = 0
+    claimed: dict[str, Path] = {}  # folder name -> the source that claimed it in this command
     for path in args.sources:
         try:
             built = build_stimulus(path)
+            if claimed.setdefault(built["folder"], path) != path:
+                raise StimulusError(f"{built['folder']} is also the folder of {claimed[built['folder']].name}")
+            folder = write_stimulus(built, args.out_dir)
         except StimulusError as error:
             failed += 1
             print(f"skipped {path}: {error}")
             continue
-        folder = write_stimulus(built, args.out_dir)
         p = built["provenance"]
         print(f"{path.name}: {folder.name}, {p['n_actions']} actions, {p['n_agent_messages']} agent messages, "
               f"{len(p['fallback_entries'])} fallback summaries")
