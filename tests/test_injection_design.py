@@ -38,6 +38,7 @@ class DesignTests(unittest.TestCase):
         self.assertEqual(set(design.EXCLUDED_OBJECTIVES), {"G0", "G5"})
         self.assertEqual(len(design.COMBINATIONS), 6)
         self.assertEqual(len(design.LEGACY_WORDINGS) * len(design.STRATEGIES), 4)
+        self.assertEqual((design.STUDY_STRATEGIES, design.STUDY_WORDINGS), (("II",), ("W2",)))  # the study plan
 
     def test_every_cell_renders_and_contains_the_goal(self):
         for obj, meta in design.OBJECTIVES.items():
@@ -89,9 +90,10 @@ class DesignTests(unittest.TestCase):
 
     def test_allocation_satisfies_the_constraints_and_is_deterministic(self):
         cands = candidates()
-        plan = design.allocate_items(cands, "seed")
-        self.assertEqual(plan, design.allocate_items(cands, "seed"))
-        self.assertNotEqual(plan, design.allocate_items(cands, "other seed"))
+        every = {"wordings": design.WORDINGS, "strategies": design.STRATEGIES}  # six combinations, not the study plan
+        plan = design.allocate_items(cands, "seed", **every)
+        self.assertEqual(plan, design.allocate_items(cands, "seed", **every))
+        self.assertNotEqual(plan, design.allocate_items(cands, "other seed", **every))
         for obj in design.OBJECTIVE_IDS:
             self.assertEqual(sum(p["objective"] == obj for p in plan.values()), 3)
         for combo in design.COMBINATIONS:
@@ -108,6 +110,14 @@ class DesignTests(unittest.TestCase):
                 groups.setdefault(key(p), []).append(area[scenario])
             for areas in groups.values():
                 self.assertEqual(len(areas), len(set(areas)))
+
+    def test_study_plan_allocation_is_ii_w2_with_balanced_objectives(self):
+        plan = design.allocate_items(candidates(), "seed")
+        self.assertEqual({(p["strategy"], p["wording"]) for p in plan.values()}, {("II", "W2")})
+        for obj in design.OBJECTIVE_IDS:
+            self.assertEqual(sum(p["objective"] == obj for p in plan.values()), 3)
+        with self.assertRaises(ValueError):
+            design.allocate_items(candidates(), "seed", strategies=("XX",))
 
     def test_allocation_respects_compatibility_and_reports_infeasibility(self):
         cands = candidates()
@@ -126,14 +136,20 @@ class DesignTests(unittest.TestCase):
             return {"objective": o, "strategy": s, "wording": w, "area": a, "identity_id": i}
         ok = [item("G1", "II", "W1", "a", None), item("G2", "II", "W2", "b", "id01"),
               item("G3", "TK", "W1", "c", "id02"), item("G4", "TK", "W2", "d", "id03")]
-        self.assertTrue(design.is_valid_unsafe_list(ok))
+        plan = {"wordings": design.LEGACY_WORDINGS, "strategies": design.STRATEGIES}  # four combinations in play
+        self.assertTrue(design.is_valid_unsafe_list(ok, **plan))
         for field, value in (("objective", "G1"), ("area", "a")):
             broken = copy.deepcopy(ok)
             broken[1][field] = value
-            self.assertFalse(design.is_valid_unsafe_list(broken), field)
+            self.assertFalse(design.is_valid_unsafe_list(broken, **plan), field)
         broken = copy.deepcopy(ok)
         broken[1]["strategy"], broken[1]["wording"] = "II", "W1"
-        self.assertFalse(design.is_valid_unsafe_list(broken))
+        self.assertFalse(design.is_valid_unsafe_list(broken, **plan))
+        study = [item("G1", "II", "W2", "a", None), item("G2", "II", "W2", "b", "id01"),
+                 item("G3", "II", "W2", "c", "id02"), item("G4", "II", "W2", "d", "id03")]
+        self.assertTrue(design.is_valid_unsafe_list(study))  # the study plan: one combination, trivially met
+        study[1]["area"] = "a"
+        self.assertFalse(design.is_valid_unsafe_list(study))  # the other rules still bind
 
     def test_compatibility_uses_resources_and_objects(self):
         self.assertEqual(design.compatible_objectives(set(), "How many appointments?"), ["G1", "G2", "G3", "G4"])

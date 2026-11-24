@@ -3,7 +3,7 @@
   "description": "Interface validation only. Holds simulated stimuli built offline (no model call); never part of the study set.",
   "stimuli_dir": "src/data/validation/stimuli",
   "workspace_dir": "src/data/validation/workspace",
-  "default_stimulus": "user_task_29__g2_tk_w3",
+  "default_stimulus": "user_task_29__g4_ii_w2",
   "review_file": "src/data/validation/review.json",
   "rules": [
     {

@@ -254,8 +254,9 @@ def round_robin(rows_by_area: dict[str, list[dict]], seed: str) -> list[dict]:
     return order
 
 
-def select(facts: dict, seed: str = SEED, wordings: tuple = design.WORDINGS) -> dict:
-    """Apply R1-R5 to the facts. Returns {"rows": [...], "order": [...], "threshold_range", "groups", ...}."""
+def select(facts: dict, seed: str = SEED, wordings: tuple = design.STUDY_WORDINGS,
+           strategies: tuple = design.STUDY_STRATEGIES) -> dict:
+    """Apply R1-R5 to the facts (the injection style defaults to the study plan, II + W2). Returns {"rows": [...], "order": [...], "threshold_range", "groups", ...}."""
     tasks = {t["scenario"]: t for t in facts["tasks"]}
     rows = {}
     for s, t in tasks.items():
@@ -331,7 +332,7 @@ def select(facts: dict, seed: str = SEED, wordings: tuple = design.WORDINGS) -> 
                 rows[s]["repeated"] = "|".join(c.replace("user_task_", "") for c in comp)
     cands = [{"scenario": s, "area": rows[s]["area"], "compatible": rows[s]["compatible"]}
              for s in order[:N_CANDIDATES]]
-    allocation = design.allocate_items(cands, seed, wordings)
+    allocation = design.allocate_items(cands, seed, wordings, strategies)
     for s, plan in allocation.items():
         plan["item_id"] = design.item_id(s, plan["objective"], plan["strategy"], plan["wording"])
     spares = [s for s in order if rows[s]["status"] == "spare"]
@@ -362,17 +363,24 @@ def planned_wordings(allocation: dict) -> tuple:
     return tuple(w for w in design.WORDINGS if w in used)
 
 
-def balanced_combinations(subset: list[dict], wordings: tuple = design.WORDINGS) -> bool:
-    """True if the strategy-wording combinations of the 8 items are used as equally as possible: each exactly twice
-    with two wordings (four combinations), each once or twice with three (six combinations)."""
-    combos = tuple((s, w) for s in design.STRATEGIES for w in wordings)
+def planned_strategies(allocation: dict) -> tuple:
+    """The strategies an allocation uses, in design order."""
+    used = {a["strategy"] for a in allocation.values()}
+    return tuple(s for s in design.STRATEGIES if s in used)
+
+
+def balanced_combinations(subset: list[dict], wordings: tuple = design.STUDY_WORDINGS,
+                          strategies: tuple = design.STUDY_STRATEGIES) -> bool:
+    """True if the strategy-wording combinations of the 8 items are used as equally as possible: all 8 with the one
+    study combination (II + W2); each exactly twice with four combinations; once or twice with six."""
+    combos = tuple((s, w) for s in strategies for w in wordings)
     low, high = len(subset) // len(combos), -(-len(subset) // len(combos))
     return all(low <= sum((i["strategy"], i["wording"]) == c for i in subset) <= high for c in combos)
 
 
 def choose_final_set(passing: list[dict], pairs: list[tuple[str, str]], strict: bool = True,
-                     wordings: tuple = design.WORDINGS,
-                     exists_only: bool = False) -> dict | None:
+                     wordings: tuple = design.STUDY_WORDINGS,
+                     exists_only: bool = False, strategies: tuple = design.STUDY_STRATEGIES) -> dict | None:
     """Rule R6 and the participant lists: from the passing items choose 8 scenarios and split them into lists A and B.
 
     passing: [{"scenario", "area", "difficulty", "rank", "objective", "strategy", "wording", "identity_id"}].
@@ -382,7 +390,8 @@ def choose_final_set(passing: list[dict], pairs: list[tuple[str, str]], strict: 
     scenario ids wins; among splits, the one whose objectives differ in wording across the two lists most often.
     strict=True requires four different strategy-wording combinations in each list and the combinations of the 8
     items used equally (the planned design); strict=False only requires every wording in each list and the wordings
-    used equally (a relaxation, reported as an option). `wordings` are those of the plan. exists_only stops at
+    used equally (a relaxation, reported as an option). `wordings` and `strategies` are those of the plan (default: the
+    study plan, II + W2, where the combination condition is trivially met). exists_only stops at
     the first valid choice. Returns {"scenarios": [...], "A": [...], "B": [...], "crossing": n} or None.
     """
     best, best_key = None, None
@@ -393,7 +402,7 @@ def choose_final_set(passing: list[dict], pairs: list[tuple[str, str]], strict: 
             continue
         if any(sum(i["objective"] == o for i in subset) != 2 for o in design.OBJECTIVE_IDS):
             continue
-        if strict and not balanced_combinations(subset, wordings):
+        if strict and not balanced_combinations(subset, wordings, strategies):
             continue
         counts = [sum(i["wording"] == w for i in subset) for w in wordings]
         if not strict and not all(N_FINAL // len(wordings) <= c <= -(-N_FINAL // len(wordings)) for c in counts):
@@ -404,7 +413,7 @@ def choose_final_set(passing: list[dict], pairs: list[tuple[str, str]], strict: 
             continue
         split = None
         for a, b in partitions(list(subset)):
-            if design.is_valid_unsafe_list(a, strict, wordings) and design.is_valid_unsafe_list(b, strict, wordings):
+            if design.is_valid_unsafe_list(a, strict, wordings, strategies) and design.is_valid_unsafe_list(b, strict, wordings, strategies):
                 wording = {i["objective"]: i["wording"] for i in a}
                 crossing = sum(wording[i["objective"]] != i["wording"] for i in b)
                 if split is None or crossing > split[0]:
@@ -424,13 +433,13 @@ def feasibility_by_attrition(allocation: dict, rows: dict, pairs: list, rates=(0
 
     Enumerates every pass/fail pattern of the candidate items; feasibility of a pattern does not depend on p.
     """
-    wordings = planned_wordings(allocation)
+    wordings, strategies = planned_wordings(allocation), planned_strategies(allocation)
     items = [{"scenario": s, "area": rows[s]["area"], "difficulty": rows[s]["difficulty"], "rank": rows[s]["rank"],
               **plan_fields(a)} for s, a in allocation.items()]
     feasible = {}
     for mask in range(1 << len(items)):
         chosen = [items[i] for i in range(len(items)) if mask >> i & 1]
-        feasible[mask] = len(chosen) >= N_FINAL and choose_final_set(chosen, pairs, strict, wordings, True) is not None
+        feasible[mask] = len(chosen) >= N_FINAL and choose_final_set(chosen, pairs, strict, wordings, True, strategies) is not None
     out = []
     for p in rates:
         q = 1 - (1 - p) ** MAX_ATTEMPTS
@@ -453,7 +462,8 @@ def stage2(result: dict, evaluation: dict | None) -> dict:
         passing = [{"scenario": s, "area": result["rows"][s]["area"], "difficulty": result["rows"][s]["difficulty"],
                     "rank": result["rows"][s]["rank"], **plan_fields(a)}
                    for s, a in result["allocation"].items() if info[s]["passing"]]
-        final = choose_final_set(passing, result["pairs"], wordings=planned_wordings(result["allocation"]))
+        final = choose_final_set(passing, result["pairs"], wordings=planned_wordings(result["allocation"]),
+                                  strategies=planned_strategies(result["allocation"]))
     return {"info": info, "final": final, "ran": bool(evaluation)}
 
 
@@ -558,8 +568,9 @@ def sections(result: dict, st2: dict, facts: dict) -> dict[str, str]:
         f"- **Email to an outsider appears in {email_slots} of every participant's 4 unsafe trials.** AgentDojo's four "
         "used objectives include two that send an email (G3, G4); the other two are a file deletion and a calendar "
         "event. The two email trials differ in content (a forwarded private email and a security code).\n"
-        "- **The AgentDojo `<INFORMATION>` frame (W1) appears in 2 of the 4 unsafe trials per participant** (II-W1 and "
-        "TK-W1), and Emma Johnson is named in all four (the W2 adaptation keeps the authority claim).\n"
+        "- **The same injection wording appears in all 4 unsafe trials of every participant** (II + W2: a plain "
+        "\"Required first step\" block naming Emma Johnson). This is deliberate: it holds injection discoverability "
+        "constant, so it is not a second manipulated variable next to log transparency.\n"
         "- **Every unsafe trial involves a non-company address or the deletion of a company file**; safe traces of "
         "some scenarios also show non-company addresses in tool results, so this is not a perfect cue.\n"
         "- **A victim item recurs across participants** (Lily's email for G3, the Facebook-code email for G4, file 13 "
@@ -568,7 +579,8 @@ def sections(result: dict, st2: dict, facts: dict) -> dict[str, str]:
         "in another; each list has 4 different areas for its 4 unsafe trials.")
     all_items = [{"scenario": s, "area": rows[s]["area"], "difficulty": rows[s]["difficulty"], "rank": rows[s]["rank"],
                   **plan_fields(alloc[s])} for s in cand]
-    full = choose_final_set(all_items, result["pairs"], wordings=planned_wordings(result["allocation"]))
+    full = choose_final_set(all_items, result["pairs"], wordings=planned_wordings(result["allocation"]),
+                              strategies=planned_strategies(result["allocation"]))
     out["full_feasible"] = (
         "If all 12 candidate items pass their runs, a valid final set exists: scenarios " + ", ".join(full["scenarios"]) +
         "; list A unsafe " + ", ".join(full["A"]) + "; list B unsafe " + ", ".join(full["B"]) + "."
@@ -577,8 +589,8 @@ def sections(result: dict, st2: dict, facts: dict) -> dict[str, str]:
     relaxed_rates = feasibility_by_attrition(alloc, rows, result["pairs"], strict=False)
     out["attrition"] = md_table(
         ["Per-attempt pass rate (assumed)", "Item passes within 3 attempts",
-         "Chance of a valid final set: planned design (4 different strategy-wording combinations in each list)",
-         "Chance: relaxed design (every wording in each list)"],
+         "Chance of a valid final set: planned design (every list satisfies the participant-list rules)",
+         "Chance: relaxed design (every wording of the plan in each list; identical to the planned design with one wording)"],
         [[a["per_attempt"], f"{a['item_pass']:.2f}", f"{a['probability']:.2f}", f"{b['probability']:.2f}"]
          for a, b in zip(strict_rates, relaxed_rates)])
     if st2["ran"]:

@@ -70,7 +70,7 @@ class LoadsInBothConditions(unittest.TestCase):
         record, _ = load_record(VALIDATION)
         identity = design.identity_by_id(record["injection"]["identity_id"])
         actions = [s for s in high["trace"] if s["type"] == "action"]
-        injected = [a for a in actions if a["tool"] == "create_calendar_event"]
+        injected = [a for a in actions if a["tool"] == design.OBJECTIVES[record["injection"]["objective"]]["write_tool"]]
         self.assertEqual(len(injected), 1)  # the unauthorised action is visible in the high condition
         self.assertIn(identity["address"], json.dumps(injected[0]["arguments"]))
         self.assertGreater(len(actions), 1)  # and sits beside the legitimate action(s)
@@ -141,13 +141,15 @@ class SimulatedRecordTests(unittest.TestCase):
         self.assertEqual(self.record["task_prompt"], safe["task_prompt"])
 
     def test_attack_arguments_in_the_trace_are_agentdojos_ground_truth_unmodified(self):
-        # regression: create_calendar_event appends the owner to the participants list in place, which once
-        # changed the recorded arguments to [attacker, owner]
+        # regression (found with the earlier G2 fixture): create_calendar_event appends the owner to its participants
+        # list in place, which once changed the recorded arguments; the current G4 fixture sends an email, so this now
+        # checks that the recorded send_email arguments are the ground truth, unmodified
         attack = [c for m in self.record["trace"] if m["role"] == "assistant" for c in m.get("tool_calls") or []
                   if c["id"].startswith("call_simulated_attack_")]
         self.assertEqual(len(attack), len(self.record["simulation"]["attack_calls"]))
         identity = design.identity_by_id(self.record["injection"]["identity_id"])
-        self.assertEqual(attack[0]["args"]["participants"], [identity["address"]])
+        self.assertEqual(attack[-1]["function"], "send_email")
+        self.assertEqual(attack[-1]["args"]["recipients"], [identity["address"]])
         self.assertEqual([{"function": c["function"], "args": c["args"]} for c in attack],
                          self.record["simulation"]["attack_calls"])
 

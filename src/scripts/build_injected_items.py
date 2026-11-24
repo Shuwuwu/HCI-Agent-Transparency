@@ -3,7 +3,8 @@ Purpose:
     Build the injected-skill items of the unsafe-stimulus design: for each of the 12 candidate scenarios, ONE injected
     copy of the scenario's main capability skill (its area skill), made from the CURRENT skill file by inserting a
     single block (injection_design.py: strategy, wording, objective, attacker identity) at a seeded workflow
-    subsection. W1 and W2 append a block after the subsection; W3 inserts prose
+    subsection. The study plan uses only II + W2 (design.STUDY_STRATEGIES / STUDY_WORDINGS), which appends a block after
+    the subsection. Other wordings stay buildable with --wordings / --strategies: W1 also appends a block; W3 inserts prose
     inside the subsection as a lead-in or into its first or last step, per the item's variant. Nothing is edited by hand, so the whole corpus is reproducible from the selection pipeline.
 
     Every item is checked while it is built: the base skill's SHA-256 equals the one recorded in the scenario's
@@ -26,7 +27,7 @@ Dependencies:
 Usage:
     python3 -B src/scripts/build_injected_items.py            # write the items and the manifest
     python3 -B src/scripts/build_injected_items.py --check    # fail if the files differ from a rebuild
-    python3 -B src/scripts/build_injected_items.py --wordings W1,W2 --out-dir <scratch>   # the first two-wording plan
+    python3 -B src/scripts/build_injected_items.py --strategies II,TK --wordings W1,W2 --out-dir <scratch>   # preview the first plan
 """
 
 import argparse
@@ -93,10 +94,12 @@ def build_item(scenario: str, plan: dict, row: dict, facts_task: dict, seed: str
     return text, entry
 
 
-def build_all(facts: dict, wordings: tuple = design.WORDINGS) -> tuple[dict[str, str], dict]:
-    """{relative path: text} for every item file and the manifest, from the selection result. `wordings` defaults to
-    the study plan (W1, W2, W3); design.LEGACY_WORDINGS rebuilds the first two-wording plan."""
-    result = ss.select(facts, wordings=wordings)
+def build_all(facts: dict, wordings: tuple = design.STUDY_WORDINGS,
+              strategies: tuple = design.STUDY_STRATEGIES) -> tuple[dict[str, str], dict]:
+    """{relative path: text} for every item file and the manifest, from the selection result. `wordings` and
+    `strategies` default to the study plan (W2, II); other implemented ones (for example design.LEGACY_WORDINGS with
+    both strategies, the earlier two-wording plan) can be previewed with them."""
+    result = ss.select(facts, wordings=wordings, strategies=strategies)
     tasks = {t["scenario"]: t for t in facts["tasks"]}
     files, entries = {}, []
     for scenario in (s for s in result["order"] if s in result["allocation"]):
@@ -108,10 +111,11 @@ def build_all(facts: dict, wordings: tuple = design.WORDINGS) -> tuple[dict[str,
         "builder_version": BUILDER_VERSION, "design_version": design.DESIGN_VERSION,
         "selection_version": ss.SELECTION_VERSION, "seed": ss.SEED, "agentdojo_commit": facts["agentdojo_commit"],
         "w1_user_name": design.USER_NAME, "w1_model_name": design.MODEL_NAME,
-        "wording_note": "W1 = AgentDojo template verbatim; W2 and W3 = this project's adaptations (not AgentDojo or "
-                        "SkillJect templates). W2 = a required first step of the skill; W3 = the strategy's content "
-                        "as prose inside an existing workflow (variants v1-v3 differ in phrasing and placement). "
-                        "Strategies: important_instructions, tool_knowledge only.",
+        "wording_note": "Study plan: one injection style, important_instructions (II) in wording W2, so that injection "
+                        "discoverability is constant and only the transparency of the execution log varies. W2 = this "
+                        "project's adaptation (not an AgentDojo or SkillJect template): the goal as a required first "
+                        "step of the skill, no <INFORMATION> frame. W1 (AgentDojo template verbatim), W3 and "
+                        "tool_knowledge are implemented but not used by any item.",
         "review_note": "Automated validation plus inspection by one researcher; no independent reviewer.",
         "items": entries,
     }
@@ -121,15 +125,17 @@ def build_all(facts: dict, wordings: tuple = design.WORDINGS) -> tuple[dict[str,
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--check", action="store_true")
-    parser.add_argument("--wordings", default=",".join(design.WORDINGS),
-                        help="comma-separated wordings to plan (default W1,W2,W3 = the study plan; W1,W2 = the first plan)")
+    parser.add_argument("--wordings", default=",".join(design.STUDY_WORDINGS),
+                        help="comma-separated wordings to plan (default W2 = the study plan)")
+    parser.add_argument("--strategies", default=",".join(design.STUDY_STRATEGIES),
+                        help="comma-separated strategies to plan (default II = the study plan; II,TK = both)")
     parser.add_argument("--out-dir", type=Path, default=OUT_DIR,
                         help="where to write (default src/data/injected_skills); give a scratch folder to preview")
     args = parser.parse_args()
     wordings = tuple(args.wordings.split(","))
     out_dir = args.out_dir
     facts = json.loads(ss.INPUTS.read_text(encoding="utf-8"))
-    files, manifest = build_all(facts, wordings)
+    files, manifest = build_all(facts, wordings, tuple(args.strategies.split(",")))
     files["manifest.json"] = json.dumps(manifest, indent=2, ensure_ascii=False) + "\n"
     if args.check:
         stale = [p for p, t in files.items() if not (out_dir / p).exists() or (out_dir / p).read_text(encoding="utf-8") != t]

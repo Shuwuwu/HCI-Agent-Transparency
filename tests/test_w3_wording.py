@@ -124,6 +124,9 @@ class PlacementTests(unittest.TestCase):
             self.assertEqual([(s["title"], s["end"]) for s in design.workflow_subsections(base)], design.workflow_anchors(base))
 
 
+ALL = {"wordings": design.WORDINGS, "strategies": design.STRATEGIES}  # every implemented combination (not the study plan)
+
+
 class AllocationTests(unittest.TestCase):
     def cands(self):
         result = ss.select(FACTS)
@@ -131,21 +134,30 @@ class AllocationTests(unittest.TestCase):
                 for s in result["order"][:12]]
 
     def test_the_first_two_wording_plan_is_still_available_and_has_no_w3_or_variant(self):
-        plan = design.allocate_items(self.cands(), "seed", design.LEGACY_WORDINGS)
+        plan = design.allocate_items(self.cands(), "seed", design.LEGACY_WORDINGS, design.STRATEGIES)
         self.assertTrue(all(p["wording"] in ("W1", "W2") and "variant" not in p for p in plan.values()))
         for combo in tuple((s, w) for s in design.STRATEGIES for w in design.LEGACY_WORDINGS):
             self.assertEqual(sum((p["strategy"], p["wording"]) == combo for p in plan.values()), 3)
-        self.assertEqual(plan, design.allocate_items(self.cands(), "seed", design.LEGACY_WORDINGS))
+        self.assertEqual(plan, design.allocate_items(self.cands(), "seed", design.LEGACY_WORDINGS, design.STRATEGIES))
 
-    def test_the_default_allocation_is_the_study_plan_with_all_three_wordings(self):
+    def test_the_default_allocation_is_the_study_plan_ii_with_w2_only(self):
         plan = design.allocate_items(self.cands(), "seed")
-        self.assertEqual(plan, design.allocate_items(self.cands(), "seed", design.WORDINGS))
-        self.assertEqual(Counter(p["wording"] for p in plan.values()), {"W1": 4, "W2": 4, "W3": 4})
+        self.assertEqual(plan, design.allocate_items(self.cands(), "seed", design.STUDY_WORDINGS, design.STUDY_STRATEGIES))
+        self.assertEqual((design.STUDY_STRATEGIES, design.STUDY_WORDINGS), (("II",), ("W2",)))
+        self.assertEqual(Counter((p["strategy"], p["wording"]) for p in plan.values()), {("II", "W2"): 12})
+        self.assertFalse(any("variant" in p for p in plan.values()))
+        for obj in design.OBJECTIVE_IDS:  # the objective is still balanced, three items each
+            self.assertEqual(sum(p["objective"] == obj for p in plan.values()), 3)
+        area = {c["scenario"]: c["area"] for c in self.cands()}
+        for obj in design.OBJECTIVE_IDS:  # scenarios sharing an objective still have different areas
+            areas = [area[s] for s, p in plan.items() if p["objective"] == obj]
+            self.assertEqual(len(areas), len(set(areas)))
+        self.assertEqual(plan, design.allocate_items(self.cands(), "seed"))
 
     def test_w3_allocation_is_balanced_deterministic_and_keeps_every_constraint(self):
         cands = self.cands()
-        plan = design.allocate_items(cands, "seed", design.WORDINGS)
-        self.assertEqual(plan, design.allocate_items(cands, "seed", design.WORDINGS))
+        plan = design.allocate_items(cands, "seed", **ALL)
+        self.assertEqual(plan, design.allocate_items(cands, "seed", **ALL))
         for obj in design.OBJECTIVE_IDS:
             self.assertEqual(sum(p["objective"] == obj for p in plan.values()), 3)
         for combo in design.COMBINATIONS:
@@ -163,7 +175,7 @@ class AllocationTests(unittest.TestCase):
 
     def test_variants_belong_to_w3_items_and_are_spread_evenly(self):
         for seed in ("seed", "other", "third"):
-            plan = design.allocate_items(self.cands(), seed, design.WORDINGS)
+            plan = design.allocate_items(self.cands(), seed, **ALL)
             self.assertTrue(all(("variant" in p) == (p["wording"] == "W3") for p in plan.values()))
             counts = Counter(p["variant"] for p in plan.values() if "variant" in p)
             self.assertEqual(sum(counts.values()), 4)
@@ -174,43 +186,45 @@ class AllocationTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             design.allocate_items(self.cands(), "seed", ("W1", "W4"))
         with self.assertRaises(ValueError):
-            design.allocate_items(self.cands()[:8], "seed", design.WORDINGS)  # 8 items, 6 combinations
+            design.allocate_items(self.cands()[:8], "seed", **ALL)  # 8 items, 6 combinations
 
     def test_a_list_may_not_repeat_a_w3_variant(self):
         def item(o, s, w, a, i, v=None):
             return {"objective": o, "strategy": s, "wording": w, "area": a, "identity_id": i, **({"variant": v} if v else {})}
         ok = [item("G1", "II", "W3", "a", None, "v1"), item("G2", "TK", "W3", "b", "id01", "v2"),
               item("G3", "TK", "W1", "c", "id02"), item("G4", "II", "W2", "d", "id03")]
-        self.assertTrue(design.is_valid_unsafe_list(ok))
+        self.assertTrue(design.is_valid_unsafe_list(ok, **ALL))
         repeated = copy.deepcopy(ok)
         repeated[1]["variant"] = "v1"
-        self.assertFalse(design.is_valid_unsafe_list(repeated))
+        self.assertFalse(design.is_valid_unsafe_list(repeated, **ALL))
         missing = copy.deepcopy(ok)
         del missing[1]["variant"]
-        self.assertFalse(design.is_valid_unsafe_list(missing))
+        self.assertFalse(design.is_valid_unsafe_list(missing, **ALL))
 
     def test_final_set_and_participant_lists_accept_w3_and_keep_variants_distinct(self):
-        result = ss.select(FACTS, wordings=design.WORDINGS)
+        result = ss.select(FACTS, **ALL)
         passing = [{"scenario": s, "area": result["rows"][s]["area"], "difficulty": result["rows"][s]["difficulty"],
                     "rank": result["rows"][s]["rank"], **ss.plan_fields(a)} for s, a in result["allocation"].items()]
-        final = ss.choose_final_set(passing, result["pairs"])
+        final = ss.choose_final_set(passing, result["pairs"], **ALL)
         self.assertIsNotNone(final)
         by_scenario = {p["scenario"]: p for p in passing}
         for lst in ("A", "B"):
-            self.assertTrue(design.is_valid_unsafe_list([by_scenario[s] for s in final[lst]]))
-        self.assertTrue(ss.balanced_combinations([by_scenario[s] for s in final["scenarios"]]))
+            self.assertTrue(design.is_valid_unsafe_list([by_scenario[s] for s in final[lst]], **ALL))
+        self.assertTrue(ss.balanced_combinations([by_scenario[s] for s in final["scenarios"]], **ALL))
 
     def test_balanced_combinations_still_means_each_twice_without_w3(self):
         items = [{"strategy": s, "wording": w} for s, w in design.COMBINATIONS for _ in range(2)]
-        self.assertTrue(ss.balanced_combinations(items))
+        self.assertTrue(ss.balanced_combinations(items, **ALL))
         items[0] = {"strategy": "TK", "wording": "W2"}
-        self.assertFalse(ss.balanced_combinations(items))
+        self.assertFalse(ss.balanced_combinations(items, **ALL))
+        study = [{"strategy": "II", "wording": "W2"} for _ in range(8)]  # the study plan: one combination, all 8
+        self.assertTrue(ss.balanced_combinations(study))
 
 
 class ItemTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.files, cls.manifest = bi.build_all(FACTS, design.WORDINGS)
+        cls.files, cls.manifest = bi.build_all(FACTS, **ALL)
         cls.w3_items = [i for i in cls.manifest["items"] if i["wording"] == "W3"]
 
     def test_w3_items_are_built_with_their_variant_and_placement(self):
@@ -220,7 +234,7 @@ class ItemTests(unittest.TestCase):
             self.assertTrue(item["item_id"].endswith("_w3"))
         for item in self.manifest["items"]:
             self.assertEqual("variant" in item, item["wording"] == "W3")
-        self.assertIn("W3 =", self.manifest["wording_note"])
+        self.assertIn("W3", self.manifest["wording_note"])  # the note names W3 as implemented but unused in the study plan
 
     def test_w3_items_equal_the_current_skill_plus_the_block_and_are_in_a_workflow(self):
         for item in self.w3_items:
@@ -245,12 +259,8 @@ class ItemTests(unittest.TestCase):
             self.assertEqual(text.count("**"), base.count("**"))
             self.assertEqual(len(re.findall(r"^#+ ", text, re.M)), len(re.findall(r"^#+ ", base, re.M)))
 
-    def test_the_committed_corpus_is_the_study_plan_with_all_three_wordings_distributed(self):
-        committed = json.loads((bi.OUT_DIR / "manifest.json").read_text(encoding="utf-8"))
-        self.assertEqual(committed, self.manifest)
-        for relative, text in self.files.items():
-            self.assertEqual((bi.OUT_DIR / relative).read_text(encoding="utf-8"), text, relative)
-        items = committed["items"]
+    def test_the_all_implemented_plan_is_balanced_over_six_combinations(self):
+        items = self.manifest["items"]
         self.assertEqual(Counter(i["wording"] for i in items), {"W1": 4, "W2": 4, "W3": 4})
         self.assertEqual(Counter((i["strategy"], i["wording"]) for i in items), {c: 2 for c in [
             ("important_instructions", w) for w in design.WORDINGS] + [("tool_knowledge", w) for w in design.WORDINGS]})
@@ -261,7 +271,7 @@ class ItemTests(unittest.TestCase):
         self.assertLessEqual(max(counts.values()) - min(counts.values()), 1)
 
     def test_the_first_two_wording_plan_can_still_be_rebuilt(self):
-        files, manifest = bi.build_all(FACTS, design.LEGACY_WORDINGS)
+        files, manifest = bi.build_all(FACTS, design.LEGACY_WORDINGS, design.STRATEGIES)
         self.assertEqual({i["wording"] for i in manifest["items"]}, {"W1", "W2"})
         self.assertFalse(any("variant" in i for i in manifest["items"]))
         self.assertEqual(len(files), 12)  # the item files; main() adds the manifest
