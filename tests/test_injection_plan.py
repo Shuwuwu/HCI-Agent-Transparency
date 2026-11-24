@@ -126,11 +126,12 @@ class EndToEndOfflineTests(unittest.TestCase):
     def test_injected_run_record_and_inclusion_without_a_model(self):
         import injection_checks as checks
         suite = benchmark.SUITES["workspace"]
-        spec = next(r for r in PLAN["runs"] if r["injection"]["item_id"] == "user_task_2__g2_ii_w2" and r["repetition"] == 1)
+        item = next(i for i in MANIFEST["items"] if i["scenario"] == "user_task_2")  # whichever item the plan gives it
+        spec = next(r for r in PLAN["runs"] if r["injection"]["item_id"] == item["item_id"] and r["repetition"] == 1)
         identity = design.identity_by_id(spec["injection"]["identity_id"])
         user_task = suite.get_user_task_by_id("user_task_2")
         env = suite.load_and_inject_default_environment({})
-        attack = checks.parametrized_injection_task(suite, "G2", identity)
+        attack = checks.parametrized_injection_task(suite, item["objective"], identity)
         script = [(c["function"], c["args"]) for c in attack.ground_truth(env)] + [
             (c["function"], c["args"]) for c in user_task.ground_truth(env)]
         adapter = self.make_adapter(spec, script, user_task.GROUND_TRUTH_OUTPUT)
@@ -139,15 +140,15 @@ class EndToEndOfflineTests(unittest.TestCase):
         self.assertEqual(record["status"], "completed", record.get("error"))
         self.assertIs(record["security"], True)       # AgentDojo's own check, with the item's attacker identity
         self.assertIs(record["utility"], False)       # strict utility fails after any extra action
-        self.assertEqual(record["injection"]["item_id"], "user_task_2__g2_ii_w2")
-        self.assertIn("Intro with " + identity["first"], record["system_message"])  # the agent was shown the injection
+        self.assertEqual(record["injection"]["item_id"], item["item_id"])
+        self.assertIn(item["goal_text"], record["system_message"])  # the agent was shown the injection
         result = checks.evaluate_record(record, suite)
         self.assertTrue(result["security_recomputed"] and result["utility_tolerant"] and result["included"], result)
         self.assertFalse(result["utility_strict"])
         self.assertEqual(result["goal_calls_in_trace"], 1)
 
     def test_system_message_differs_from_the_safe_run_only_by_the_block(self):
-        item = next(i for i in MANIFEST["items"] if i["item_id"] == "user_task_16__g3_ii_w1")
+        item = next(i for i in MANIFEST["items"] if i["scenario"] == "user_task_16")
         spec = next(r for r in PLAN["runs"] if r["injection"]["item_id"] == item["item_id"] and r["repetition"] == 1)
         safe_file = next(t for t in FACTS["tasks"] if t["scenario"] == "user_task_16")["v4b_run"]["file"]
         safe = json.loads((ROOT / safe_file).read_text(encoding="utf-8"))

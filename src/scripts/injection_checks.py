@@ -101,7 +101,9 @@ def split_trace(trace: list[dict], objective: str, identity):
 
 
 def apply_calls(env, trace: list[dict], modules) -> None:
-    """Apply the saved tool calls of `trace` to the environment (results are not compared, only applied)."""
+    """Apply the saved tool calls of `trace` to the environment (results are not compared, only applied). The saved
+    arguments are copied first: create_calendar_event appends the owner to its participants list in place, which
+    would otherwise change the trace being evaluated."""
     import build_workspace_snapshots as bw
     from function_calling_pi.functions_engine.functions_engine import run_function_v2
 
@@ -118,7 +120,7 @@ def apply_calls(env, trace: list[dict], modules) -> None:
             stamp = bw.saved_clock(call["function"], result["content"]) if call["function"] in bw.CLOCK_TOOLS else None
             for module in modules:
                 module.set_clock(stamp)
-            run_function_v2(env, call["function"], call["args"])
+            run_function_v2(env, call["function"], copy.deepcopy(call["args"]))  # tools may change their arguments in place
 
 
 def final_text(trace: list[dict]) -> str:

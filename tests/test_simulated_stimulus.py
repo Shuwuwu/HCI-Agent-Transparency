@@ -82,7 +82,8 @@ class LoadsInBothConditions(unittest.TestCase):
         doc = ps.participant_skill(ps.DEFAULT_STIMULUS, record["injection"]["injected_skill"])["markdown"]
         self.assertIn(design.goal_text(record["injection"]["objective"], identity), doc)
         ps.use_corpus(STUDY)
-        safe_doc = ps.participant_skill("user_task_24__no_injection", record["injection"]["injected_skill"])["markdown"]
+        scenario = record["injection"]["item_id"].split("__")[0]  # its safe counterpart in the study corpus
+        safe_doc = ps.participant_skill(f"{scenario}__no_injection", record["injection"]["injected_skill"])["markdown"]
         self.assertNotIn(identity["address"], safe_doc)
 
     def test_served_over_http_from_the_validation_corpus_only(self):
@@ -160,6 +161,20 @@ class SimulatedRecordTests(unittest.TestCase):
                          json.loads((ROOT / self.record["simulation"]["safe_run"]["file"]).read_text())["system_message"])
         self.assertEqual(self.record["skills"][0]["sha256"],
                          __import__("hashlib").sha256(item_text.encode()).hexdigest())
+
+
+@unittest.skipUnless(VENV_PYTHON.exists(), "needs .venv-agentdojo (AgentDojo)")
+class EvaluationDoesNotMutateTests(unittest.TestCase):
+    def test_evaluating_a_record_leaves_its_trace_arguments_unchanged(self):
+        # regression: apply_calls ran the trace's own argument objects through the tools, and create_calendar_event
+        # appends the owner to its participants list in place, so evaluating a record changed the record
+        code = ("import sys, json, copy; sys.path.insert(0, 'src/scripts'); import injection_checks as c; "
+                "p = 'src/data/validation/runs/' + sys.argv[1]; r = json.load(open(p)); before = copy.deepcopy(r); "
+                "c.evaluate_record(r); print(json.dumps(r == before))")
+        name = load_record(VALIDATION)[0]["run_id"] + ".json"
+        out = subprocess.run([str(VENV_PYTHON), "-c", code, name], cwd=ROOT, env={**os.environ, "PYTHONHASHSEED": "0"},
+                             capture_output=True, text=True, timeout=300, check=True).stdout
+        self.assertEqual(out.splitlines()[-1], "true")
 
 
 @unittest.skipUnless(VENV_PYTHON.exists(), "needs .venv-agentdojo (AgentDojo)")

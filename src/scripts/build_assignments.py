@@ -151,7 +151,8 @@ def diagnostics(assignments: list[dict]) -> dict:
 def planned_items(result: dict) -> dict[str, dict]:
     rows = result["rows"]
     return {s: {"scenario": s, "area": rows[s]["area"], "difficulty": rows[s]["difficulty"], "rank": rows[s]["rank"],
-                **{k: a[k] for k in ("objective", "strategy", "wording", "identity_id", "item_id")}}
+                **{k: a[k] for k in ("objective", "strategy", "wording", "identity_id", "item_id",
+                                     *(("variant",) if "variant" in a else ()))}}
             for s, a in result["allocation"].items()}
 
 

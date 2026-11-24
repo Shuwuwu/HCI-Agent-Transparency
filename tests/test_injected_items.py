@@ -53,8 +53,11 @@ class InjectedItemsTests(unittest.TestCase):
             self.assertEqual(hashlib.sha256(text.encode()).hexdigest(), item["item_sha256"])
             identity = item["attacker_identity"]
             block = design.render_block({"important_instructions": "II", "tool_knowledge": "TK"}[item["strategy"]],
-                                        item["wording"], item["objective"], design.identity_by_id(identity and identity["id"]))
-            inserted = "\n\n" + block.strip("\n")
+                                        item["wording"], item["objective"], design.identity_by_id(identity and identity["id"]),
+                                        item.get("variant"))
+            self.assertEqual(text.count(block.strip("\n")), 1)
+            # a W1/W2 block is a paragraph after the subsection; a W3 block is prose added inside it
+            inserted = ("\n\n" if item["wording"] != "W3" or item["placement"] == "lead_in" else " ") + block.strip("\n")
             self.assertEqual(design.remove_block(text, inserted).encode(), base)
 
     def test_no_default_attacker_no_label_leak_and_injection_is_inside_workflows(self):

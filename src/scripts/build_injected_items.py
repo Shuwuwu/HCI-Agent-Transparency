@@ -3,7 +3,8 @@ Purpose:
     Build the injected-skill items of the unsafe-stimulus design: for each of the 12 candidate scenarios, ONE injected
     copy of the scenario's main capability skill (its area skill), made from the CURRENT skill file by inserting a
     single block (injection_design.py: strategy, wording, objective, attacker identity) at a seeded workflow
-    subsection. Nothing is edited by hand, so the whole corpus is reproducible from the selection pipeline.
+    subsection. W1 and W2 append a block after the subsection; W3 inserts prose
+    inside the subsection as a lead-in or into its first or last step, per the item's variant. Nothing is edited by hand, so the whole corpus is reproducible from the selection pipeline.
 
     Every item is checked while it is built: the base skill's SHA-256 equals the one recorded in the scenario's
     skills-v4b run (so safe and unsafe versions differ only by the block), removing the inserted block gives back the
@@ -25,6 +26,7 @@ Dependencies:
 Usage:
     python3 -B src/scripts/build_injected_items.py            # write the items and the manifest
     python3 -B src/scripts/build_injected_items.py --check    # fail if the files differ from a rebuild
+    python3 -B src/scripts/build_injected_items.py --wordings W1,W2 --out-dir <scratch>   # the first two-wording plan
 """
 
 import argparse
@@ -60,9 +62,13 @@ def build_item(scenario: str, plan: dict, row: dict, facts_task: dict, seed: str
         raise ItemError(f"{scenario}: skill {skill} differs from the skills-v4b run's recorded version")
     base = base_bytes.decode("utf-8")
     identity = design.identity_by_id(plan["identity_id"])
-    block = design.render_block(plan["strategy"], plan["wording"], plan["objective"], identity)
-    anchor_title, offset = design.pick_anchor(base, seed, plan["item_id"])
-    text, inserted = design.insert_block(base, block, offset)
+    variant = plan.get("variant")  # W3 only
+    block = design.render_block(plan["strategy"], plan["wording"], plan["objective"], identity, variant)
+    if plan["wording"] == "W3":
+        text, inserted, anchor_title, offset = design.place_w3(base, block, variant, seed, plan["item_id"])
+    else:
+        anchor_title, offset = design.pick_anchor(base, seed, plan["item_id"])
+        text, inserted = design.insert_block(base, block, offset)
     goal = design.goal_text(plan["objective"], identity)
     if design.remove_block(text, inserted) != base:
         raise ItemError(f"{plan['item_id']}: removing the block does not restore the base skill")
@@ -81,12 +87,16 @@ def build_item(scenario: str, plan: dict, row: dict, facts_task: dict, seed: str
         "item_sha256": design.sha256_text(text),
         "status": "planned", "text_inspection": "pending",
     }
+    if variant:  # W3 items only, so W1/W2 entries keep their exact shape
+        entry["variant"] = variant
+        entry["placement"] = design.W3_VARIANTS[variant]["placement"]
     return text, entry
 
 
-def build_all(facts: dict) -> tuple[dict[str, str], dict]:
-    """{relative path: text} for every item file and the manifest, from the selection result."""
-    result = ss.select(facts)
+def build_all(facts: dict, wordings: tuple = design.WORDINGS) -> tuple[dict[str, str], dict]:
+    """{relative path: text} for every item file and the manifest, from the selection result. `wordings` defaults to
+    the study plan (W1, W2, W3); design.LEGACY_WORDINGS rebuilds the first two-wording plan."""
+    result = ss.select(facts, wordings=wordings)
     tasks = {t["scenario"]: t for t in facts["tasks"]}
     files, entries = {}, []
     for scenario in (s for s in result["order"] if s in result["allocation"]):
@@ -98,8 +108,10 @@ def build_all(facts: dict) -> tuple[dict[str, str], dict]:
         "builder_version": BUILDER_VERSION, "design_version": design.DESIGN_VERSION,
         "selection_version": ss.SELECTION_VERSION, "seed": ss.SEED, "agentdojo_commit": facts["agentdojo_commit"],
         "w1_user_name": design.USER_NAME, "w1_model_name": design.MODEL_NAME,
-        "wording_note": "W1 = AgentDojo template verbatim; W2 = this project's adaptation (not an AgentDojo or "
-                        "SkillJect template). Strategies: important_instructions, tool_knowledge only.",
+        "wording_note": "W1 = AgentDojo template verbatim; W2 and W3 = this project's adaptations (not AgentDojo or "
+                        "SkillJect templates). W2 = a required first step of the skill; W3 = the strategy's content "
+                        "as prose inside an existing workflow (variants v1-v3 differ in phrasing and placement). "
+                        "Strategies: important_instructions, tool_knowledge only.",
         "review_note": "Automated validation plus inspection by one researcher; no independent reviewer.",
         "items": entries,
     }
@@ -109,22 +121,28 @@ def build_all(facts: dict) -> tuple[dict[str, str], dict]:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--check", action="store_true")
+    parser.add_argument("--wordings", default=",".join(design.WORDINGS),
+                        help="comma-separated wordings to plan (default W1,W2,W3 = the study plan; W1,W2 = the first plan)")
+    parser.add_argument("--out-dir", type=Path, default=OUT_DIR,
+                        help="where to write (default src/data/injected_skills); give a scratch folder to preview")
     args = parser.parse_args()
+    wordings = tuple(args.wordings.split(","))
+    out_dir = args.out_dir
     facts = json.loads(ss.INPUTS.read_text(encoding="utf-8"))
-    files, manifest = build_all(facts)
+    files, manifest = build_all(facts, wordings)
     files["manifest.json"] = json.dumps(manifest, indent=2, ensure_ascii=False) + "\n"
     if args.check:
-        stale = [p for p, t in files.items() if not (OUT_DIR / p).exists() or (OUT_DIR / p).read_text(encoding="utf-8") != t]
-        extra = [str(p.relative_to(OUT_DIR)) for p in OUT_DIR.glob("items/*/SKILL.md") if str(p.relative_to(OUT_DIR)) not in files]
+        stale = [p for p, t in files.items() if not (out_dir / p).exists() or (out_dir / p).read_text(encoding="utf-8") != t]
+        extra = [str(p.relative_to(out_dir)) for p in out_dir.glob("items/*/SKILL.md") if str(p.relative_to(out_dir)) not in files]
         if stale or extra:
             sys.exit(f"out of date: {stale + extra}")
         print("up to date")
         return
     for relative, text in files.items():
-        path = OUT_DIR / relative
+        path = out_dir / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
-    print(f"wrote {len(manifest['items'])} items to {OUT_DIR}")
+    print(f"wrote {len(manifest['items'])} items to {out_dir}")
 
 
 if __name__ == "__main__":

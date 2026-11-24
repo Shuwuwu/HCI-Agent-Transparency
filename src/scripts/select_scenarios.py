@@ -97,7 +97,7 @@ COLUMNS = [
     "scenario", "task_number", "prompt", "mapped_skills", "task_category", "task_kind", "difficulty",
     "ground_truth_calls", "safe_trace_actions", "in_pool", "near_duplicate_group", "repeated_task_group",
     "compatible_objectives", "seed_rank", "selection_status", "rule_id", "rationale",
-    "planned_item_id", "attacker_objective", "strategy", "wording", "attacker_identity",
+    "planned_item_id", "attacker_objective", "strategy", "wording", "wording_variant", "attacker_identity",
     "attempts", "passing_attempts", "stage2_status", "final_set", "participant_list",
 ]
 
@@ -254,7 +254,7 @@ def round_robin(rows_by_area: dict[str, list[dict]], seed: str) -> list[dict]:
     return order
 
 
-def select(facts: dict, seed: str = SEED) -> dict:
+def select(facts: dict, seed: str = SEED, wordings: tuple = design.WORDINGS) -> dict:
     """Apply R1-R5 to the facts. Returns {"rows": [...], "order": [...], "threshold_range", "groups", ...}."""
     tasks = {t["scenario"]: t for t in facts["tasks"]}
     rows = {}
@@ -331,7 +331,7 @@ def select(facts: dict, seed: str = SEED) -> dict:
                 rows[s]["repeated"] = "|".join(c.replace("user_task_", "") for c in comp)
     cands = [{"scenario": s, "area": rows[s]["area"], "compatible": rows[s]["compatible"]}
              for s in order[:N_CANDIDATES]]
-    allocation = design.allocate_items(cands, seed)
+    allocation = design.allocate_items(cands, seed, wordings)
     for s, plan in allocation.items():
         plan["item_id"] = design.item_id(s, plan["objective"], plan["strategy"], plan["wording"])
     spares = [s for s in order if rows[s]["status"] == "spare"]
@@ -351,7 +351,27 @@ def partitions(items: list[dict]):
             yield [items[i] for i in first], [items[i] for i in range(len(items)) if i not in first]
 
 
+def plan_fields(plan: dict) -> dict:
+    """The design fields of a planned item; "variant" only for W3 items, so W1/W2 plans keep their exact shape."""
+    return {k: plan[k] for k in ("objective", "strategy", "wording", "identity_id", *(("variant",) if "variant" in plan else ()))}
+
+
+def planned_wordings(allocation: dict) -> tuple:
+    """The wordings an allocation uses, in design order."""
+    used = {a["wording"] for a in allocation.values()}
+    return tuple(w for w in design.WORDINGS if w in used)
+
+
+def balanced_combinations(subset: list[dict], wordings: tuple = design.WORDINGS) -> bool:
+    """True if the strategy-wording combinations of the 8 items are used as equally as possible: each exactly twice
+    with two wordings (four combinations), each once or twice with three (six combinations)."""
+    combos = tuple((s, w) for s in design.STRATEGIES for w in wordings)
+    low, high = len(subset) // len(combos), -(-len(subset) // len(combos))
+    return all(low <= sum((i["strategy"], i["wording"]) == c for i in subset) <= high for c in combos)
+
+
 def choose_final_set(passing: list[dict], pairs: list[tuple[str, str]], strict: bool = True,
+                     wordings: tuple = design.WORDINGS,
                      exists_only: bool = False) -> dict | None:
     """Rule R6 and the participant lists: from the passing items choose 8 scenarios and split them into lists A and B.
 
@@ -360,8 +380,9 @@ def choose_final_set(passing: list[dict], pairs: list[tuple[str, str]], strict: 
     combination, and splits into two lists that each satisfy design.is_valid_unsafe_list. Among valid choices the
     one with the Easy/Medium split closest to 4/4, then the smallest total selection rank, then the earliest
     scenario ids wins; among splits, the one whose objectives differ in wording across the two lists most often.
-    strict=True requires the four strategy-wording combinations once in each list (the planned design);
-    strict=False only two W1 and two W2 items per list (a relaxation, reported as an option). exists_only stops at
+    strict=True requires four different strategy-wording combinations in each list and the combinations of the 8
+    items used equally (the planned design); strict=False only requires every wording in each list and the wordings
+    used equally (a relaxation, reported as an option). `wordings` are those of the plan. exists_only stops at
     the first valid choice. Returns {"scenarios": [...], "A": [...], "B": [...], "crossing": n} or None.
     """
     best, best_key = None, None
@@ -372,9 +393,10 @@ def choose_final_set(passing: list[dict], pairs: list[tuple[str, str]], strict: 
             continue
         if any(sum(i["objective"] == o for i in subset) != 2 for o in design.OBJECTIVE_IDS):
             continue
-        if strict and any(sum((i["strategy"], i["wording"]) == c for i in subset) != 2 for c in design.COMBINATIONS):
+        if strict and not balanced_combinations(subset, wordings):
             continue
-        if not strict and sum(i["wording"] == "W1" for i in subset) != N_FINAL // 2:
+        counts = [sum(i["wording"] == w for i in subset) for w in wordings]
+        if not strict and not all(N_FINAL // len(wordings) <= c <= -(-N_FINAL // len(wordings)) for c in counts):
             continue
         key = (abs(sum(i["difficulty"] == "EASY" for i in subset) - N_FINAL // 2), sum(i["rank"] for i in subset),
                tuple(sorted(ids, key=task_number)))
@@ -382,7 +404,7 @@ def choose_final_set(passing: list[dict], pairs: list[tuple[str, str]], strict: 
             continue
         split = None
         for a, b in partitions(list(subset)):
-            if design.is_valid_unsafe_list(a, strict) and design.is_valid_unsafe_list(b, strict):
+            if design.is_valid_unsafe_list(a, strict, wordings) and design.is_valid_unsafe_list(b, strict, wordings):
                 wording = {i["objective"]: i["wording"] for i in a}
                 crossing = sum(wording[i["objective"]] != i["wording"] for i in b)
                 if split is None or crossing > split[0]:
@@ -402,13 +424,13 @@ def feasibility_by_attrition(allocation: dict, rows: dict, pairs: list, rates=(0
 
     Enumerates every pass/fail pattern of the candidate items; feasibility of a pattern does not depend on p.
     """
+    wordings = planned_wordings(allocation)
     items = [{"scenario": s, "area": rows[s]["area"], "difficulty": rows[s]["difficulty"], "rank": rows[s]["rank"],
-              "objective": a["objective"], "strategy": a["strategy"], "wording": a["wording"],
-              "identity_id": a["identity_id"]} for s, a in allocation.items()]
+              **plan_fields(a)} for s, a in allocation.items()]
     feasible = {}
     for mask in range(1 << len(items)):
         chosen = [items[i] for i in range(len(items)) if mask >> i & 1]
-        feasible[mask] = len(chosen) >= N_FINAL and choose_final_set(chosen, pairs, strict, True) is not None
+        feasible[mask] = len(chosen) >= N_FINAL and choose_final_set(chosen, pairs, strict, wordings, True) is not None
     out = []
     for p in rates:
         q = 1 - (1 - p) ** MAX_ATTEMPTS
@@ -429,10 +451,9 @@ def stage2(result: dict, evaluation: dict | None) -> dict:
                 info[s]["attempts"] += 1
                 info[s]["passing"] += bool(ev["included"])
         passing = [{"scenario": s, "area": result["rows"][s]["area"], "difficulty": result["rows"][s]["difficulty"],
-                    "rank": result["rows"][s]["rank"], **{k: a[k] for k in ("objective", "strategy", "wording",
-                                                                               "identity_id")}}
+                    "rank": result["rows"][s]["rank"], **plan_fields(a)}
                    for s, a in result["allocation"].items() if info[s]["passing"]]
-        final = choose_final_set(passing, result["pairs"])
+        final = choose_final_set(passing, result["pairs"], wordings=planned_wordings(result["allocation"]))
     return {"info": info, "final": final, "ran": bool(evaluation)}
 
 
@@ -463,6 +484,7 @@ def csv_rows(result: dict, st2: dict) -> list[dict]:
             "rationale": r["reason"], "planned_item_id": plan["item_id"] if plan else "",
             "attacker_objective": plan["objective"] if plan else "",
             "strategy": design.STRATEGY_NAMES[plan["strategy"]] if plan else "", "wording": plan["wording"] if plan else "",
+            "wording_variant": plan.get("variant", "") if plan else "",
             "attacker_identity": identity["name"] + " <" + identity["address"] + ">" if identity else
             ("none (file ID 13)" if plan else ""),
             "attempts": st2["info"][s]["attempts"] if plan and st2["ran"] else "",
@@ -522,7 +544,7 @@ def sections(result: dict, st2: dict, facts: dict) -> dict[str, str]:
     out["allocation_table"] = md_table(
         ["Scenario", "Category", "Objective", "Strategy", "Wording", "Attacker identity", "Item id"],
         [[s, AREA_LABELS[rows[s]["area"]], f"{a['objective']} ({design.OBJECTIVES[a['objective']]['summary']})",
-          design.STRATEGY_NAMES[a["strategy"]], a["wording"],
+          design.STRATEGY_NAMES[a["strategy"]], a["wording"] + (f" ({a['variant']})" if "variant" in a else ""),
           (design.identity_by_id(a["identity_id"])["name"] if a["identity_id"] else "none (file ID 13)"), a["item_id"]]
          for s, a in ((s, alloc[s]) for s in cand)])
     out["objectives_table"] = md_table(
@@ -545,8 +567,8 @@ def sections(result: dict, st2: dict, facts: dict) -> dict[str, str]:
         "- **Skills repeat**: 8 scenarios use 5 areas, so a participant may see a skill clean in one trial and injected "
         "in another; each list has 4 different areas for its 4 unsafe trials.")
     all_items = [{"scenario": s, "area": rows[s]["area"], "difficulty": rows[s]["difficulty"], "rank": rows[s]["rank"],
-                  **{k: alloc[s][k] for k in ("objective", "strategy", "wording", "identity_id")}} for s in cand]
-    full = choose_final_set(all_items, result["pairs"])
+                  **plan_fields(alloc[s])} for s in cand]
+    full = choose_final_set(all_items, result["pairs"], wordings=planned_wordings(result["allocation"]))
     out["full_feasible"] = (
         "If all 12 candidate items pass their runs, a valid final set exists: scenarios " + ", ".join(full["scenarios"]) +
         "; list A unsafe " + ", ".join(full["A"]) + "; list B unsafe " + ", ".join(full["B"]) + "."
@@ -555,8 +577,8 @@ def sections(result: dict, st2: dict, facts: dict) -> dict[str, str]:
     relaxed_rates = feasibility_by_attrition(alloc, rows, result["pairs"], strict=False)
     out["attrition"] = md_table(
         ["Per-attempt pass rate (assumed)", "Item passes within 3 attempts",
-         "Chance of a valid final set: planned design (all 4 combinations in each list)",
-         "Chance: relaxed design (2 W1 + 2 W2 in each list)"],
+         "Chance of a valid final set: planned design (4 different strategy-wording combinations in each list)",
+         "Chance: relaxed design (every wording in each list)"],
         [[a["per_attempt"], f"{a['item_pass']:.2f}", f"{a['probability']:.2f}", f"{b['probability']:.2f}"]
          for a, b in zip(strict_rates, relaxed_rates)])
     if st2["ran"]:

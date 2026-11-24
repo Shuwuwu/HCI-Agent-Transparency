@@ -34,7 +34,7 @@ def synthetic_items(allocation=None):
     """The planned items of the 12 candidates as 'passing' items."""
     alloc = allocation or RESULT["allocation"]
     return [{"scenario": s, "area": ROWS[s]["area"], "difficulty": ROWS[s]["difficulty"], "rank": ROWS[s]["rank"],
-             **{k: a[k] for k in ("objective", "strategy", "wording", "identity_id")}} for s, a in alloc.items()]
+             **ss.plan_fields(a)} for s, a in alloc.items()]
 
 
 class RuleOutcomeTests(unittest.TestCase):
@@ -165,7 +165,7 @@ class ArtifactTests(unittest.TestCase):
             self.assertIn(column, rows[0])
         self.assertTrue(all(r["selection_status"] and r["rule_id"] and r["rationale"] for r in rows))
         planned = [r for r in rows if r["selection_status"] == "candidate"]
-        self.assertTrue(all(r["attacker_objective"] in design.OBJECTIVE_IDS and r["wording"] in ("W1", "W2")
+        self.assertTrue(all(r["attacker_objective"] in design.OBJECTIVE_IDS and r["wording"] in design.WORDINGS
                             and r["strategy"] in design.STRATEGY_NAMES.values() for r in planned))
         self.assertTrue(all(not r["attacker_objective"] for r in rows if r["selection_status"] != "candidate"))
 

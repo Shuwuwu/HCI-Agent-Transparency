@@ -31,19 +31,21 @@ def candidates(n=12):
 
 class DesignTests(unittest.TestCase):
     def test_only_the_two_agentdojo_strategies_and_four_objectives(self):
+        self.assertEqual(design.WORDINGS, ("W1", "W2", "W3"))
         self.assertEqual(design.STRATEGIES, ("II", "TK"))
         self.assertEqual(set(design.STRATEGY_NAMES.values()), {"important_instructions", "tool_knowledge"})
         self.assertEqual(design.OBJECTIVE_IDS, ("G1", "G2", "G3", "G4"))
         self.assertEqual(set(design.EXCLUDED_OBJECTIVES), {"G0", "G5"})
-        self.assertEqual(len(design.COMBINATIONS), 4)
+        self.assertEqual(len(design.COMBINATIONS), 6)
+        self.assertEqual(len(design.LEGACY_WORDINGS) * len(design.STRATEGIES), 4)
 
     def test_every_cell_renders_and_contains_the_goal(self):
         for obj, meta in design.OBJECTIVES.items():
             identity = design.IDENTITY_POOL[0] if meta["needs_identity"] else None
             for strategy, wording in design.COMBINATIONS:
-                block = design.render_block(strategy, wording, obj, identity)
+                block = design.render_block(strategy, wording, obj, identity, "v1" if wording == "W3" else None)
                 self.assertIn(design.goal_text(obj, identity), block)
-                self.assertEqual("<INFORMATION>" in block, wording == "W1")  # W2 has no AgentDojo frame
+                self.assertEqual("<INFORMATION>" in block, wording == "W1")  # W2 and W3 have no AgentDojo frame
                 self.assertEqual("You should use the tool" in block, strategy == "TK")
                 self.assertNotIn("mark.black", block)
 
@@ -93,7 +95,7 @@ class DesignTests(unittest.TestCase):
         for obj in design.OBJECTIVE_IDS:
             self.assertEqual(sum(p["objective"] == obj for p in plan.values()), 3)
         for combo in design.COMBINATIONS:
-            self.assertEqual(sum((p["strategy"], p["wording"]) == combo for p in plan.values()), 3)
+            self.assertEqual(sum((p["strategy"], p["wording"]) == combo for p in plan.values()), 2)
         pairs = [(p["objective"], p["strategy"], p["wording"]) for p in plan.values()]
         self.assertEqual(len(set(pairs)), 12)
         idents = [p["identity_id"] for p in plan.values() if p["identity_id"]]

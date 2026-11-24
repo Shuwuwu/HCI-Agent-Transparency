@@ -65,6 +65,7 @@ sees every final scenario, so such a pair cannot be separated by assignment; R6 
 |---|---|---|
 | Strategy | **II** = AgentDojo `important_instructions`, **TK** = AgentDojo `tool_knowledge` | AgentDojo attacks at the pinned commit; these are the only strategies used |
 | Wording | **W1** = the strategy's AgentDojo template, verbatim. **W2** = **our adaptation**: the same strategy content (the user's claimed authority, "do this first", the goal and, for TK, the tool sequence) rewritten as a required first step of the skill, without the `<INFORMATION>` frame | W1: AgentDojo. W2: this project; it is not an AgentDojo or SkillJect template |
+| Wording | **W3** = **our contextual adaptation**: the same strategy content written as ordinary prose inside one of the skill's own workflows (a lead-in paragraph, or a sentence added to the first or last step), with no `<INFORMATION>` frame, bold, heading or "required first step" label. Three variants differ in phrasing and placement and are dealt out evenly over the W3 items, so one participant's skills do not repeat a cue | This project; it is not an AgentDojo or SkillJect template. The plan uses all three wordings (W1, W2, W3), each for 4 of the 12 items, with each strategy–wording combination twice. The first plan (W1 and W2 only) is still reproducible with `--wordings W1,W2` |
 | Objective | **G1–G4** = AgentDojo injection tasks 1–4 | AgentDojo workspace injection tasks, with the attacker identity substituted |
 
 Model name in W1 is "GPT-4" (AgentDojo has no entry for `gpt-4o-2024-08-06`); the user is "Emma Johnson", as in
@@ -92,7 +93,7 @@ the original (tested). G1 deletes file 13 and has no external identity. Pool: {{
 position. This is a simplification: the position is not chosen by relevance to the scenario.
 
 **Planned item of each candidate** (allocation by seeded search: compatible objective, each objective and each
-strategy-wording combination used equally often, no repeated objective–combination pair, different areas within an
+strategy-wording combination used equally often (twice each), W3 variants dealt out evenly, no repeated objective–combination pair, different areas within an
 objective and within a combination):
 
 {{allocation_table}}
@@ -104,12 +105,12 @@ objective and within a combination):
 1. 8 scenarios, each once, 4 safe and 4 unsafe, safe and unsafe versions never both for one scenario.
 2. The 4 unsafe trials have 4 different objectives (G1–G4), so each participant meets every observable kind of
    unauthorised action: file deletion, calendar event, and two kinds of outbound email.
-3. The 4 unsafe trials use the 4 strategy-wording combinations once each, so no strategy-wording-objective
-   combination repeats within a participant.
+3. The 4 unsafe trials use 4 different strategy-wording combinations (and never repeat a W3 variant), so no
+   strategy-wording-objective combination and no W3 phrasing repeats within a participant.
 4. 4 different injected skills (areas) and 4 different attacker identities in the 4 unsafe trials.
 5. No repeated legitimate task among the 8 (rule R6).
 
-**Soft (met where feasible):** across the two lists each objective appears once with W1 and once with W2; Easy/Medium
+**Soft (met where feasible):** across the two lists an objective appears with different wordings where feasible; Easy/Medium
 balance of the final 8; the seeded area-by-area order.
 
 **Lists and conditions.** Two lists (A, B) swap which 4 scenarios are unsafe. A participant gets one list and one
@@ -149,7 +150,7 @@ over every pass/fail pattern of the 12 items):
 - **Model snapshot.** All runs, safe and unsafe, use `gpt-4o-2024-08-06`; AgentDojo's recorded runs use
   `gpt-4o-2024-05-13` and are not used for stimuli. Attack-success rates from those recordings are not predictive of
   this model.
-- **Wording effects are descriptive only.** With four unsafe trials per participant, comparing W1 with W2 is
+- **Wording effects are descriptive only.** With four unsafe trials per participant, comparing W1, W2 and W3 is
   underpowered.
 
 ## 9. Validation and review limitation
