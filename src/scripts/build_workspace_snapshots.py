@@ -30,7 +30,7 @@ Dependencies:
 
 Usage:
     .venv-agentdojo/bin/python -B src/scripts/build_workspace_snapshots.py [--folders user_task_13__no_injection ...]
-        [--out-dir PATH]        (default folder: user_task_13__no_injection; pass --folders $(ls src/data/stimuli) for all)
+        [--out-dir PATH] [--stimuli-dir PATH]        (default folder: user_task_13__no_injection; pass --folders $(ls src/data/stimuli) for all)
 """
 
 import argparse
@@ -177,11 +177,14 @@ def install_clock():
     return patched
 
 
-def build_one(folder: str, out_dir: Path) -> dict:
-    """Build workspace.json and provenance.json for one stimulus folder; returns a short summary."""
+def build_one(folder: str, out_dir: Path, stimuli_dir: Path = STIMULI_DIR) -> dict:
+    """Build workspace.json and provenance.json for one stimulus folder; returns a short summary.
+
+    stimuli_dir: the folder holding <folder>/provenance.json (default src/data/stimuli; the validation corpus
+    uses src/data/validation/stimuli)."""
     from function_calling_pi import benchmark
 
-    stim_prov = json.loads((STIMULI_DIR / folder / "provenance.json").read_text(encoding="utf-8"))
+    stim_prov = json.loads((stimuli_dir / folder / "provenance.json").read_text(encoding="utf-8"))
     source = stim_prov["source"]
     raw = (ROOT / source["file"]).read_bytes()
     if hashlib.sha256(raw).hexdigest() != source["sha256"]:
@@ -220,10 +223,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Build workspace before/after snapshots for active stimuli.")
     parser.add_argument("--folders", nargs="+", default=["user_task_13__no_injection"])
     parser.add_argument("--out-dir", type=Path, default=DEFAULT_OUT_DIR)
+    parser.add_argument("--stimuli-dir", type=Path, default=STIMULI_DIR)
     args = parser.parse_args()
     for folder in args.folders:
         try:
-            summary = build_one(folder, args.out_dir)
+            summary = build_one(folder, args.out_dir, args.stimuli_dir)
         except ReplayError as error:
             print(f"FAILED {folder}: {error}")
             sys.exit(1)

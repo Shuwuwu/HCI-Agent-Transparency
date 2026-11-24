@@ -20,7 +20,8 @@ Inputs:
 Outputs:
     <out-dir>/<stimulus_folder>/ for each execution (default src/data/stimuli/), where the folder is named
     user_task_<N>__<variant> (see stimulus_folder_name): variant "no_injection" for an execution without an attack,
-    "<attack>_<injection task>" for an attacked one. The name is the participant-viewer and Explorer key.
+    "<attack>_<injection task>" for an attacked one; a run record of an injected-skill item is named by its item id
+    (for example user_task_24__g2_tk_w1). The name is the participant-viewer and Explorer key.
         low.json         participant-facing: {stimulus_id, transparency, user_request, final_response}.
         high.json        participant-facing: the same plus action_log.
         provenance.json  researcher-only: where the stimulus came from (file, SHA-256, run id, condition, attack
@@ -71,6 +72,10 @@ def load_source(path: Path) -> dict:
     if "record_version" in data:  # a run record of run_executions.py
         source.update(kind="execution record", run_id=data["run_id"], scenario=data["scenario"],
                       condition=data["condition"], model=data["model"], status=data["status"])
+        if data.get("injection"):  # an injected-skill run (or the offline simulation of one): researcher-only facts
+            source.update(item_id=data["injection"]["item_id"], injection=data["injection"])
+        if data.get("simulated"):
+            source["simulated"] = True
         return {"messages": data["trace"], "source": source}
     if "messages" in data:  # a raw AgentDojo trace
         source.update(kind="AgentDojo trace", scenario=data.get("user_task_id"), attack=data.get("attack_type"),
@@ -124,8 +129,14 @@ def stimulus_folder_name(source: dict) -> str:
 
     The variant is "no_injection" when the source has no attack (attack missing or "none"), otherwise
     "<attack>_<injection task>" so an attacked run of the same task gets its own folder.
-    Raises StimulusError if the source has no user task id.
+    A source with an injected-skill item id (run records of injected runs) is named by that item id instead, so
+    several items of one task never collide. Raises StimulusError if the source has no user task id.
     """
+    item = source.get("item_id")
+    if item:
+        if not re.fullmatch(r"[a-z0-9_]+", item):
+            raise StimulusError(f"cannot name a stimulus folder: item id is {item!r}")
+        return item
     scenario = source.get("scenario")
     if not scenario or not re.fullmatch(r"user_task_\d+", scenario):
         raise StimulusError(f"cannot name a stimulus folder: scenario is {scenario!r}")

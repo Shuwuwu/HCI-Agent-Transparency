@@ -6,8 +6,9 @@ Purpose:
     researcher-facing tool for raw executions.
 
 Inputs:
-    src/data/stimuli/<stimulus folder>/low.json and high.json (written by
-    build_stimuli.py). Folders are named user_task_<N>__no_injection; the stimulus
+    <stimuli_dir of the active corpus>/<stimulus folder>/low.json and high.json (written by
+    build_stimuli.py; default corpus: src/data/stimuli). Folder names are descriptive development identifiers; the
+    server only requires that they match the corpus's id pattern. The stimulus
     id "stim_<hash>" stays inside the files and provenance only. Only these two
     files are ever sent to participants.
     <stimulus folder>/provenance.json and the execution record it points to
@@ -39,10 +40,12 @@ Outputs:
 
 Dependencies:
     Python standard library only. Reads the files produced by build_stimuli.py. interaction_log.py (event
-    validation and storage).
+    validation and storage), corpus.py (corpus configuration and eligibility rules).
 
 Usage:
-    python3 src/scripts/participant_server.py [--port 8765] [--host 127.0.0.1] [--log-dir PATH]
+    python3 src/scripts/participant_server.py [--port 8765] [--host 127.0.0.1] [--log-dir PATH] [--corpus PATH]
+    --corpus selects which stimuli are served and which are eligible (default src/data/corpora/study.json; the
+    simulated interface-validation stimulus is only in src/data/corpora/validation.json).
     Then open http://127.0.0.1:8765/chat?s=user_task_1__no_injection&c=high
 """
 
@@ -56,12 +59,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+import corpus as corpus_cfg
 import interaction_log as ilog
 
 ROOT = Path(__file__).resolve().parents[2]
-STIMULI_DIR = ROOT / "src" / "data" / "stimuli"
 UI_DIR = ROOT / "src" / "participant_ui"
-WORKSPACE_DIR = ROOT / "src" / "data" / "workspace"
 STATIC_FILES = {"app.js": "text/javascript", "style.css": "text/css", "markdown.js": "text/javascript",
                 "previews.js": "text/javascript", "workspace.js": "text/javascript",
                 "skills.js": "text/javascript", "interaction.js": "text/javascript"}
@@ -73,22 +75,40 @@ WORKSPACE_FIELDS = {
     "files": ("id_", "filename", "content", "owner", "last_modified", "shared_with", "size"),
 }
 CONDITIONS = ("low", "high")
-STIMULUS_ID_RE = re.compile(r"^user_task_\d+__[a-z0-9_]+$")  # folder name, e.g. user_task_1__no_injection
-BATCH_SUFFIX = "__skills-v4b"  # run-id suffix of the latest mapped-skills batch
-DEFAULT_STIMULUS = "user_task_1__no_injection"  # the validation stimulus
+
+# The active corpus (src/data/corpora/*.json) decides where stimuli live and which ones are eligible. The module
+# globals below mirror it so existing callers (and tests) can keep reading ps.STIMULI_DIR etc.; use_corpus() swaps it.
+CORPUS = None
+STIMULI_DIR = WORKSPACE_DIR = DEFAULT_STIMULUS = STIMULUS_ID_RE = None
+
+
+def use_corpus(path=corpus_cfg.DEFAULT_CORPUS):
+    """Make the corpus file at `path` the active one (folders, id pattern, default stimulus, eligibility rules).
+
+    Clears the eligibility cache. Returns the loaded corpus. Default: the study corpus.
+    """
+    global CORPUS, STIMULI_DIR, WORKSPACE_DIR, DEFAULT_STIMULUS, STIMULUS_ID_RE
+    CORPUS = corpus_cfg.load_corpus(path, ROOT)
+    STIMULI_DIR, WORKSPACE_DIR = CORPUS["stimuli_path"], CORPUS["workspace_path"]
+    DEFAULT_STIMULUS, STIMULUS_ID_RE = CORPUS["default_stimulus"], CORPUS["id_regex"]
+    is_eligible.cache_clear()
+    return CORPUS
 
 
 @functools.lru_cache(maxsize=None)
-def is_eligible(stimulus_id, stimuli_dir=STIMULI_DIR, root=ROOT):
-    """True only for a successful run of the latest mapped-skills-v4b batch.
+def is_eligible(stimulus_id, stimuli_dir=None, root=ROOT):
+    """True only if the stimulus belongs to the active corpus and its execution record passes one of its rules.
 
-    Reads the stimulus provenance and the execution record it cites. Eligible when
-    the source is an execution record (not an AgentDojo trace), its file matches
-    its recorded sha256, the provenance's stimulus_folder equals the folder name,
-    the run id ends with BATCH_SUFFIX, condition is
-    "mapped-skills", status is "completed" and utility is true. Anything missing
-    or unreadable is ineligible. Results are cached for the server's lifetime.
+    Reads the stimulus provenance and the execution record it cites. Eligible when the corpus's optional "include"
+    list (if any) names the folder, the source is an execution record (not an AgentDojo trace), its file matches
+    its recorded sha256, the provenance's stimulus_folder equals the folder name, and the record satisfies one of
+    the corpus's eligibility rules (corpus.py: run id suffix, condition, status, utility, simulated flag, inclusion
+    verdict). Anything missing or unreadable is ineligible. Results are cached until use_corpus() is called.
     """
+    stimuli_dir = STIMULI_DIR if stimuli_dir is None else stimuli_dir
+    include = CORPUS.get("include")
+    if include is not None and stimulus_id not in include:
+        return False
     try:
         prov = json.loads((Path(stimuli_dir) / stimulus_id / "provenance.json").read_text(encoding="utf-8"))
         src = prov["source"]
@@ -100,9 +120,7 @@ def is_eligible(stimulus_id, stimuli_dir=STIMULI_DIR, root=ROOT):
         if hashlib.sha256(path.read_bytes()).hexdigest() != src["sha256"]:
             return False
         rec = json.loads(path.read_text(encoding="utf-8"))
-        return (rec["run_id"].endswith(BATCH_SUFFIX) and rec["run_id"] == src["run_id"]
-                and rec["condition"] == "mapped-skills" and rec["status"] == "completed"
-                and rec["utility"] is True)
+        return rec["run_id"] == src["run_id"] and corpus_cfg.record_matches_any_rule(CORPUS, rec)
     except (OSError, KeyError, ValueError, TypeError):
         return False
 
@@ -130,7 +148,7 @@ def _clean_step(entry):
     return None
 
 
-def participant_view(stimulus_id, condition, stimuli_dir=STIMULI_DIR):
+def participant_view(stimulus_id, condition, stimuli_dir=None):
     """Return the participant-safe JSON for one stimulus and condition.
 
     Parameters:
@@ -148,7 +166,7 @@ def participant_view(stimulus_id, condition, stimuli_dir=STIMULI_DIR):
         raise FileNotFoundError(stimulus_id)  # same answer as a missing stimulus
     if condition not in CONDITIONS:
         raise ValueError("invalid condition")
-    path = Path(stimuli_dir) / stimulus_id / f"{condition}.json"
+    path = Path(STIMULI_DIR if stimuli_dir is None else stimuli_dir) / stimulus_id / f"{condition}.json"
     if not path.is_file():
         raise FileNotFoundError(stimulus_id)
     data = json.loads(path.read_text(encoding="utf-8"))
@@ -159,7 +177,7 @@ def participant_view(stimulus_id, condition, stimuli_dir=STIMULI_DIR):
     return view
 
 
-def participant_workspace(stimulus_id, stimuli_dir=STIMULI_DIR, workspace_dir=WORKSPACE_DIR):
+def participant_workspace(stimulus_id, stimuli_dir=None, workspace_dir=None):
     """Return the read-only workspace as it was BEFORE the agent ran, for an eligible stimulus.
 
     The result has "account" (email, current_day) and "state" with "emails", "events" and "files", reduced to
@@ -169,7 +187,7 @@ def participant_workspace(stimulus_id, stimuli_dir=STIMULI_DIR, workspace_dir=WO
     """
     if not STIMULUS_ID_RE.match(stimulus_id or ""):
         raise ValueError("invalid stimulus id")
-    path = Path(workspace_dir) / stimulus_id / "workspace.json"
+    path = Path(WORKSPACE_DIR if workspace_dir is None else workspace_dir) / stimulus_id / "workspace.json"
     if not is_eligible(stimulus_id, stimuli_dir) or not path.is_file():
         raise FileNotFoundError(stimulus_id)
     data = json.loads(path.read_text(encoding="utf-8"))
@@ -198,12 +216,13 @@ def _skill_entries(stimulus_id, stimuli_dir):
         raise ValueError("invalid stimulus id")
     if not is_eligible(stimulus_id, stimuli_dir):
         raise FileNotFoundError(stimulus_id)
-    prov = json.loads((Path(stimuli_dir) / stimulus_id / "provenance.json").read_text(encoding="utf-8"))
+    base = STIMULI_DIR if stimuli_dir is None else stimuli_dir
+    prov = json.loads((Path(base) / stimulus_id / "provenance.json").read_text(encoding="utf-8"))
     record = json.loads((ROOT / prov["source"]["file"]).read_text(encoding="utf-8"))
     return record["skills"]
 
 
-def participant_skills(stimulus_id, stimuli_dir=STIMULI_DIR):
+def participant_skills(stimulus_id, stimuli_dir=None):
     """The skills the agent had for this stimulus, as [{"id", "name", "description"}] (no documentation text).
 
     Same for both conditions. Raises ValueError / FileNotFoundError as participant_view does.
@@ -224,7 +243,7 @@ def skill_text(entry):
     return raw.decode("utf-8")
 
 
-def participant_skill(stimulus_id, skill_id, stimuli_dir=STIMULI_DIR):
+def participant_skill(stimulus_id, skill_id, stimuli_dir=None):
     """One skill's documentation: {"id", "name", "description", "markdown"}.
 
     Only skills of this stimulus's execution can be requested. Raises ValueError for an invalid id and
@@ -238,8 +257,9 @@ def participant_skill(stimulus_id, skill_id, stimuli_dir=STIMULI_DIR):
     raise FileNotFoundError(skill_id)
 
 
-def list_stimulus_ids(stimuli_dir=STIMULI_DIR):
+def list_stimulus_ids(stimuli_dir=None):
     """Return eligible stimulus ids that have both condition files, default one first."""
+    stimuli_dir = STIMULI_DIR if stimuli_dir is None else stimuli_dir
     ids = sorted(p.name for p in Path(stimuli_dir).iterdir()
                  if STIMULUS_ID_RE.match(p.name) and is_eligible(p.name, stimuli_dir) and all((p / f"{c}.json").is_file() for c in CONDITIONS))
     return sorted(ids, key=lambda i: i != DEFAULT_STIMULUS)
@@ -326,12 +346,18 @@ class Handler(BaseHTTPRequestHandler):
         sys.stderr.write("[participant] " + (fmt % args) + "\n")
 
 
+use_corpus()  # the study corpus is active until a caller (main, a test) switches it
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--log-dir", type=Path, default=ilog.DEFAULT_LOG_DIR)
+    parser.add_argument("--corpus", type=Path, default=corpus_cfg.DEFAULT_CORPUS,
+                        help="corpus file (src/data/corpora/*.json); validation.json serves the simulated fixture")
     args = parser.parse_args()
+    use_corpus(args.corpus)
     Handler.log_dir = args.log_dir
     server = ThreadingHTTPServer((args.host, args.port), Handler)
     print(f"Serving on http://{args.host}:{args.port}/ (Ctrl+C to stop)")

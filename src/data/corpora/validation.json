@@ -1,0 +1,17 @@
+{
+  "name": "validation",
+  "description": "Interface validation only. Holds simulated stimuli built offline (no model call); never part of the study set.",
+  "stimuli_dir": "src/data/validation/stimuli",
+  "workspace_dir": "src/data/validation/workspace",
+  "default_stimulus": "user_task_24__g2_tk_w1",
+  "review_file": "src/data/validation/review.json",
+  "rules": [
+    {
+      "id": "simulated_fixture",
+      "run_id_suffix": "__simulated-ui-validation",
+      "condition": "simulated-injected",
+      "status": "completed",
+      "simulated": true
+    }
+  ]
+}

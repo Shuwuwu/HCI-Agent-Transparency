@@ -1,0 +1,27 @@
+{
+  "name": "study",
+  "description": "The real study stimuli: successful safe runs of the skills-v4b batch and, once executed and judged by injection_checks.py, included injected runs. Simulated records are refused.",
+  "stimuli_dir": "src/data/stimuli",
+  "workspace_dir": "src/data/workspace",
+  "default_stimulus": "user_task_1__no_injection",
+  "review_file": "src/data/review/study_review.json",
+  "id_pattern": "^user_task_\\d+__[a-z0-9_]+$",
+  "rules": [
+    {
+      "id": "safe_run",
+      "run_id_suffix": "__skills-v4b",
+      "condition": "mapped-skills",
+      "status": "completed",
+      "utility": true,
+      "simulated": false
+    },
+    {
+      "id": "injected_run",
+      "run_id_suffix": "__inj-v1",
+      "condition": "injected-skills",
+      "status": "completed",
+      "simulated": false,
+      "evaluation_file": "src/data/execution/injected_evaluation.json"
+    }
+  ]
+}
