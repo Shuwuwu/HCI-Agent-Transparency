@@ -111,7 +111,7 @@ class AllocationTests(unittest.TestCase):
         self.assertEqual(set(alloc), set(by_status("candidate")))
         for s, a in alloc.items():
             self.assertIn(a["objective"], ROWS[s]["compatible"])
-            self.assertEqual(a["item_id"], design.item_id(s, a["objective"], a["strategy"], a["wording"]))
+            self.assertEqual(a["item_id"], design.item_id(s, a["objective"], a["strategy"], a["wording"], a.get("variant")))
         for obj in design.OBJECTIVE_IDS:
             self.assertEqual(sum(a["objective"] == obj for a in alloc.values()), 3)
         idents = [a["identity_id"] for a in alloc.values() if a["identity_id"]]

@@ -3,6 +3,7 @@ those tests skip with plain python3). The AgentDojo tests prove the templates, g
 to the pinned benchmark and that the tolerant utility check does what the inclusion rule needs."""
 
 import copy
+from collections import Counter
 import json
 import sys
 import unittest
@@ -38,7 +39,7 @@ class DesignTests(unittest.TestCase):
         self.assertEqual(set(design.EXCLUDED_OBJECTIVES), {"G0", "G5"})
         self.assertEqual(len(design.COMBINATIONS), 6)
         self.assertEqual(len(design.LEGACY_WORDINGS) * len(design.STRATEGIES), 4)
-        self.assertEqual((design.STUDY_STRATEGIES, design.STUDY_WORDINGS), (("II",), ("W2",)))  # the study plan
+        self.assertEqual((design.STUDY_STRATEGIES, design.STUDY_WORDINGS), (("II",), ("W1", "W2", "W3")))  # the study plan
 
     def test_every_cell_renders_and_contains_the_goal(self):
         for obj, meta in design.OBJECTIVES.items():
@@ -111,13 +112,39 @@ class DesignTests(unittest.TestCase):
             for areas in groups.values():
                 self.assertEqual(len(areas), len(set(areas)))
 
-    def test_study_plan_allocation_is_ii_w2_with_balanced_objectives(self):
-        plan = design.allocate_items(candidates(), "seed")
-        self.assertEqual({(p["strategy"], p["wording"]) for p in plan.values()}, {("II", "W2")})
-        for obj in design.OBJECTIVE_IDS:
-            self.assertEqual(sum(p["objective"] == obj for p in plan.values()), 3)
+    def test_study_plan_keeps_the_ii_w2_objectives_and_mixes_the_three_wordings(self):
+        cands = candidates()
+        basis = design.allocate_items(cands, "seed", **design.OBJECTIVE_BASIS)  # the earlier approved II + W2 allocation
+        plan = design.allocate_study_items(cands, "seed")
+        self.assertEqual(plan, design.allocate_study_items(cands, "seed"))  # reproducible
+        self.assertNotEqual(plan, design.allocate_study_items(cands, "other seed"))
+        for s, p in plan.items():  # objectives, identities and strategy are exactly those of the basis
+            self.assertEqual((p["objective"], p["identity_id"], p["strategy"]),
+                             (basis[s]["objective"], basis[s]["identity_id"], "II"))
+        self.assertEqual(Counter(p["wording"] for p in plan.values()), {"W1": 4, "W2": 4, "W3": 4})
+        for obj in design.OBJECTIVE_IDS:  # each objective shown once in every wording
+            self.assertEqual(sorted(p["wording"] for p in plan.values() if p["objective"] == obj), ["W1", "W2", "W3"])
+        area = {c["scenario"]: c["area"] for c in cands}
+        for w in design.STUDY_WORDINGS:  # one wording never twice in the same skill area
+            areas = [area[s] for s, p in plan.items() if p["wording"] == w]
+            self.assertEqual(len(areas), len(set(areas)))
+        variants = Counter(p["variant"] for p in plan.values() if p["wording"] == "W3")
+        self.assertEqual(sum(variants.values()), 4)
+        self.assertEqual(set(variants), set(design.W3_VARIANT_IDS))
+        self.assertTrue(all(("variant" in p) == (p["wording"] == "W3") for p in plan.values()))
         with self.assertRaises(ValueError):
             design.allocate_items(candidates(), "seed", strategies=("XX",))
+
+    def test_wording_assignment_reports_infeasibility_and_item_ids_carry_the_w3_variant(self):
+        cands = candidates()
+        for c in cands:
+            c["area"] = "same"  # four items of one wording cannot share an area
+        with self.assertRaises(ValueError):
+            design.allocate_study_items(cands, "seed")
+        with self.assertRaises(ValueError):
+            design.assign_wordings({"a": {"objective": "G1"}}, [{"scenario": "a", "area": "x"}], "seed")  # 1 item, 3 wordings
+        self.assertEqual(design.item_id("user_task_1", "G1", "II", "W2"), "user_task_1__g1_ii_w2")
+        self.assertEqual(design.item_id("user_task_1", "G1", "II", "W3", "v2"), "user_task_1__g1_ii_w3v2")
 
     def test_allocation_respects_compatibility_and_reports_infeasibility(self):
         cands = candidates()
@@ -145,9 +172,16 @@ class DesignTests(unittest.TestCase):
         broken = copy.deepcopy(ok)
         broken[1]["strategy"], broken[1]["wording"] = "II", "W1"
         self.assertFalse(design.is_valid_unsafe_list(broken, **plan))
-        study = [item("G1", "II", "W2", "a", None), item("G2", "II", "W2", "b", "id01"),
-                 item("G3", "II", "W2", "c", "id02"), item("G4", "II", "W2", "d", "id03")]
-        self.assertTrue(design.is_valid_unsafe_list(study))  # the study plan: one combination, trivially met
+        study = [dict(item("G1", "II", "W3", "a", None), variant="v1"), item("G2", "II", "W1", "b", "id01"),
+                 item("G3", "II", "W2", "c", "id02"), item("G4", "II", "W1", "d", "id03")]
+        self.assertTrue(design.is_valid_unsafe_list(study))  # the study plan: three wordings in four trials
+        again = copy.deepcopy(study)
+        again[2]["wording"] = "W1"  # no W2 any more: only two wordings
+        self.assertFalse(design.is_valid_unsafe_list(again))
+        twice = copy.deepcopy(study)
+        twice[1]["wording"], twice[3]["wording"] = "W3", "W3"
+        twice[1]["variant"] = twice[3]["variant"] = "v2"  # two W3 items with the same variant
+        self.assertFalse(design.is_valid_unsafe_list(twice))
         study[1]["area"] = "a"
         self.assertFalse(design.is_valid_unsafe_list(study))  # the other rules still bind
 

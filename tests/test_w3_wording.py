@@ -140,19 +140,19 @@ class AllocationTests(unittest.TestCase):
             self.assertEqual(sum((p["strategy"], p["wording"]) == combo for p in plan.values()), 3)
         self.assertEqual(plan, design.allocate_items(self.cands(), "seed", design.LEGACY_WORDINGS, design.STRATEGIES))
 
-    def test_the_default_allocation_is_the_study_plan_ii_with_w2_only(self):
-        plan = design.allocate_items(self.cands(), "seed")
-        self.assertEqual(plan, design.allocate_items(self.cands(), "seed", design.STUDY_WORDINGS, design.STUDY_STRATEGIES))
-        self.assertEqual((design.STUDY_STRATEGIES, design.STUDY_WORDINGS), (("II",), ("W2",)))
+    def test_a_single_combination_plan_skips_the_constraints_that_cannot_hold(self):
+        # the earlier II + W2 plan: one combination, so "no repeated (objective, combination) pair" and "different
+        # areas within a combination" cannot hold and are skipped; the objectives are still balanced
+        plan = design.allocate_items(self.cands(), "seed", **design.OBJECTIVE_BASIS)
         self.assertEqual(Counter((p["strategy"], p["wording"]) for p in plan.values()), {("II", "W2"): 12})
         self.assertFalse(any("variant" in p for p in plan.values()))
-        for obj in design.OBJECTIVE_IDS:  # the objective is still balanced, three items each
+        for obj in design.OBJECTIVE_IDS:
             self.assertEqual(sum(p["objective"] == obj for p in plan.values()), 3)
         area = {c["scenario"]: c["area"] for c in self.cands()}
         for obj in design.OBJECTIVE_IDS:  # scenarios sharing an objective still have different areas
             areas = [area[s] for s, p in plan.items() if p["objective"] == obj]
             self.assertEqual(len(areas), len(set(areas)))
-        self.assertEqual(plan, design.allocate_items(self.cands(), "seed"))
+        self.assertEqual(plan, design.allocate_items(self.cands(), "seed", **design.OBJECTIVE_BASIS))
 
     def test_w3_allocation_is_balanced_deterministic_and_keeps_every_constraint(self):
         cands = self.cands()
@@ -217,8 +217,9 @@ class AllocationTests(unittest.TestCase):
         self.assertTrue(ss.balanced_combinations(items, **ALL))
         items[0] = {"strategy": "TK", "wording": "W2"}
         self.assertFalse(ss.balanced_combinations(items, **ALL))
-        study = [{"strategy": "II", "wording": "W2"} for _ in range(8)]  # the study plan: one combination, all 8
-        self.assertTrue(ss.balanced_combinations(study))
+        study = [{"strategy": "II", "wording": w} for w in ("W1", "W2", "W3", "W1", "W2", "W3", "W1", "W3")]
+        self.assertTrue(ss.balanced_combinations(study))  # the study plan: three combinations, two or three each
+        self.assertFalse(ss.balanced_combinations([{"strategy": "II", "wording": "W2"} for _ in range(8)]))
 
 
 class ItemTests(unittest.TestCase):
@@ -231,7 +232,7 @@ class ItemTests(unittest.TestCase):
         self.assertEqual(len(self.w3_items), 4)
         for item in self.w3_items:
             self.assertEqual(item["placement"], design.W3_VARIANTS[item["variant"]]["placement"])
-            self.assertTrue(item["item_id"].endswith("_w3"))
+            self.assertTrue(item["item_id"].endswith("_w3" + item["variant"]))
         for item in self.manifest["items"]:
             self.assertEqual("variant" in item, item["wording"] == "W3")
         self.assertIn("W3", self.manifest["wording_note"])  # the note names W3 as implemented but unused in the study plan

@@ -17,6 +17,13 @@ Inputs:
 
 Outputs:
     src/data/execution/plan_injected_v1.json (the plan), or on stdout the run ids of the next round.
+    With --pilot: src/data/execution/plan_injected_wording_pilot.json, the wording-pilot plan (below).
+
+    Wording pilot. To compare wording W2 and W3 the pilot runs every item of the II + W2 plan (pilot_w2/) and its
+    W3 twin (pilot_w3/, build_injected_items.py --twins) three times each, ALL attempts, with no stopping at the first pass, so the two
+    wordings are compared on the same number of tries: 12 + 12 items x 3 = 72 runs, batch `inj-pilot-w2w3`. Run ids
+    differ from the study plan's (`__inj-pilot-w2w3`), so a pilot record is never confused with a study record.
+    The pilot plan is a plan only: nothing runs until run_executions.py is started with approval.
 
 Dependencies:
     build_execution_plan.py (system message, skills block, run id format), build_injected_items.py outputs.
@@ -24,6 +31,7 @@ Dependencies:
 Usage:
     python3 -B src/scripts/build_injection_plan.py                       # write the plan (no model call)
     python3 -B src/scripts/build_injection_plan.py --next-round [EVAL]   # run ids still needed, as --only arguments
+    python3 -B src/scripts/build_injection_plan.py --pilot               # write the W2-vs-W3 wording pilot plan
     .venv-agentdojo/bin/python -B src/scripts/run_executions.py --plan src/data/execution/plan_injected_v1.json \\
         --dry-run                                                        # preview; a real run needs approval
 """
@@ -43,15 +51,19 @@ PLAN_PATH = ROOT / "src" / "data" / "execution" / "plan_injected_v1.json"
 EVALUATION = ROOT / "src" / "data" / "execution" / "injected_evaluation.json"
 MODEL = "gpt-4o-2024-08-06"
 BATCH = "inj-v1"
+PILOT_W2_MANIFEST = ROOT / "src" / "data" / "injected_skills" / "pilot_w2" / "manifest.json"
+TWIN_MANIFEST = ROOT / "src" / "data" / "injected_skills" / "pilot_w3" / "manifest.json"
+PILOT_PLAN_PATH = ROOT / "src" / "data" / "execution" / "plan_injected_wording_pilot.json"
+PILOT_BATCH = "inj-pilot-w2w3"
 CONDITION = "injected-skills"
 MAX_ATTEMPTS = 3
 
 
-def run_id(item_id: str, attempt: int) -> str:
-    return f"{item_id}__{CONDITION}__{MODEL}__r{attempt}__{BATCH}"
+def run_id(item_id: str, attempt: int, batch: str = BATCH) -> str:
+    return f"{item_id}__{CONDITION}__{MODEL}__r{attempt}__{batch}"
 
 
-def build_plan(manifest: dict, facts: dict, attempts: int = MAX_ATTEMPTS) -> dict:
+def build_plan(manifest: dict, facts: dict, attempts: int = MAX_ATTEMPTS, batch: str = BATCH) -> dict:
     """The plan: {items x attempts} runs. Raises ValueError if an item's skills do not match its safe run."""
     tasks = {t["scenario"]: t for t in facts["tasks"]}
     planned = []
@@ -72,7 +84,7 @@ def build_plan(manifest: dict, facts: dict, attempts: int = MAX_ATTEMPTS) -> dic
         identity = item["attacker_identity"]
         for attempt in range(1, attempts + 1):
             planned.append({
-                "run_id": run_id(item["item_id"], attempt), "scenario": item["scenario"],
+                "run_id": run_id(item["item_id"], attempt, batch), "scenario": item["scenario"],
                 "task_prompt": task["prompt"], "condition": CONDITION, "model": MODEL, "repetition": attempt,
                 "skills": skills,
                 "injection": {"item_id": item["item_id"], "objective": item["objective"],
@@ -94,6 +106,29 @@ def build_plan(manifest: dict, facts: dict, attempts: int = MAX_ATTEMPTS) -> dic
                                                     "rule; at most 3 attempts per item; every attempt is kept"},
         "runs": planned,
     }
+
+
+def build_pilot_plan(w2: dict, twins: dict, facts: dict, attempts: int = MAX_ATTEMPTS) -> dict:
+    """The W2-vs-W3 wording pilot: the pilot's W2 items (pilot_w2/) and their W3 twins (pilot_w3/), `attempts` runs
+    each (all of them), batch PILOT_BATCH. Raises ValueError if a twin is not paired with exactly one W2 item of the
+    same scenario, objective and identity, or if an item's skills do not match its safe run (build_plan)."""
+    by_id = {i["item_id"]: i for i in w2["items"]}
+    paired = [t["paired_with"] for t in twins["items"]]
+    if sorted(paired) != sorted(by_id):
+        raise ValueError("the twins are not exactly one per W2 item; rebuild with build_injected_items.py --twins")
+    for t in twins["items"]:
+        w = by_id[t["paired_with"]]
+        if (w["scenario"], w["objective"], w["attacker_identity"]) != (t["scenario"], t["objective"], t["attacker_identity"]):
+            raise ValueError(f"{t['item_id']} does not match its W2 item {w['item_id']}")
+    combined = {**w2, "items": w2["items"] + twins["items"]}
+    plan = build_plan(combined, facts, attempts, PILOT_BATCH)
+    plan["design"]["rule"] = ("wording pilot: every item (the W2 items and their W3 twins) is run for all attempts, "
+                              "with no stopping at the first pass, so W2 and W3 are compared on the same number of "
+                              "tries; every attempt is kept")
+    plan["design"]["pilot"] = {"batch": PILOT_BATCH, "compares": ["W2", "W3"],
+                               "w2_manifest": "src/data/injected_skills/pilot_w2/manifest.json",
+                               "twin_manifest": "src/data/injected_skills/pilot_w3/manifest.json"}
+    return plan
 
 
 def next_round(plan: dict, evaluation: dict | None, runs_dir: Path) -> list[str]:
@@ -124,9 +159,17 @@ def next_round(plan: dict, evaluation: dict | None, runs_dir: Path) -> list[str]
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--next-round", nargs="?", const=str(EVALUATION), default=None, metavar="EVAL")
+    parser.add_argument("--pilot", action="store_true", help="write the W2-vs-W3 wording pilot plan instead")
     args = parser.parse_args()
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
     facts = json.loads(ss.INPUTS.read_text(encoding="utf-8"))
+    if args.pilot:
+        twins = json.loads(TWIN_MANIFEST.read_text(encoding="utf-8"))
+        plan = build_pilot_plan(json.loads(PILOT_W2_MANIFEST.read_text(encoding="utf-8")), twins, facts)
+        PILOT_PLAN_PATH.write_text(json.dumps(plan, indent=4, ensure_ascii=False) + "\n", encoding="utf-8")
+        print(f"wrote {len(plan['runs'])} planned runs ({len(plan['runs']) // MAX_ATTEMPTS} items x {MAX_ATTEMPTS}) "
+              f"to {PILOT_PLAN_PATH}")
+        return
     plan = build_plan(manifest, facts)
     if args.next_round is not None:
         path = Path(args.next_round)

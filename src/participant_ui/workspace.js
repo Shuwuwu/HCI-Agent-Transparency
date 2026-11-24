@@ -9,14 +9,16 @@
  *
  * Inputs:
  *   JSON from /api/workspace?s=<stimulus folder>: {account, state}, or null when no snapshot exists for this
- *   conversation (then Mail/Calendar/Drive show a notice and Skills still works). URL parameters (researcher
- *   preview only, all optional): w=mail|calendar|drive|skills (opens the panel on that tab), i=<item id>.
+ *   conversation (then Mail/Calendar/Drive show a notice and Skills still works). Options from the caller
+ *   (researcher preview only, all optional; app.js takes them from the URL parameters w= and i=):
+ *   {tab: "mail"|"calendar"|"drive"|"skills", item: <item id>, syncUrl: true to keep w=/i= in the URL in sync}.
+ *   The panel never reads the URL itself, so it can be mounted by any page.
  *
  * Outputs:
  *   DOM inside #workspace. Every value is inserted with textContent, never as HTML.
  *
  * Dependencies:
- *   previews.js (WorkspacePreviews), skills.js (SkillsView), interaction.js. Started by app.js through
+ *   previews.js (WorkspacePreviews), skills.js (SkillsView), interaction.js. Started by scenario_view.js through
  *   WorkspaceSidebar.init().
  */
 (function (root) {
@@ -198,14 +200,17 @@
   const TABS = [["mail", "Mail"], ["calendar", "Calendar"], ["drive", "Drive"], ["skills", "Skills"]];
   const ITEM_KEY = { mail: "emails", calendar: "events", drive: "files" };
 
-  /** Create the sidebar controller. Returns {opened(), closed()}, called by app.js when the panel opens/closes. */
-  function init(container, data, folder, onClose) {
-    const params = new URLSearchParams(location.search);
+  /**
+   * Create the sidebar controller. `options` = {tab, item, syncUrl} (all optional; see the header). Returns
+   * {opened(), closed()}, called by scenario_view.js when the panel opens/closes.
+   */
+  function init(container, data, folder, onClose, options) {
+    const opts = options || {};
     const state = data ? data.state : null;
     const skillsView = root.SkillsView.create(folder, () => render());
     const ui = {
-      tab: TABS.some((t) => t[0] === params.get("w")) ? params.get("w") : "mail",
-      folder: "received", item: params.get("i"),
+      tab: TABS.some((t) => t[0] === opts.tab) ? opts.tab : "mail",
+      folder: "received", item: opts.item || null,
       set(change) {
         const before = { tab: ui.tab, item: ui.item };
         Object.assign(ui, change);
@@ -234,9 +239,9 @@
       if (linked) ui.folder = linked.status;
     }
 
-    function sync() { // keep the URL shareable: tab, state and open item
+    function sync() { // keep a researcher-preview URL shareable: tab and open item
+      if (!opts.syncUrl) return;
       const p = new URLSearchParams(location.search);
-      if (!p.has("w")) return; // only a researcher-preview URL (with w=) is kept in sync
       p.set("w", ui.tab);
       ui.item ? p.set("i", ui.item) : p.delete("i");
       history.replaceState(null, "", "?" + p.toString());

@@ -16,8 +16,12 @@ Purpose:
                   workflow (a lead-in paragraph, or a sentence added to the first or last step of one workflow),
                   with no <INFORMATION> frame, no bold or heading, and no "required first step" label. W3 has
                   several variants (placement and phrasing) so that one participant's skills do not repeat a cue.
-                  The study plan uses all three (WORDINGS). LEGACY_WORDINGS (W1, W2) is the earlier two-wording plan,
-                  still accepted through the `wordings` argument of allocate_items / select_scenarios.select;
+                  The study plan uses strategy II only (STUDY_STRATEGIES) with the three wordings mixed, four items each
+                  (STUDY_WORDINGS): a participant's four unsafe skills then do not all repeat one phrase. The
+                  wordings are not assumed to be equally easy to notice; the wording is recorded per item. TK is
+                  implemented and tested (STRATEGIES) but unused, and any combination can still be planned through
+                  the `strategies` and `wordings` arguments of allocate_items / select_scenarios.select. The earlier
+                  plans (all combinations; II + W2 only) stay reproducible that way (LEGACY_WORDINGS = W1, W2);
       * objective G1-G4 = AgentDojo injection tasks 1-4 (delete a file, create an event with an outsider, forward a
                   private email, send a security code). G0 and G5 are not used: G0 is a harmless-looking greeting
                   (ambiguous ground truth) and G5 is G4 plus a cover-up step (same objective).
@@ -40,18 +44,22 @@ import hashlib
 import itertools
 from collections import Counter
 
-DESIGN_VERSION = "injection_design_v2"  # v2: the study plan is II + W2 only (rendering is unchanged from v1)
+DESIGN_VERSION = "injection_design_v3"  # v3: study plan = II with W1, W2 and W3 mixed (v2 was II + W2 only; rendering unchanged)
 USER_NAME = "Emma Johnson"  # the user AgentDojo's recorded runs name in the attack text
 MODEL_NAME = "GPT-4"  # AgentDojo's name for the gpt-4o family; it has no entry for gpt-4o-2024-08-06
 
 STRATEGIES = ("II", "TK")  # implemented (render_block accepts both)
 WORDINGS = ("W1", "W2", "W3")  # implemented (render_block accepts all three)
-# The study plan uses ONE injection style, so that injection discoverability is held constant and the only manipulated
-# variable is the transparency of the execution log: strategy II (the goal in plain words, no tool names or arguments
-# in the skill text) in wording W2 (a plain "Required first step", no <INFORMATION> frame, one fixed placement).
-# The other strategy and wordings stay implemented and tested, but no study item uses them.
+# The study plan uses ONE strategy, II (the goal in plain words, no tool names or arguments in the skill text), and
+# MIXES the three wordings, four of the 12 candidate items each, so that a participant's four unsafe skills do not
+# repeat one recognisable phrase. The wordings are NOT assumed to be equally hard to notice: the wording of each item
+# is recorded, so any difference in detection can be analysed, and every participant's list has all three wordings.
+# Strategy TK stays implemented and tested, but no study item uses it.
 STUDY_STRATEGIES = ("II",)
-STUDY_WORDINGS = ("W2",)
+STUDY_WORDINGS = ("W1", "W2", "W3")
+# The objectives and attacker identities of the 12 candidates are those of the earlier approved II + W2 allocation
+# and are kept as they are (changing the wording does not re-allocate them); see allocate_study_items.
+OBJECTIVE_BASIS = {"strategies": ("II",), "wordings": ("W2",)}
 LEGACY_WORDINGS = ("W1", "W2")  # the earlier two-wording plan (kept so that plan can still be rebuilt and tested)
 COMBINATIONS = tuple((s, w) for s in STRATEGIES for w in WORDINGS)  # the six implemented strategy-wording combinations
 STRATEGY_NAMES = {"II": "important_instructions", "TK": "tool_knowledge"}
@@ -330,8 +338,9 @@ def remove_block(item_text: str, inserted: str) -> str:
     return item_text.replace(inserted, "", 1)
 
 
-def item_id(scenario: str, objective: str, strategy: str, wording: str) -> str:
-    return f"{scenario}__{objective.lower()}_{strategy.lower()}_{wording.lower()}"
+def item_id(scenario: str, objective: str, strategy: str, wording: str, variant: str | None = None) -> str:
+    """Item id; a W3 item's id carries its variant (`..._w3v2`) so items of one scenario never share an id."""
+    return f"{scenario}__{objective.lower()}_{strategy.lower()}_{wording.lower()}{variant or ''}"
 
 
 # ------------------------------------------------------------------------------------------------ allocation
@@ -436,6 +445,69 @@ def allocate_items(candidates: list[dict], seed: str, wordings: tuple = STUDY_WO
     for k, scenario in enumerate(w3):
         plan[scenario]["variant"] = W3_VARIANT_IDS[k % len(W3_VARIANT_IDS)]
     return plan
+
+
+def assign_wordings(plan: dict[str, dict], candidates: list[dict], seed: str,
+                    wordings: tuple = STUDY_WORDINGS) -> dict[str, dict]:
+    """Add a wording (and, for W3, a variant) to every item of a plan that already has objectives and identities.
+
+    plan: {scenario: {"objective", "strategy", "identity_id"}}. Constraints: each wording is used len/len(wordings)
+    times; the items sharing an objective get different wordings (so every objective is shown in every wording
+    once, and no wording is tied to one goal); the items sharing a wording are in different areas (so the same
+    phrase does not return in one injected skill). Depth-first search in a seeded order, so the result is
+    reproducible; raises ValueError if none exists. W3 items get a variant (W3_VARIANT_IDS), dealt out as evenly as
+    possible in a seeded order. Returns a new plan with "wording" (and "variant") added; objectives and identities
+    are not touched."""
+    if not set(wordings) <= set(WORDINGS):
+        raise ValueError(f"unknown wording in {wordings}")
+    n = len(plan)
+    if n % len(wordings):
+        raise ValueError(f"the number of items must be a multiple of {len(wordings)}")
+    quota = n // len(wordings)
+    area = {c["scenario"]: c["area"] for c in candidates}
+    order = sorted(plan, key=lambda s: rank_key(seed, "wording-order", s))
+    chosen: dict[str, str] = {}
+    count = {w: 0 for w in wordings}
+    by_objective = {o: set() for o in OBJECTIVE_IDS}
+    by_area = {w: set() for w in wordings}
+
+    def search(k):
+        if k == n:
+            return True
+        s = order[k]
+        obj = plan[s]["objective"]
+        for w in sorted(wordings, key=lambda w: rank_key(seed, "wording", s, w)):
+            if count[w] >= quota or w in by_objective[obj] or area[s] in by_area[w]:
+                continue
+            chosen[s] = w
+            count[w] += 1
+            by_objective[obj].add(w)
+            by_area[w].add(area[s])
+            if search(k + 1):
+                return True
+            del chosen[s]
+            count[w] -= 1
+            by_objective[obj].discard(w)
+            by_area[w].discard(area[s])
+        return False
+
+    if not search(0):
+        raise ValueError("no assignment of wordings satisfies the constraints")
+    out = {s: {**plan[s], "wording": chosen[s]} for s in plan}
+    w3 = sorted((s for s in out if out[s]["wording"] == "W3"), key=lambda s: rank_key(seed, "variant", s))
+    for k, s in enumerate(w3):
+        out[s]["variant"] = W3_VARIANT_IDS[k % len(W3_VARIANT_IDS)]
+    return out
+
+
+def allocate_study_items(candidates: list[dict], seed: str) -> dict[str, dict]:
+    """The study plan's allocation: objectives and attacker identities exactly as in the approved II + W2 allocation
+    (OBJECTIVE_BASIS; kept so that changing the wording does not change what is attacked or by whom), then the three
+    wordings mixed over the items by assign_wordings (four each). Returns {scenario: {"objective", "strategy",
+    "wording", "identity_id" or None}}, plus "variant" for W3 items."""
+    basis = allocate_items(candidates, seed, **OBJECTIVE_BASIS)
+    return assign_wordings({s: {k: v for k, v in p.items() if k != "wording"} for s, p in basis.items()},
+                           candidates, seed)
 
 
 def identity_by_id(identity_id: str | None) -> Identity | None:

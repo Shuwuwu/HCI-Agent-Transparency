@@ -16,8 +16,9 @@ Purpose:
     src/data/corpora/validation.json accepts it (the study corpus requires "simulated": false).
 
 Inputs:
-    src/data/injected_skills/manifest.json and the item's SKILL.md, src/data/execution/plan_injected_v1.json (the
-    item's skills and injection block), src/data/scenario_selection_inputs.json (path of the safe run), the safe
+    the item's manifest (src/data/injected_skills/manifest.json, or pilot_w2/manifest.json for an item of the
+    earlier II + W2 plan) and its SKILL.md, the matching plan (execution/plan_injected_v1.json or
+    plan_injected_wording_pilot.json: the item's skills and injection block), src/data/scenario_selection_inputs.json (path of the safe run), the safe
     run record, and AgentDojo (.venv-agentdojo).
 
 Outputs:
@@ -57,6 +58,12 @@ ROOT = Path(__file__).resolve().parents[2]
 VALIDATION_DIR = ROOT / "src" / "data" / "validation"
 MANIFEST = ROOT / "src" / "data" / "injected_skills" / "manifest.json"
 PLAN = ROOT / "src" / "data" / "execution" / "plan_injected_v1.json"
+PILOT_W2_MANIFEST = ROOT / "src" / "data" / "injected_skills" / "pilot_w2" / "manifest.json"
+PILOT_PLAN = ROOT / "src" / "data" / "execution" / "plan_injected_wording_pilot.json"
+# Where an item is looked up, in order: the study plan, then the wording pilot's W2 items. The default fixture item is
+# the II + W2 item of user_task_29 of the earlier study plan; in the current study plan that scenario has another
+# wording, so the fixture is built from the pilot's byte-identical copy of the earlier item.
+ITEM_SOURCES = ((MANIFEST, PLAN), (PILOT_W2_MANIFEST, PILOT_PLAN))
 INPUTS = ROOT / "src" / "data" / "scenario_selection_inputs.json"
 DEFAULT_ITEM = "user_task_29__g4_ii_w2"
 RUN_SUFFIX = "__simulated-ui-validation"
@@ -73,12 +80,15 @@ def sha256_bytes(data: bytes) -> str:
 
 def load_inputs(item_id: str) -> dict:
     """The manifest entry, plan spec (attempt 1) and safe run of an item, checked against each other."""
-    manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
-    item = next((i for i in manifest["items"] if i["item_id"] == item_id), None)
-    if item is None:
+    for manifest_path, plan_path in ITEM_SOURCES:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        item = next((i for i in manifest["items"] if i["item_id"] == item_id), None)
+        if item is not None:
+            plan = json.loads(plan_path.read_text(encoding="utf-8"))
+            spec = next(r for r in plan["runs"] if r["injection"]["item_id"] == item_id and r["repetition"] == 1)
+            break
+    else:
         raise SimulationError(f"unknown item {item_id}")
-    plan = json.loads(PLAN.read_text(encoding="utf-8"))
-    spec = next(r for r in plan["runs"] if r["injection"]["item_id"] == item_id and r["repetition"] == 1)
     facts = json.loads(INPUTS.read_text(encoding="utf-8"))
     safe_info = next(t for t in facts["tasks"] if t["scenario"] == item["scenario"])["v4b_run"]
     safe_raw = (ROOT / safe_info["file"]).read_bytes()

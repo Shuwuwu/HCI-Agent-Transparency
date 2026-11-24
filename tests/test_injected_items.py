@@ -2,6 +2,7 @@
 (the ones the skills-v4b runs used), differs from its base only by the declared block, no researcher-only wording."""
 
 import hashlib
+from collections import Counter
 import json
 import sys
 import unittest
@@ -89,6 +90,109 @@ class InjectedItemsTests(unittest.TestCase):
         with self.assertRaises((bi.ItemError, StopIteration)):
             bi.build_item(ITEMS[0]["scenario"], result["allocation"][ITEMS[0]["scenario"]],
                           result["rows"][ITEMS[0]["scenario"]], bad, ss.SEED)
+
+class StudyPlanTests(unittest.TestCase):
+    """The study plan: strategy II only, the three wordings mixed (four items each), objectives kept."""
+
+    def test_four_items_per_wording_one_strategy_and_each_objective_once_per_wording(self):
+        self.assertEqual(Counter(i["wording"] for i in ITEMS), {"W1": 4, "W2": 4, "W3": 4})
+        self.assertEqual({i["strategy"] for i in ITEMS}, {"important_instructions"})
+        for wording in ("W1", "W2", "W3"):
+            self.assertEqual(sorted(i["objective"] for i in ITEMS if i["wording"] == wording), ["G1", "G2", "G3", "G4"])
+            areas = [i["injected_skill"] for i in ITEMS if i["wording"] == wording]
+            self.assertEqual(len(areas), len(set(areas)))
+        self.assertEqual(len({i["item_id"] for i in ITEMS}), 12)
+
+    def test_objectives_and_identities_are_those_of_the_ii_w2_plan(self):
+        pilot = {i["scenario"]: i for i in json.loads((bi.OUT_DIR / "pilot_w2" / "manifest.json").read_text())["items"]}
+        for item in ITEMS:
+            w2 = pilot[item["scenario"]]
+            self.assertEqual((item["objective"], item["attacker_identity"]), (w2["objective"], w2["attacker_identity"]))
+            self.assertEqual(item["base_sha256"], w2["base_sha256"])
+
+    def test_each_wording_looks_like_its_definition_and_w3_variants_are_spread(self):
+        for item in ITEMS:
+            text = text_of(item)
+            self.assertEqual("<INFORMATION>" in text, item["wording"] == "W1")
+            self.assertEqual("**Required first step.**" in text, item["wording"] == "W2")
+            self.assertEqual("variant" in item, item["wording"] == "W3")
+            self.assertEqual(item["item_id"].endswith("_w3" + item.get("variant", "")), item["wording"] == "W3")
+            self.assertIn("Emma Johnson", text)  # the authority claim is in every wording
+        variants = Counter(i["variant"] for i in ITEMS if i["wording"] == "W3")
+        self.assertEqual(set(variants), set(design.W3_VARIANT_IDS))
+        self.assertLessEqual(max(variants.values()) - min(variants.values()), 1)
+
+    def test_a_participant_list_of_four_can_hold_all_three_wordings(self):
+        items = [{"scenario": i["scenario"], "area": i["injected_skill"], "difficulty": "EASY", "rank": n, "objective": i["objective"],
+                  "strategy": "II", "wording": i["wording"], "identity_id": (i["attacker_identity"] or {}).get("id"),
+                  **({"variant": i["variant"]} if "variant" in i else {})} for n, i in enumerate(ITEMS)]
+        final = ss.choose_final_set(items, [])
+        self.assertIsNotNone(final)
+        by = {i["scenario"]: i for i in items}
+        for lst in ("A", "B"):
+            self.assertEqual({by[s]["wording"] for s in final[lst]}, {"W1", "W2", "W3"})
+
+
+class TwinTests(unittest.TestCase):
+    """The W3 (v3) twins of the wording pilot: same item, only the wording differs."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.files, cls.manifest, cls.w2_manifest = bi.build_twins(FACTS)
+        cls.w2_items = cls.w2_manifest["items"]
+        cls.by_w2 = {i["paired_with"]: i for i in cls.manifest["items"]}
+
+    def test_committed_twins_equal_a_rebuild(self):
+        for root, manifest in (("pilot_w3", self.manifest), ("pilot_w2", self.w2_manifest)):
+            committed = json.loads((bi.OUT_DIR / root / "manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(committed, manifest, root)
+        for relative, text in self.files.items():
+            self.assertEqual((bi.OUT_DIR / relative).read_text(encoding="utf-8"), text, relative)
+        on_disk = {str(p.relative_to(bi.OUT_DIR)) for r in ("pilot_w2", "pilot_w3") for p in (bi.OUT_DIR / r).rglob("SKILL.md")}
+        self.assertEqual(on_disk, {p for p in self.files if p.endswith("SKILL.md")})
+
+    def test_one_twin_per_w2_item_differing_only_in_the_wording(self):
+        self.assertEqual(sorted(self.by_w2), sorted(i["item_id"] for i in self.w2_items))
+        for w2 in self.w2_items:
+            self.assertEqual(w2["wording"], "W2")
+            twin = self.by_w2[w2["item_id"]]
+            for key in ("scenario", "objective", "objective_agentdojo_task", "strategy", "attacker_identity", "goal_text",
+                        "anchor_title", "injected_skill", "base_file", "base_sha256"):
+                self.assertEqual(twin[key], w2[key], (w2["item_id"], key))
+            self.assertEqual((w2["wording"], twin["wording"]), ("W2", "W3"))
+            self.assertEqual((twin["variant"], twin["placement"]), ("v3", "last_step"))
+            self.assertTrue(twin["item_id"].endswith("_ii_w3") and twin["item_file"].startswith(
+                "src/data/injected_skills/pilot_w3/items/"))
+
+    def test_a_twin_is_the_base_skill_plus_one_sentence_in_the_same_workflow(self):
+        for w2 in self.w2_items:
+            twin = self.by_w2[w2["item_id"]]
+            text = (ROOT / twin["item_file"]).read_text(encoding="utf-8")
+            base = (ROOT / twin["base_file"]).read_text(encoding="utf-8")
+            block = design.render_block("II", "W3", twin["objective"], design.identity_by_id(
+                twin["attacker_identity"] and twin["attacker_identity"]["id"]), "v3")
+            self.assertEqual(text.count(block), 1)
+            self.assertEqual(text.replace(" " + block, "", 1), base)  # a pure insertion at the end of a step
+            self.assertNotIn("Required first step", text)
+            self.assertNotIn("**", text)
+            # the same workflow subsection as its W2 item
+            w2_text = (ROOT / w2["item_file"]).read_text(encoding="utf-8")
+            heading = "### " + w2["anchor_title"]
+            nxt = lambda t: t.find("\n### ", t.index(heading) + 1)  # noqa: E731
+            self.assertIn(block, text[text.index(heading): nxt(text) if nxt(text) > 0 else len(text)])
+            self.assertIn(w2["goal_text"], w2_text[w2_text.index(heading):])
+
+    def test_pilot_items_are_not_study_items(self):
+        self.assertFalse({t["item_id"] for t in self.manifest["items"]} & {i["item_id"] for i in ITEMS})  # twins: no id clash
+        self.assertFalse(any((bi.OUT_DIR / "items").glob("*_w3")))
+        # the pilot's W2 items are byte-identical to the items of the earlier II + W2 study plan (commit 4ea015b)
+        # for every scenario whose study wording is still W2
+        study = {i["scenario"]: i for i in ITEMS}
+        for w2 in self.w2_items:
+            if study[w2["scenario"]]["wording"] == "W2":
+                self.assertEqual(study[w2["scenario"]]["item_sha256"], w2["item_sha256"])
+                self.assertEqual(study[w2["scenario"]]["item_id"], w2["item_id"])
+
 
 
 if __name__ == "__main__":

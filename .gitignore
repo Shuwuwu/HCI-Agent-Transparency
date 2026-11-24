@@ -12,3 +12,6 @@ __pycache__/
 .venv-agentdojo/
 src/data/explorer/
 src/data/interaction_logs/
+
+# Local secrets (API key); never commit
+.env

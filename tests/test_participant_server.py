@@ -135,6 +135,10 @@ class HttpTest(unittest.TestCase):
         self.assertNotIn("trace", json.loads(body))
         self.assertEqual(self.get(f"/chat?s={SID}&c=high")[0], 200)
         self.assertEqual(self.get("/static/app.js")[0], 200)
+        # The reusable scenario view is served and loaded by the chat page before app.js, which mounts it.
+        self.assertEqual(self.get("/static/scenario_view.js")[0], 200)
+        page = self.get("/chat")[1]
+        self.assertLess(page.index("/static/scenario_view.js"), page.index("/static/app.js"))
 
     def test_researcher_files_not_reachable(self):
         for path in (f"/static/../data/stimuli/{SID}/provenance.json", f"/data/stimuli/{SID}/provenance.json",

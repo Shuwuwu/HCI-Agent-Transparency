@@ -154,7 +154,9 @@ class SimulatedRecordTests(unittest.TestCase):
                          self.record["simulation"]["attack_calls"])
 
     def test_system_message_holds_the_injected_skill_instead_of_the_safe_one(self):
-        item = next(i for i in json.loads((ROOT / "src/data/injected_skills/manifest.json").read_text())["items"]
+        # the fixture's item is an item of the earlier II + W2 plan, now kept as the wording pilot's W2 item
+        manifests = ("src/data/injected_skills/manifest.json", "src/data/injected_skills/pilot_w2/manifest.json")
+        item = next(i for m in manifests for i in json.loads((ROOT / m).read_text())["items"]
                     if i["item_id"] == self.record["injection"]["item_id"])
         item_text = (ROOT / item["item_file"]).read_text()
         base_text = (ROOT / item["base_file"]).read_text()

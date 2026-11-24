@@ -8,8 +8,11 @@ Purpose:
     Constraints enforced and checked (see docs/scenario_selection.md, section 6):
       * each participant sees the 8 final scenarios once, 4 safe and 4 unsafe;
       * the 4 unsafe trials have different objectives, different areas (injected skills), different attacker
-        identities and (planned design) the four strategy-wording combinations once each - checked through
+        identities and all three wordings of the plan (one wording twice, W3 variants different) - checked through
         injection_design.is_valid_unsafe_list;
+      * in complete blocks the unsafe trials of every wording occur equally often in the low and the high condition
+        (this follows from both lists being shown in both conditions equally often; validate() checks it, and
+        diagnostics() reports the mean trial position of each wording per condition);
       * no repeated legitimate task (the final set contains no repeated-task pair);
       * conditions are assigned in blocks of 4 participants, one of each (list, condition) cell, in a seeded
         random order within the block;
@@ -38,6 +41,7 @@ Usage:
 import argparse
 import itertools
 import json
+from collections import Counter
 import sys
 from pathlib import Path
 
@@ -122,6 +126,12 @@ def validate(assignments: list[dict], final: dict, items: dict[str, dict], pairs
         if max_unsafe_run(list(range(8)), set(order)) > 2:
             problems.append(f"{who}: three unsafe trials in a row")
     full = len(assignments) // 4 * 4
+    if full:  # wording balance across transparency conditions (complete blocks only)
+        by_wording = {c: Counter(items[t["scenario"]]["wording"] for a in assignments[:full] if a["condition"] == c
+                                 for t in a["trials"] if t["version"] == "unsafe") for c in CONDITIONS}
+        if by_wording["low"] != by_wording["high"]:
+            problems.append(f"unsafe wordings are not equally frequent in both conditions: "
+                            f"{dict(by_wording['low'])} vs {dict(by_wording['high'])}")
     for cond in CONDITIONS:
         counts = {}
         for a in assignments[:full]:
@@ -138,13 +148,22 @@ def validate(assignments: list[dict], final: dict, items: dict[str, dict], pairs
     return problems
 
 
-def diagnostics(assignments: list[dict]) -> dict:
-    """Balance measures reported with the design: first-trial version and mean position per condition."""
+def diagnostics(assignments: list[dict], items: dict[str, dict] | None = None) -> dict:
+    """Balance measures reported with the design: first-trial version per condition and, when the planned items are
+    given, how often each wording is shown unsafe and its mean trial position (1-8) per condition."""
     out = {}
     for cond in CONDITIONS:
         group = [a for a in assignments if a["condition"] == cond]
         first = sum(a["trials"][0]["version"] == "unsafe" for a in group)
         out[cond] = {"participants": len(group), "first_trial_unsafe": first}
+        if items:
+            positions = {}
+            for a in group:
+                for t in a["trials"]:
+                    if t["version"] == "unsafe":
+                        positions.setdefault(items[t["scenario"]]["wording"], []).append(t["trial"])
+            out[cond]["unsafe_by_wording"] = {w: len(v) for w, v in sorted(positions.items())}
+            out[cond]["mean_position_by_wording"] = {w: round(sum(v) / len(v), 2) for w, v in sorted(positions.items())}
     return out
 
 
@@ -169,7 +188,7 @@ def main() -> None:
         assignments = generate(final, items, args.simulate)
         problems = validate(assignments, final, items, result["pairs"])
         print(f"{len(assignments)} simulated participants; problems: {problems or 'none'}")
-        print(json.dumps(diagnostics(assignments)))
+        print(json.dumps(diagnostics(assignments, items)))
         return
     if args.write is None:
         parser.error("choose --simulate N or --write N")

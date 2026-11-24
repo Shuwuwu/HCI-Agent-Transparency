@@ -22,8 +22,8 @@ Inputs:
     SHA-256) and src/data/skills/<skill>/SKILL.md: the skill documentation the
     agent was given, served only on request and only if the file still matches
     the recorded hash.
-    Static front-end files in src/participant_ui/ (index.html, app.js, style.css,
-    markdown.js, previews.js, workspace.js, skills.js, interaction.js).
+    Static front-end files in src/participant_ui/ (index.html, app.js, scenario_view.js,
+    style.css, markdown.js, previews.js, workspace.js, skills.js, interaction.js).
 
 Outputs:
     A local HTTP server (default http://127.0.0.1:8765). Routes:
@@ -66,7 +66,8 @@ ROOT = Path(__file__).resolve().parents[2]
 UI_DIR = ROOT / "src" / "participant_ui"
 STATIC_FILES = {"app.js": "text/javascript", "style.css": "text/css", "markdown.js": "text/javascript",
                 "previews.js": "text/javascript", "workspace.js": "text/javascript",
-                "skills.js": "text/javascript", "interaction.js": "text/javascript"}
+                "skills.js": "text/javascript", "interaction.js": "text/javascript",
+                "scenario_view.js": "text/javascript"}
 # Workspace fields a participant may receive (same list as build_workspace_snapshots.py).
 WORKSPACE_FIELDS = {
     "emails": ("id_", "sender", "recipients", "cc", "bcc", "subject", "body", "status", "timestamp", "attachments"),

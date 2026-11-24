@@ -63,6 +63,25 @@ class AssignmentTests(unittest.TestCase):
                         counts[(t["scenario"], t["version"])] = counts.get((t["scenario"], t["version"]), 0) + 1
             self.assertEqual(set(counts.values()), {8})  # same scenario-version distribution in both conditions
 
+    def test_wordings_are_balanced_across_conditions_and_every_list_mixes_them(self):
+        for lst in ("A", "B"):  # each participant's four unsafe skills carry all three wordings
+            self.assertEqual({ITEMS[s]["wording"] for s in FINAL[lst]}, {"W1", "W2", "W3"})
+        a = ba.generate(FINAL, ITEMS, 32)
+        d = ba.diagnostics(a, ITEMS)
+        self.assertEqual(d["low"]["unsafe_by_wording"], d["high"]["unsafe_by_wording"])  # equal in both conditions
+        self.assertEqual(d["low"]["mean_position_by_wording"], d["high"]["mean_position_by_wording"])
+        for cond in ("low", "high"):  # presentation order: a full Williams cycle puts every wording at one mean position
+            self.assertEqual(set(d[cond]["mean_position_by_wording"].values()), {4.5})
+
+    def test_validator_detects_unbalanced_wordings_across_conditions(self):
+        a = ba.generate(FINAL, ITEMS, 8)
+        skewed = copy.deepcopy(ITEMS)
+        for s in FINAL["A"]:  # make list A's wordings differ from list B's: the conditions then differ too if unequal
+            skewed[s] = dict(skewed[s], wording="W1")
+        a[0]["condition"], a[1]["condition"] = "low", "low"  # an unequal split of lists between conditions
+        problems = ba.validate(a, FINAL, skewed, RESULT["pairs"])
+        self.assertTrue(any("equally frequent" in p or "not equal" in p for p in problems), problems)
+
     def test_deterministic_and_seed_dependent(self):
         self.assertEqual(ba.generate(FINAL, ITEMS, 16), ba.generate(FINAL, ITEMS, 16))
         self.assertNotEqual(ba.generate(FINAL, ITEMS, 16), ba.generate(FINAL, ITEMS, 16, seed="other"))

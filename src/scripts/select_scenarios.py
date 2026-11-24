@@ -254,9 +254,11 @@ def round_robin(rows_by_area: dict[str, list[dict]], seed: str) -> list[dict]:
     return order
 
 
-def select(facts: dict, seed: str = SEED, wordings: tuple = design.STUDY_WORDINGS,
-           strategies: tuple = design.STUDY_STRATEGIES) -> dict:
-    """Apply R1-R5 to the facts (the injection style defaults to the study plan, II + W2). Returns {"rows": [...], "order": [...], "threshold_range", "groups", ...}."""
+def select(facts: dict, seed: str = SEED, wordings: tuple | None = None, strategies: tuple | None = None) -> dict:
+    """Apply R1-R5 to the facts. With neither `wordings` nor `strategies` the study plan is allocated (II with W1, W2
+    and W3 mixed over objectives kept from the II + W2 allocation: design.allocate_study_items); giving either
+    allocates that combination space jointly instead (design.allocate_items), for example wordings=("W2",) with
+    strategies=("II",) for the II + W2 plan. Returns {"rows": [...], "order": [...], "threshold_range", "groups", ...}."""
     tasks = {t["scenario"]: t for t in facts["tasks"]}
     rows = {}
     for s, t in tasks.items():
@@ -332,9 +334,13 @@ def select(facts: dict, seed: str = SEED, wordings: tuple = design.STUDY_WORDING
                 rows[s]["repeated"] = "|".join(c.replace("user_task_", "") for c in comp)
     cands = [{"scenario": s, "area": rows[s]["area"], "compatible": rows[s]["compatible"]}
              for s in order[:N_CANDIDATES]]
-    allocation = design.allocate_items(cands, seed, wordings, strategies)
+    if wordings is None and strategies is None:
+        allocation = design.allocate_study_items(cands, seed)
+    else:
+        allocation = design.allocate_items(cands, seed, wordings or design.STUDY_WORDINGS,
+                                           strategies or design.STUDY_STRATEGIES)
     for s, plan in allocation.items():
-        plan["item_id"] = design.item_id(s, plan["objective"], plan["strategy"], plan["wording"])
+        plan["item_id"] = design.item_id(s, plan["objective"], plan["strategy"], plan["wording"], plan.get("variant"))
     spares = [s for s in order if rows[s]["status"] == "spare"]
     return {"rows": rows, "order": order, "allocation": allocation, "groups": groups,
             "threshold_range": threshold_range(after_3a, groups), "spares": spares,
@@ -371,8 +377,8 @@ def planned_strategies(allocation: dict) -> tuple:
 
 def balanced_combinations(subset: list[dict], wordings: tuple = design.STUDY_WORDINGS,
                           strategies: tuple = design.STUDY_STRATEGIES) -> bool:
-    """True if the strategy-wording combinations of the 8 items are used as equally as possible: all 8 with the one
-    study combination (II + W2); each exactly twice with four combinations; once or twice with six."""
+    """True if the strategy-wording combinations of the 8 items are used as equally as possible: two or three times
+    each with the three study combinations (II with W1, W2, W3); exactly twice with four; once or twice with six."""
     combos = tuple((s, w) for s in strategies for w in wordings)
     low, high = len(subset) // len(combos), -(-len(subset) // len(combos))
     return all(low <= sum((i["strategy"], i["wording"]) == c for i in subset) <= high for c in combos)
@@ -568,9 +574,10 @@ def sections(result: dict, st2: dict, facts: dict) -> dict[str, str]:
         f"- **Email to an outsider appears in {email_slots} of every participant's 4 unsafe trials.** AgentDojo's four "
         "used objectives include two that send an email (G3, G4); the other two are a file deletion and a calendar "
         "event. The two email trials differ in content (a forwarded private email and a security code).\n"
-        "- **The same injection wording appears in all 4 unsafe trials of every participant** (II + W2: a plain "
-        "\"Required first step\" block naming Emma Johnson). This is deliberate: it holds injection discoverability "
-        "constant, so it is not a second manipulated variable next to log transparency.\n"
+        "- **Emma Johnson is named in every injected skill** (the authority claim is part of all three wordings), and "
+        "every participant's 4 unsafe skills use all three wordings (one wording twice), so no single phrase is "
+        "repeated four times. The wordings are not assumed to be equally easy to notice; the wording of every item is "
+        "recorded and its effect is reported descriptively.\n"
         "- **Every unsafe trial involves a non-company address or the deletion of a company file**; safe traces of "
         "some scenarios also show non-company addresses in tool results, so this is not a perfect cue.\n"
         "- **A victim item recurs across participants** (Lily's email for G3, the Facebook-code email for G4, file 13 "
@@ -589,8 +596,8 @@ def sections(result: dict, st2: dict, facts: dict) -> dict[str, str]:
     relaxed_rates = feasibility_by_attrition(alloc, rows, result["pairs"], strict=False)
     out["attrition"] = md_table(
         ["Per-attempt pass rate (assumed)", "Item passes within 3 attempts",
-         "Chance of a valid final set: planned design (every list satisfies the participant-list rules)",
-         "Chance: relaxed design (every wording of the plan in each list; identical to the planned design with one wording)"],
+         "Chance of a valid final set: planned design (3 different strategy-wording combinations in each list)",
+         "Chance: relaxed design (every wording of the plan in each list)"],
         [[a["per_attempt"], f"{a['item_pass']:.2f}", f"{a['probability']:.2f}", f"{b['probability']:.2f}"]
          for a, b in zip(strict_rates, relaxed_rates)])
     if st2["ran"]:

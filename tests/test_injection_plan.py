@@ -81,6 +81,47 @@ class PlanTests(unittest.TestCase):
             self.assertFalse([r for r in bip.next_round(PLAN, ev2, runs_dir) if r.startswith(item)])  # passed: stop
             self.assertEqual(len(others), 11)
 
+    def test_wording_pilot_plan_runs_w2_items_and_their_w3_twins_three_times_each(self):
+        twins = json.loads(bip.TWIN_MANIFEST.read_text(encoding="utf-8"))
+        w2 = json.loads(bip.PILOT_W2_MANIFEST.read_text(encoding="utf-8"))
+        pilot = bip.build_pilot_plan(w2, twins, FACTS)
+        self.assertEqual(json.loads(bip.PILOT_PLAN_PATH.read_text(encoding="utf-8")), pilot)  # committed = rebuilt
+        self.assertEqual((len(pilot["runs"]), pilot["limits"]["max_runs"]), (72, 72))
+        ids = [r["run_id"] for r in pilot["runs"]]
+        self.assertEqual(len(ids), len(set(ids)))
+        self.assertTrue(all(r["run_id"].endswith("__inj-pilot-w2w3") for r in pilot["runs"]))
+        self.assertFalse(set(ids) & {r["run_id"] for r in PLAN["runs"]})  # never confused with the study plan
+        self.assertEqual({r["injection"]["wording"] for r in PLAN["runs"]}, {"W1", "W2", "W3"})  # the study plan mixes
+        for wording in ("W2", "W3"):
+            items = {r["injection"]["item_id"] for r in pilot["runs"] if r["injection"]["wording"] == wording}
+            self.assertEqual(len(items), 12)
+            for item in items:
+                self.assertEqual(sorted(r["repetition"] for r in pilot["runs"] if r["injection"]["item_id"] == item),
+                                 [1, 2, 3])
+        by_scenario = {}
+        for r in pilot["runs"]:
+            by_scenario.setdefault(r["scenario"], set()).add((r["injection"]["objective"], r["injection"]["identity_id"],
+                                                              r["injection"]["injected_skill"]))
+        self.assertTrue(all(len(v) == 1 for v in by_scenario.values()))  # twins share objective, identity and skill
+        tasks = {t["scenario"]: t for t in FACTS["tasks"]}
+        for spec in pilot["runs"]:  # only the injected skill differs from the safe run
+            safe = json.loads((ROOT / tasks[spec["scenario"]]["v4b_run"]["file"]).read_text(encoding="utf-8"))
+            diff = [s["id"] for s, o in zip(spec["skills"], safe["skills"]) if s != o]
+            self.assertEqual(diff, [spec["injection"]["injected_skill"]])
+        self.assertEqual(len(rx.pending_runs(pilot, Path(tempfile.mkdtemp()))), 72)  # the runner accepts it (no model call)
+
+    def test_pilot_plan_refuses_twins_that_do_not_match_the_study_items(self):
+        twins = json.loads(bip.TWIN_MANIFEST.read_text(encoding="utf-8"))
+        w2 = json.loads(bip.PILOT_W2_MANIFEST.read_text(encoding="utf-8"))
+        broken = copy.deepcopy(twins)
+        broken["items"] = broken["items"][1:]
+        with self.assertRaises(ValueError):
+            bip.build_pilot_plan(w2, broken, FACTS)
+        broken = copy.deepcopy(twins)
+        broken["items"][0]["objective"] = "G1" if broken["items"][0]["objective"] != "G1" else "G2"
+        with self.assertRaises(ValueError):
+            bip.build_pilot_plan(w2, broken, FACTS)
+
     def test_runner_dry_run_accepts_the_plan_without_any_model_call(self):
         pending = rx.pending_runs(PLAN, Path(tempfile.mkdtemp()))
         self.assertEqual(len(pending), 36)

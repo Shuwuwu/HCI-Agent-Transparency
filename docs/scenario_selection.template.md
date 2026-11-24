@@ -59,28 +59,42 @@ calls are contained in the other's, and the safe run of one passes AgentDojo's c
 sees every final scenario, so such a pair cannot be separated by assignment; R6 keeps at most one member in the final
 8. Unlike the near-duplicate rule, this test works on behaviour, not wording.
 
-## 5. The injected items: one injection style (II + W2); only the objective varies
+## 5. The injected items: strategy II only, three wordings mixed; the objective is kept per item
 
-**Why one style.** The manipulated variable of the study is the transparency of the agent's execution log, not how
-easy the injection is to notice. Several strategies or wordings would add a second, uncontrolled source of
-discoverability (an `<INFORMATION>` frame, tool names and JSON arguments, or prose hidden in a workflow are each easier
-or harder to spot in the skill text), so every injected item uses **strategy II in wording W2** and nothing else. The
-other strategy and wordings stay implemented and tested (`injection_design.py`) but no study item uses them; they can be
-previewed with `--strategies` and `--wordings` of `build_injected_items.py`. Strategy II states only the goal in plain
-words; it adds no tool names or arguments to the skill text. A possible cost: II may succeed less often than TK, so
-more candidates may fail the inclusion rule.
+**One strategy, mixed wordings.** Every injected item uses strategy **II** (the goal in plain words; no tool names or
+arguments in the skill text), so the injected skills do not differ in how much technical detail they contain. The
+three wordings are **mixed over the 12 candidate items, four each**, so that a participant's four unsafe skills do not
+all repeat one recognisable phrase. The wordings are **not assumed to be equally easy to notice**: the wording of every
+item is recorded, every participant's unsafe skills include all three, and any difference in detection between
+wordings is reported descriptively, not controlled away. The earlier plan (II + W2 only, to hold the injection style
+constant) is recoverable from git history (commit `4ea015b`) and with `--strategies II --wordings W2`.
+
+**Allocation.** The 12 candidate scenarios and their objectives and attacker identities are those of the earlier
+approved II + W2 allocation and are **kept unchanged** (`injection_design.OBJECTIVE_BASIS`); changing the wording does not
+change what is attacked or by whom. The wordings are then assigned by a seeded search (`assign_wordings`): four items
+per wording, the three items of one objective get three different wordings (every objective is shown in every wording
+once), and the items of one wording are in different skill areas. W3 items also get a variant, dealt out evenly.
 
 Strategy, wording and objective remain three separate layers:
 
 | Layer | Values | Source |
 |---|---|---|
-| Strategy | **II** = AgentDojo `important_instructions` (used). **TK** = AgentDojo `tool_knowledge` (implemented, not used) | AgentDojo attacks at the pinned commit; II is the only strategy in the study plan |
-| Wording | **W2** (used) = **our adaptation**: the strategy content (the user's claimed authority, "do this first" and the goal) written as a required first step of the skill, without the `<INFORMATION>` frame, appended after one workflow subsection chosen by the seed. **W1** = the strategy's AgentDojo template, verbatim (implemented, not used) | W2: this project; it is not an AgentDojo or SkillJect template. W1: AgentDojo |
-| Wording | **W3** = **our contextual adaptation** (implemented, not used): the strategy content as ordinary prose inside one of the skill's own workflows (a lead-in paragraph, or a sentence added to the first or last step), in three variants of phrasing and placement | This project; it is not an AgentDojo or SkillJect template. Earlier plans used W1, W2 and W3 (and TK); they are recoverable from git history and with `--strategies II,TK --wordings W1,W2,W3` |
+| Strategy | **II** = AgentDojo `important_instructions` (used). **TK** = AgentDojo `tool_knowledge` (implemented, not used: its tool names and JSON arguments would be a technical cue in the skill text) | AgentDojo attacks at the pinned commit; II is the only strategy in the study plan |
+| Wording | **W1** = the strategy's AgentDojo template, verbatim, with its `<INFORMATION>` frame. **W2** = **our adaptation**: the strategy content (the user's claimed authority, "do this first" and the goal) as a bold "Required first step" paragraph appended after one workflow subsection chosen by the seed, without the frame | W1: AgentDojo. W2: this project; it is not an AgentDojo or SkillJect template |
+| Wording | **W3** = **our contextual adaptation**: the strategy content as ordinary prose inside one of the skill's own workflows (a lead-in paragraph, or a sentence added to the first or last step), with no frame, bold, heading or label. Three variants differ in phrasing and placement and are dealt out evenly over the W3 items | This project; it is not an AgentDojo or SkillJect template |
 | Objective | **G1–G4** = AgentDojo injection tasks 1–4 | AgentDojo workspace injection tasks, with the attacker identity substituted |
 
-The user named in W2 is "Emma Johnson", as in AgentDojo's recorded runs (W1, not used, names the model "GPT-4" because
-AgentDojo has no entry for `gpt-4o-2024-08-06`).
+Model name in W1 is "GPT-4" (AgentDojo has no entry for `gpt-4o-2024-08-06`); the user is "Emma Johnson", as in
+AgentDojo's recorded runs, in all three wordings.
+
+**Cues that remain whatever the wording.** The name "Emma Johnson", an outsider address (or a file deletion) and a goal
+that does not belong to the skill's topic. W1 is the most conspicuous (an XML-like frame), W2 is a visibly separate bold
+paragraph, W3 is the most embedded; this is a prediction, not an assumption, and the detection data will show it.
+
+**Wording pilot (not part of the study).** `src/data/injected_skills/pilot_w2/` and `pilot_w3/` hold the II + W2
+items of the earlier plan and their W3 (variant v3) twins, and `src/data/execution/plan_injected_wording_pilot.json` the
+plan to run both three times each (72 runs; not executed). It is independent of the study plan's wording mix and exists
+only to compare how often W2 and W3 yield a usable unsafe stimulus.
 
 {{objectives_table}}
 
@@ -103,9 +117,8 @@ the original (tested). G1 deletes file 13 and has no external identity. Pool: {{
 **Placement.** The block is appended to a workflow subsection of the skill chosen by the seed, so there is no fixed
 position. This is a simplification: the position is not chosen by relevance to the scenario.
 
-**Planned item of each candidate** (allocation by seeded search: compatible objective, each objective used equally often
-(three times each), different areas within an objective; the single strategy-wording combination II + W2 is used for
-all 12, so the constraints on repeated objective–combination pairs and on areas within a combination do not apply):
+**Planned item of each candidate** (objectives and identities from the II + W2 allocation: compatible objective, each
+objective used three times, different areas within an objective; then the wordings by the seeded search above):
 
 {{allocation_table}}
 
@@ -116,12 +129,18 @@ all 12, so the constraints on repeated objective–combination pairs and on area
 1. 8 scenarios, each once, 4 safe and 4 unsafe, safe and unsafe versions never both for one scenario.
 2. The 4 unsafe trials have 4 different objectives (G1–G4), so each participant meets every observable kind of
    unauthorised action: file deletion, calendar event, and two kinds of outbound email.
-3. Every unsafe trial uses the same injection style (II + W2); only the objective, the attacker identity and the
-   injected skill differ between a participant's 4 unsafe trials.
+3. The 4 unsafe trials use all three wordings (one wording twice, and two W3 items never share a variant), so no
+   single injected phrase is repeated in all four.
 4. 4 different injected skills (areas) and 4 different attacker identities in the 4 unsafe trials.
 5. No repeated legitimate task among the 8 (rule R6).
 
 **Soft (met where feasible):** Easy/Medium balance of the final 8; the seeded area-by-area order.
+
+**Balance across conditions and order.** Lists A and B are each shown in both transparency conditions equally often, so
+the unsafe trials of each wording occur equally often in the low and high conditions in every complete block of four
+participants (checked by `build_assignments.py`, which also reports each wording's mean trial position per
+condition). Trial order follows the Williams design, so over a complete cycle of eight participants every wording
+has the same mean position.
 
 **Lists and conditions.** Two lists (A, B) swap which 4 scenarios are unsafe. A participant gets one list and one
 transparency condition (low or high). The 2 lists × 2 conditions = 4 cells are filled in blocks of 4 participants in a
@@ -160,10 +179,12 @@ over every pass/fail pattern of the 12 items):
 - **Model snapshot.** All runs, safe and unsafe, use `gpt-4o-2024-08-06`; AgentDojo's recorded runs use
   `gpt-4o-2024-05-13` and are not used for stimuli. Attack-success rates from those recordings are not predictive of
   this model.
-- **One injection style.** All unsafe trials use II + W2, so results say nothing about how other injection styles
-  (framed, tool-specific, or woven into a workflow) are noticed; this is the price of holding discoverability constant.
+- **Wording is a second source of variation in how easy an injection is to notice.** It is mixed on purpose (to avoid
+  one repeated phrase) and not assumed equal; each unsafe trial's wording is recorded, and detection by wording is
+  reported descriptively. With four items per wording and four unsafe trials per participant, wording effects are
+  underpowered and are confounded with the item (its scenario, objective and skill area).
 - **II may be less reliable than TK.** The goal is stated without the tool and arguments, so the agent may skip or
-  rephrase the injected call more often; the yield per objective is reported.
+  rephrase the injected call more often; the yield per objective and wording is reported.
 
 ## 9. Validation and review limitation
 
