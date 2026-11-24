@@ -168,8 +168,8 @@ class WorkspaceApiTest(unittest.TestCase):
             self.assertNotIn(key, blob)
 
     def test_missing_ineligible_and_invalid_requests_fail(self):
-        for sid in ("user_task_1__no_injection",  # eligible, but no snapshot built yet
-                    "user_task_5__no_injection", "user_task_13__no_injection/..", "stim_52669833c1f9", "", "../x"):
+        # user_task_5 is a failed run, not an active stimulus
+        for sid in ("user_task_5__no_injection", "user_task_13__no_injection/..", "stim_52669833c1f9", "", "../x"):
             self.assertIn(self.get(f"/api/workspace?s={sid}")[0], (400, 404), sid)
         for path in (f"/data/workspace/{FOLDER}/provenance.json", f"/static/../data/workspace/{FOLDER}/workspace.json",
                      "/static/workspace.json", "/static/provenance.json"):

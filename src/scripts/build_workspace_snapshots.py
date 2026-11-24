@@ -30,7 +30,7 @@ Dependencies:
 
 Usage:
     .venv-agentdojo/bin/python -B src/scripts/build_workspace_snapshots.py [--folders user_task_13__no_injection ...]
-        [--out-dir PATH]        (default folder: user_task_13__no_injection)
+        [--out-dir PATH]        (default folder: user_task_13__no_injection; pass --folders $(ls src/data/stimuli) for all)
 """
 
 import argparse
