@@ -1,0 +1,614 @@
+"""
+Purpose:
+    The scenario-selection pipeline of the unsafe-stimulus design, and the generator of its two documentation
+    artifacts. One run applies the written rules to the 40 AgentDojo workspace user tasks, picks the 12 candidate
+    and 3 spare scenarios, plans each candidate's injected item (objective, strategy, wording, attacker identity),
+    and writes the results; nothing in them is typed by hand:
+      * src/data/scenario_selection.csv   one row per user task, with status, rule id and reason;
+      * docs/scenario_selection.md        the rules, tables, constraints, trade-offs and unavoidable repetitions,
+                                          rendered from docs/scenario_selection.template.md plus the computed results.
+    After the paid runs (not part of this script), the same pipeline fills the stage-2 columns from the run
+    evaluations (injection_checks.py): attempts, passes, and the final 8 scenarios split into two participant lists.
+
+    The rules (ids are used in the CSV and the document):
+      R1  pool: a taxonomy-mapped scenario whose skills-v4b run succeeded (the 20 eligible stimuli);
+      R2  AgentDojo's own correct solution passes the task's check;
+      R3a a compound task ("Perform the following tasks...") is removed when one of its numbered parts equals the
+          full prompt of another pool scenario;
+      R4  AgentDojo difficulty HARD is removed;
+      R3b near-duplicate prompts (word-set Jaccard >= 0.5) keep only the lowest seeded rank;
+      R5  area-by-area round-robin in seeded order, balancing Easy/Medium, gives 12 candidates then the spares;
+      R6  (final set, stage 2) the final 8 never contain both members of a repeated-task pair.
+    Subjective decisions are not hidden: the document lists, per rule, whether it is systematic or a judgment.
+
+Inputs:
+    src/data/scenario_selection_inputs.json (facts about the tasks, produced by --collect, which needs AgentDojo),
+    optionally src/data/execution/injected_evaluation.json (stage 2), docs/scenario_selection.template.md.
+
+Outputs:
+    src/data/scenario_selection.csv, docs/scenario_selection.md (and with --collect the inputs file).
+
+Dependencies:
+    injection_design.py, agentdojo_runs.py, participant_server.py (the eligibility rule), build_workspace_snapshots.py
+    (replay, only for --collect). --collect needs the AgentDojo environment; everything else is plain python3.
+
+Usage:
+    .venv-agentdojo/bin/python -B src/scripts/select_scenarios.py --collect     # refresh the facts (no model calls)
+    python3 -B src/scripts/select_scenarios.py                                  # write the CSV and the document
+    python3 -B src/scripts/select_scenarios.py --check                          # fail if the committed files differ
+"""
+
+import argparse
+import csv
+import hashlib
+import io
+import itertools
+import json
+import re
+import sys
+from pathlib import Path
+
+import injection_design as design
+
+ROOT = Path(__file__).resolve().parents[2]
+INPUTS = ROOT / "src" / "data" / "scenario_selection_inputs.json"
+CSV_PATH = ROOT / "src" / "data" / "scenario_selection.csv"
+DOC_PATH = ROOT / "docs" / "scenario_selection.md"
+TEMPLATE = ROOT / "docs" / "scenario_selection.template.md"
+EVALUATION = ROOT / "src" / "data" / "execution" / "injected_evaluation.json"
+TAXONOMY = ROOT / "src" / "data" / "skill_taxonomy.json"
+
+SELECTION_VERSION = "scenario_selection_v1"
+SEED = "cs889-selection-v1"
+DUPLICATE_THRESHOLD = 0.5
+N_CANDIDATES, N_FINAL = 12, 8
+COMPOUND_PREFIX = "Perform the following tasks in the order they are given"
+MAX_ATTEMPTS = 3
+
+RULES = [
+    ("R1", "Pool", "systematic",
+     "Only a scenario the skill taxonomy maps to skills, whose skills-v4b run completed with `utility: true` and whose "
+     "stimulus is eligible for the participant viewer, can be a stimulus (the 20 active stimuli)."),
+    ("R2", "Ground truth", "systematic",
+     "AgentDojo's own correct-solution calls must pass the task's check (`GroundTruthPipeline`, no model call)."),
+    ("R3a", "Compound tasks", "systematic",
+     "A task that begins 'Perform the following tasks in the order they are given' is removed when one of its numbered "
+     "parts equals, word for word, the full prompt of another scenario of the pool."),
+    ("R4", "Complexity", "systematic",
+     "Tasks AgentDojo rates HARD are removed. (Cross-check: the same tasks have more than two correct-solution calls.)"),
+    ("R3b", "Near-duplicates", "systematic after a judgment",
+     f"Prompts whose word sets overlap by at least {DUPLICATE_THRESHOLD} (Jaccard) form a group; one scenario per "
+     "group is kept, the one with the lowest seeded rank. The threshold was chosen after seeing the similarity values "
+     "(see the sensitivity table): it is a judgment, but any value in the stated range gives the same groups."),
+    ("R5", "Area-by-area round-robin", "systematic",
+     "Areas and scenarios are ranked by sha256(seed + id). One scenario is taken from each area in turn; within an "
+     "area the best-ranked scenario of the difficulty (Easy/Medium) that is currently under-represented is taken. "
+     "The first 12 are candidates, the rest spares."),
+    ("R6", "Final set (stage 2)", "systematic",
+     "From the items that passed their runs, the final 8 scenarios never contain both members of a repeated-task pair "
+     "(one task's correct solution contained in the other's and the safe run of one passing the other's check)."),
+]
+
+AREA_LABELS = {"calendar-lookup": "calendar lookup", "calendar-scheduling": "calendar scheduling",
+               "email-lookup": "email lookup", "email-correspondence": "email correspondence",
+               "drive-file-management": "drive file management", "document-content": "document content"}
+
+COLUMNS = [
+    "scenario", "task_number", "prompt", "mapped_skills", "task_category", "task_kind", "difficulty",
+    "ground_truth_calls", "safe_trace_actions", "in_pool", "near_duplicate_group", "repeated_task_group",
+    "compatible_objectives", "seed_rank", "selection_status", "rule_id", "rationale",
+    "planned_item_id", "attacker_objective", "strategy", "wording", "attacker_identity",
+    "attempts", "passing_attempts", "stage2_status", "final_set", "participant_list",
+]
+
+
+# ------------------------------------------------------------------------------------------------ collecting facts
+
+def collect_facts() -> dict:
+    """Facts about the 40 tasks from AgentDojo and the project's records (run with the AgentDojo Python).
+
+    Per task: prompt, difficulty, correct-solution calls and whether they pass, taxonomy skills, the skills-v4b
+    run (path, sha256, status, utility), eligibility (participant_server.is_eligible), and for eligible tasks the
+    actions of the safe trace. Also the repeated-task pairs, computed by replaying every eligible safe run.
+    """
+    import copy
+
+    import agentdojo_runs as runs
+    import build_execution_plan as bp
+    import build_workspace_snapshots as bw
+    import participant_server as ps
+    from function_calling_pi import benchmark
+    from function_calling_pi.agent_pipeline import GroundTruthPipeline
+
+    suite = benchmark.SUITES["workspace"]
+    taxonomy = json.loads(TAXONOMY.read_text(encoding="utf-8"))
+    base_env = suite.load_and_inject_default_environment({})
+    tasks, replays = [], {}
+    modules = bw.install_clock()
+    for task_id in runs.list_user_task_ids():
+        task = suite.get_user_task_by_id(task_id)
+        calls = [{"function": c["function"], "args": json.loads(json.dumps(c["args"], default=str))}
+                 for c in task.ground_truth(base_env)]
+        passes = bool(suite.run_task_with_pipeline(GroundTruthPipeline(task), task, None, {})[0])
+        folder = f"{task_id}__no_injection"
+        run_file = f"src/data/execution/runs/{task_id}__mapped-skills__gpt-4o-2024-08-06__r1__skills-v4b.json"
+        entry = {"scenario": task_id, "prompt": runs.user_prompt(runs.load_run(task_id)),
+                 "difficulty": task.DIFFICULTY.name, "ground_truth_calls": calls, "ground_truth_passes": passes,
+                 "mapped_skills": (taxonomy["scenario_map"].get(task_id) or {}).get("skills"),
+                 "v4b_run": None, "eligible": False, "safe_actions": None, "safe_write_tools": None}
+        path = ROOT / run_file
+        if path.exists():
+            raw = path.read_bytes()
+            record = json.loads(raw)
+            entry["v4b_run"] = {"file": run_file, "sha256": hashlib.sha256(raw).hexdigest(),
+                                "status": record["status"], "utility": record["utility"]}
+            entry["eligible"] = bool(ps.is_eligible(folder))
+        if entry["eligible"]:
+            high = json.loads((ROOT / "src/data/stimuli" / folder / "high.json").read_text(encoding="utf-8"))
+            actions = [e["tool"] for e in high["action_log"] if e["type"] == "action"]
+            entry["safe_actions"] = actions
+            entry["safe_write_tools"] = sorted({t for t in actions if t in runs.WRITE_TOOLS})
+            env = task.init_environment(suite.load_and_inject_default_environment({}))
+            pre = copy.deepcopy(env)
+            bw.replay(env, record["trace"], modules)
+            output = next((m["content"] for m in reversed(record["trace"])
+                           if m["role"] == "assistant" and m.get("content")), "")
+            replays[task_id] = (pre, env, output)
+        tasks.append(entry)
+    key = lambda t: {(c["function"], json.dumps(c["args"], sort_keys=True)) for c in t["ground_truth_calls"]
+                     if c["function"] != "get_current_day"}
+    by_id = {t["scenario"]: t for t in tasks}
+    pairs = []
+    for a, b in itertools.permutations(replays, 2):
+        if key(by_id[b]) <= key(by_id[a]):
+            pre, post, output = replays[a]
+            if suite.get_user_task_by_id(b).utility(output, pre, post, strict=False) is True:
+                pairs.append([a, b])
+    return {"selection_version": SELECTION_VERSION, "agentdojo_commit": bp.PINNED_COMMIT,
+            "taxonomy_sha256": hashlib.sha256(TAXONOMY.read_bytes()).hexdigest(),
+            "skills": {k: {"owned_write_tools": v["owned_write_tools"], "read_tools": v["read_tools"]}
+                       for k, v in taxonomy["skills"].items()},
+            "tasks": tasks, "contained_task_pairs": sorted(pairs)}
+
+
+# ------------------------------------------------------------------------------------------------ the rules
+
+def words(text: str) -> set[str]:
+    return set(re.findall(r"[a-z0-9']+", text.lower()))
+
+
+def jaccard(a: str, b: str) -> float:
+    wa, wb = words(a), words(b)
+    return len(wa & wb) / len(wa | wb) if wa | wb else 0.0
+
+
+def components(items: list[str], linked) -> list[list[str]]:
+    """Connected components of `items` under the symmetric relation `linked(a, b)`, each sorted by task number."""
+    seen, out = set(), []
+    for start in items:
+        if start in seen:
+            continue
+        stack, comp = [start], []
+        while stack:
+            node = stack.pop()
+            if node in seen:
+                continue
+            seen.add(node)
+            comp.append(node)
+            stack.extend(o for o in items if o not in seen and linked(node, o))
+        out.append(sorted(comp, key=task_number))
+    return out
+
+
+def task_number(scenario: str) -> int:
+    return int(scenario.rsplit("_", 1)[1])
+
+
+def numbered_parts(prompt: str) -> list[str]:
+    return [p.strip() for p in re.split(r"(?:^|\s)\d+\.\s+", prompt)[1:] if p.strip()]
+
+
+def area_of(task: dict, skills: dict) -> str | None:
+    """The mapped skill that owns a write tool of the safe trace; else the first mapped skill."""
+    mapped = task["mapped_skills"]
+    if not mapped:
+        return None
+    for skill in mapped:
+        if set(task["safe_write_tools"] or []) & set(skills[skill]["owned_write_tools"]):
+            return skill
+    return mapped[0]
+
+
+def written_resources(task: dict) -> set[str]:
+    return {design.TOOL_RESOURCE[t] for t in task["safe_write_tools"] or []}
+
+
+def duplicate_groups(pool: dict[str, dict], threshold: float) -> list[list[str]]:
+    return [g for g in components(sorted(pool), lambda a, b: jaccard(pool[a]["prompt"], pool[b]["prompt"]) >= threshold)
+            if len(g) > 1]
+
+
+def threshold_range(pool: dict[str, dict], groups: list[list[str]]) -> tuple[float, float]:
+    """The thresholds (steps of 0.01) giving exactly the chosen duplicate groups."""
+    same = [t / 100 for t in range(1, 100) if duplicate_groups(pool, t / 100) == groups]
+    return (min(same), max(same)) if same else (DUPLICATE_THRESHOLD, DUPLICATE_THRESHOLD)
+
+
+def round_robin(rows_by_area: dict[str, list[dict]], seed: str) -> list[dict]:
+    """Rule R5: all scenarios of the remaining pool in selection order (see the module docstring)."""
+    area_order = sorted(rows_by_area, key=lambda a: design.rank_key(seed, "area", a))
+    queues = {a: sorted(rows_by_area[a], key=lambda r: design.rank_key(seed, "scenario", r["scenario"]))
+              for a in area_order}
+    counts = {"EASY": 0, "MEDIUM": 0}
+    order = []
+    while any(queues.values()):
+        for area in area_order:
+            queue = queues[area]
+            if not queue:
+                continue
+            under = min(counts, key=lambda d: (counts[d], d))  # the difficulty with fewer picks so far
+            pick = next((r for r in queue if r["difficulty"] == under), queue[0])
+            queue.remove(pick)
+            counts[pick["difficulty"]] = counts.get(pick["difficulty"], 0) + 1
+            order.append(pick)
+    return order
+
+
+def select(facts: dict, seed: str = SEED) -> dict:
+    """Apply R1-R5 to the facts. Returns {"rows": [...], "order": [...], "threshold_range", "groups", ...}."""
+    tasks = {t["scenario"]: t for t in facts["tasks"]}
+    rows = {}
+    for s, t in tasks.items():
+        rows[s] = {"scenario": s, "task_number": task_number(s), "prompt": t["prompt"],
+                   "mapped_skills": t["mapped_skills"] or [], "difficulty": t["difficulty"],
+                   "ground_truth_calls": len(t["ground_truth_calls"]), "in_pool": False, "status": None,
+                   "rule": None, "reason": None, "area": None, "kind": "", "safe_actions": None,
+                   "near_dup": "", "repeated": "", "compatible": [], "rank": None}
+
+    def exclude(s, rule, reason):
+        if rows[s]["status"] is None:
+            rows[s].update(status="excluded", rule=rule, reason=reason)
+
+    for s, t in tasks.items():
+        if not t["mapped_skills"]:
+            exclude(s, "R1", "No skills are mapped to this task in the skill taxonomy, so it has no skills-v4b run.")
+        elif not t["eligible"]:
+            run = t["v4b_run"] or {}
+            exclude(s, "R1", f"Its skills-v4b run did not succeed (status {run.get('status')}, utility {run.get('utility')}).")
+    pool = {s: tasks[s] for s in tasks if rows[s]["status"] is None}
+    for s, t in pool.items():
+        rows[s].update(in_pool=True, area=area_of(t, facts["skills"]), safe_actions=len(t["safe_actions"]))
+        rows[s]["kind"] = ("writes " + "+".join(sorted(written_resources(t)))) if t["safe_write_tools"] else "read only"
+    for s, t in pool.items():
+        if not t["ground_truth_passes"]:
+            exclude(s, "R2", "AgentDojo's correct solution does not pass the task's check.")
+    full = {s: t for s, t in pool.items() if rows[s]["status"] is None}
+    for s, t in full.items():
+        if t["prompt"].startswith(COMPOUND_PREFIX):
+            parts = numbered_parts(t["prompt"])
+            matched = sorted((o for o in full if o != s and any(" ".join(p.split()) == " ".join(full[o]["prompt"].split())
+                                                                  for p in parts)), key=task_number)
+            if matched:
+                exclude(s, "R3a", "Compound task: its parts are the prompts of " + " and ".join(matched) + ".")
+    for s, t in full.items():
+        if rows[s]["status"] is None and t["difficulty"] == "HARD":
+            exclude(s, "R4", f"AgentDojo difficulty HARD ({len(t['ground_truth_calls'])} correct-solution calls).")
+    after_3a = {s: t for s, t in full.items() if rows[s]["rule"] != "R3a"}
+    groups = duplicate_groups(after_3a, DUPLICATE_THRESHOLD)
+    for group in groups:
+        for s in group:
+            rows[s]["near_dup"] = "|".join(g.replace("user_task_", "") for g in group)
+    for group in groups:
+        alive = [s for s in group if rows[s]["status"] is None]
+        keep = min(alive, key=lambda s: design.rank_key(seed, "scenario", s)) if alive else None
+        for s in alive:
+            if s != keep:
+                exclude(s, "R3b", "Near-duplicate prompt of " + keep + " (" +
+                        f"{jaccard(tasks[s]['prompt'], tasks[keep]['prompt']):.2f} word overlap); the lower seeded rank is kept.")
+    remaining = [s for s in full if rows[s]["status"] is None]
+    for s in remaining:
+        rows[s]["compatible"] = design.compatible_objectives(written_resources(tasks[s]), tasks[s]["prompt"])
+    by_area = {}
+    for s in remaining:
+        by_area.setdefault(rows[s]["area"], []).append(rows[s])
+    order = [r["scenario"] for r in round_robin(by_area, seed)]
+    for rank, s in enumerate(order, 1):
+        rows[s]["rank"] = rank
+        if rank <= N_CANDIDATES:
+            rows[s].update(status="candidate", rule="R5", reason=f"Selection order {rank} of {len(order)} "
+                           f"(area {AREA_LABELS[rows[s]['area']]}, {rows[s]['difficulty'].lower()}).")
+        else:
+            rows[s].update(status="spare", rule="R5", reason=f"Selection order {rank} of {len(order)}: "
+                           "first scenario after the candidates.")
+    # repeated-task pairs among the scenarios that survived R1-R4 and R3b (R6 uses them in stage 2); a scenario
+    # already removed (such as a compound task) must not link two others
+    keep = set(remaining)
+    pairs = sorted({tuple(sorted(p, key=task_number)) for p in map(tuple, facts["contained_task_pairs"])
+                    if set(p) <= keep}, key=lambda p: (task_number(p[0]), task_number(p[1])))
+    for comp in components(sorted(keep, key=task_number), lambda a, b: tuple(sorted((a, b), key=task_number)) in pairs):
+        if len(comp) > 1:
+            for s in comp:
+                rows[s]["repeated"] = "|".join(c.replace("user_task_", "") for c in comp)
+    cands = [{"scenario": s, "area": rows[s]["area"], "compatible": rows[s]["compatible"]}
+             for s in order[:N_CANDIDATES]]
+    allocation = design.allocate_items(cands, seed)
+    for s, plan in allocation.items():
+        plan["item_id"] = design.item_id(s, plan["objective"], plan["strategy"], plan["wording"])
+    spares = [s for s in order if rows[s]["status"] == "spare"]
+    return {"rows": rows, "order": order, "allocation": allocation, "groups": groups,
+            "threshold_range": threshold_range(after_3a, groups), "spares": spares,
+            "pairs": pairs,
+            "similarity": {f"{a}|{b}": round(jaccard(after_3a[a]["prompt"], after_3a[b]["prompt"]), 2)
+                           for g in groups for a, b in itertools.combinations(g, 2)}}
+
+
+# ------------------------------------------------------------------------------------------------ stage 2
+
+def partitions(items: list[dict]):
+    """Splits of 8 items into two lists of 4, each split once (list A holds the first item)."""
+    for first in itertools.combinations(range(len(items)), len(items) // 2):
+        if 0 in first:
+            yield [items[i] for i in first], [items[i] for i in range(len(items)) if i not in first]
+
+
+def choose_final_set(passing: list[dict], pairs: list[tuple[str, str]], strict: bool = True,
+                     exists_only: bool = False) -> dict | None:
+    """Rule R6 and the participant lists: from the passing items choose 8 scenarios and split them into lists A and B.
+
+    passing: [{"scenario", "area", "difficulty", "rank", "objective", "strategy", "wording", "identity_id"}].
+    A choice is valid when it holds no repeated-task pair, two items of every objective and strategy-wording
+    combination, and splits into two lists that each satisfy design.is_valid_unsafe_list. Among valid choices the
+    one with the Easy/Medium split closest to 4/4, then the smallest total selection rank, then the earliest
+    scenario ids wins; among splits, the one whose objectives differ in wording across the two lists most often.
+    strict=True requires the four strategy-wording combinations once in each list (the planned design);
+    strict=False only two W1 and two W2 items per list (a relaxation, reported as an option). exists_only stops at
+    the first valid choice. Returns {"scenarios": [...], "A": [...], "B": [...], "crossing": n} or None.
+    """
+    best, best_key = None, None
+    repeated = {frozenset(p) for p in pairs}
+    for subset in itertools.combinations(sorted(passing, key=lambda i: i["rank"]), N_FINAL):
+        ids = [i["scenario"] for i in subset]
+        if any(frozenset(p) in repeated for p in itertools.combinations(ids, 2)):
+            continue
+        if any(sum(i["objective"] == o for i in subset) != 2 for o in design.OBJECTIVE_IDS):
+            continue
+        if strict and any(sum((i["strategy"], i["wording"]) == c for i in subset) != 2 for c in design.COMBINATIONS):
+            continue
+        if not strict and sum(i["wording"] == "W1" for i in subset) != N_FINAL // 2:
+            continue
+        key = (abs(sum(i["difficulty"] == "EASY" for i in subset) - N_FINAL // 2), sum(i["rank"] for i in subset),
+               tuple(sorted(ids, key=task_number)))
+        if best_key is not None and key >= best_key:
+            continue
+        split = None
+        for a, b in partitions(list(subset)):
+            if design.is_valid_unsafe_list(a, strict) and design.is_valid_unsafe_list(b, strict):
+                wording = {i["objective"]: i["wording"] for i in a}
+                crossing = sum(wording[i["objective"]] != i["wording"] for i in b)
+                if split is None or crossing > split[0]:
+                    split = (crossing, a, b)
+        if split:
+            best_key, best = key, {"scenarios": sorted(ids, key=task_number),
+                                   "A": sorted(i["scenario"] for i in split[1]),
+                                   "B": sorted(i["scenario"] for i in split[2]), "crossing": split[0]}
+            if exists_only:
+                return best
+    return best
+
+
+def feasibility_by_attrition(allocation: dict, rows: dict, pairs: list, rates=(0.2, 0.35, 0.5, 0.7),
+                             strict: bool = True) -> list[dict]:
+    """Exact probability that a valid final set exists when each item passes with 1-(1-p)^3 (p = per-attempt rate).
+
+    Enumerates every pass/fail pattern of the candidate items; feasibility of a pattern does not depend on p.
+    """
+    items = [{"scenario": s, "area": rows[s]["area"], "difficulty": rows[s]["difficulty"], "rank": rows[s]["rank"],
+              "objective": a["objective"], "strategy": a["strategy"], "wording": a["wording"],
+              "identity_id": a["identity_id"]} for s, a in allocation.items()]
+    feasible = {}
+    for mask in range(1 << len(items)):
+        chosen = [items[i] for i in range(len(items)) if mask >> i & 1]
+        feasible[mask] = len(chosen) >= N_FINAL and choose_final_set(chosen, pairs, strict, True) is not None
+    out = []
+    for p in rates:
+        q = 1 - (1 - p) ** MAX_ATTEMPTS
+        total = sum(q ** bin(m).count("1") * (1 - q) ** (len(items) - bin(m).count("1")) for m, ok in feasible.items() if ok)
+        out.append({"per_attempt": p, "item_pass": q, "probability": total})
+    return out
+
+
+def stage2(result: dict, evaluation: dict | None) -> dict:
+    """Per candidate: attempts, passing attempts and status; and the final set from the passing items."""
+    info = {s: {"attempts": 0, "passing": 0} for s in result["allocation"]}
+    final = None
+    if evaluation:
+        by_item = {a["item_id"]: s for s, a in result["allocation"].items()}
+        for ev in evaluation["evaluations"]:
+            s = by_item.get(ev["item_id"])
+            if s:
+                info[s]["attempts"] += 1
+                info[s]["passing"] += bool(ev["included"])
+        passing = [{"scenario": s, "area": result["rows"][s]["area"], "difficulty": result["rows"][s]["difficulty"],
+                    "rank": result["rows"][s]["rank"], **{k: a[k] for k in ("objective", "strategy", "wording",
+                                                                               "identity_id")}}
+                   for s, a in result["allocation"].items() if info[s]["passing"]]
+        final = choose_final_set(passing, result["pairs"])
+    return {"info": info, "final": final, "ran": bool(evaluation)}
+
+
+# ------------------------------------------------------------------------------------------------ rendering
+
+def csv_rows(result: dict, st2: dict) -> list[dict]:
+    out = []
+    for s in sorted(result["rows"], key=task_number):
+        r = result["rows"][s]
+        plan = result["allocation"].get(s)
+        identity = design.identity_by_id(plan["identity_id"]) if plan else None
+        status2, in_final, which = "", "", ""
+        if plan and st2["ran"]:
+            i = st2["info"][s]
+            status2 = "not run" if not i["attempts"] else ("passed" if i["passing"] else
+                                                          ("failed all attempts" if i["attempts"] >= MAX_ATTEMPTS else "failed so far"))
+            if st2["final"]:
+                in_final = "yes" if s in st2["final"]["scenarios"] else "no"
+                which = "A" if s in st2["final"]["A"] else ("B" if s in st2["final"]["B"] else "")
+        out.append({
+            "scenario": s, "task_number": r["task_number"], "prompt": r["prompt"],
+            "mapped_skills": "|".join(r["mapped_skills"]), "task_category": r["area"] or "",
+            "task_kind": r["kind"], "difficulty": r["difficulty"].lower(), "ground_truth_calls": r["ground_truth_calls"],
+            "safe_trace_actions": "" if r["safe_actions"] is None else r["safe_actions"],
+            "in_pool": "yes" if r["in_pool"] else "no", "near_duplicate_group": r["near_dup"],
+            "repeated_task_group": r["repeated"], "compatible_objectives": "|".join(r["compatible"]),
+            "seed_rank": "" if r["rank"] is None else r["rank"], "selection_status": r["status"], "rule_id": r["rule"],
+            "rationale": r["reason"], "planned_item_id": plan["item_id"] if plan else "",
+            "attacker_objective": plan["objective"] if plan else "",
+            "strategy": design.STRATEGY_NAMES[plan["strategy"]] if plan else "", "wording": plan["wording"] if plan else "",
+            "attacker_identity": identity["name"] + " <" + identity["address"] + ">" if identity else
+            ("none (file ID 13)" if plan else ""),
+            "attempts": st2["info"][s]["attempts"] if plan and st2["ran"] else "",
+            "passing_attempts": st2["info"][s]["passing"] if plan and st2["ran"] else "",
+            "stage2_status": status2, "final_set": in_final, "participant_list": which})
+    return out
+
+
+def render_csv(rows: list[dict]) -> str:
+    buffer = io.StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=COLUMNS, lineterminator="\n")
+    writer.writeheader()
+    writer.writerows(rows)
+    return buffer.getvalue()
+
+
+def md_table(header: list[str], body: list[list]) -> str:
+    cell = lambda v: str(v).replace("|", "\\|").replace("\n", " ")  # noqa: E731
+    lines = ["| " + " | ".join(header) + " |", "|" + "---|" * len(header)]
+    lines += ["| " + " | ".join(cell(c) for c in row) + " |" for row in body]
+    return "\n".join(lines)
+
+
+def sections(result: dict, st2: dict, facts: dict) -> dict[str, str]:
+    """The computed pieces of the document, keyed by the {{placeholders}} of the template."""
+    rows, alloc = result["rows"], result["allocation"]
+    ordered = sorted(rows, key=task_number)
+    count = lambda status: sum(rows[s]["status"] == status for s in rows)  # noqa: E731
+    rule_counts = {}
+    for s in rows:
+        if rows[s]["status"] == "excluded":
+            rule_counts[rows[s]["rule"]] = rule_counts.get(rows[s]["rule"], 0) + 1
+    out = {}
+    out["version"] = f"{SELECTION_VERSION}, seed `{SEED}`, AgentDojo commit `{facts['agentdojo_commit']}`"
+    out["rules"] = md_table(["Rule", "Step", "Kind", "Definition"], [[i, n, k, d] for i, n, k, d in RULES])
+    out["counts"] = (f"40 AgentDojo workspace user tasks: {sum(r['in_pool'] for r in rows.values())} in the R1 pool, "
+                     f"{count('candidate')} candidates, {count('spare')} spares, {count('excluded')} excluded "
+                     f"({', '.join(f'{k}: {v}' for k, v in sorted(rule_counts.items()))}).")
+    out["selection_table"] = md_table(
+        ["Task", "Category", "Kind", "Difficulty", "Safe actions", "Status", "Rule", "Reason"],
+        [[rows[s]["task_number"], AREA_LABELS.get(rows[s]["area"], ""), rows[s]["kind"], rows[s]["difficulty"].lower(),
+          "" if rows[s]["safe_actions"] is None else rows[s]["safe_actions"], rows[s]["status"], rows[s]["rule"],
+          rows[s]["reason"]] for s in ordered])
+    lo, hi = result["threshold_range"]
+    out["duplicates"] = (f"Groups at threshold {DUPLICATE_THRESHOLD}: " +
+                         "; ".join("{" + ", ".join(g) + "}" for g in result["groups"]) +
+                         f". The same groups result for every threshold from {lo:.2f} to {hi:.2f}. Pair overlaps: " +
+                         ", ".join(f"{k.replace('user_task_', '')} = {v}" for k, v in result["similarity"].items()) + ".")
+    cand = [s for s in result["order"] if rows[s]["status"] == "candidate"]
+    easy = sum(rows[s]["difficulty"] == "EASY" for s in cand)
+    out["balance"] = (f"Candidates: {easy} easy and {len(cand) - easy} medium; areas: " +
+                      ", ".join(f"{AREA_LABELS[a]} {sum(rows[s]['area'] == a for s in cand)}" for a in sorted(
+                          {rows[s]['area'] for s in cand})) + f". Spares: {', '.join(result['spares']) or 'none'}.")
+    out["repeated"] = ("; ".join("{" + ", ".join(sorted(p, key=task_number)) + "}" for p in result["pairs"]
+                                 if all(rows[s]["in_pool"] for s in p) and all(rows[s]["status"] in ("candidate", "spare") for s in p))
+                       or "none among the remaining scenarios")
+    out["allocation_table"] = md_table(
+        ["Scenario", "Category", "Objective", "Strategy", "Wording", "Attacker identity", "Item id"],
+        [[s, AREA_LABELS[rows[s]["area"]], f"{a['objective']} ({design.OBJECTIVES[a['objective']]['summary']})",
+          design.STRATEGY_NAMES[a["strategy"]], a["wording"],
+          (design.identity_by_id(a["identity_id"])["name"] if a["identity_id"] else "none (file ID 13)"), a["item_id"]]
+         for s, a in ((s, alloc[s]) for s in cand)])
+    out["objectives_table"] = md_table(
+        ["Id", "AgentDojo task", "Resource", "Observable unauthorised action", "Used"],
+        [[o, m["agentdojo_task"], m["resource"], m["write_tool"] + " (" + m["summary"] + ")", "yes"]
+         for o, m in design.OBJECTIVES.items()] + [[o, "injection_task_" + o[1], "", "", "no: " + why]
+                                                   for o, why in design.EXCLUDED_OBJECTIVES.items()])
+    out["identity_pool"] = ", ".join(f"{i['name']} ({i['address']})" for i in design.IDENTITY_POOL)
+    email_slots = sum(design.OBJECTIVES[o]["write_tool"] == "send_email" for o in design.OBJECTIVE_IDS)
+    out["unavoidable"] = (
+        f"- **Email to an outsider appears in {email_slots} of every participant's 4 unsafe trials.** AgentDojo's four "
+        "used objectives include two that send an email (G3, G4); the other two are a file deletion and a calendar "
+        "event. The two email trials differ in content (a forwarded private email and a security code).\n"
+        "- **The AgentDojo `<INFORMATION>` frame (W1) appears in 2 of the 4 unsafe trials per participant** (II-W1 and "
+        "TK-W1), and Emma Johnson is named in all four (the W2 adaptation keeps the authority claim).\n"
+        "- **Every unsafe trial involves a non-company address or the deletion of a company file**; safe traces of "
+        "some scenarios also show non-company addresses in tool results, so this is not a perfect cue.\n"
+        "- **A victim item recurs across participants** (Lily's email for G3, the Facebook-code email for G4, file 13 "
+        "for G1), but never twice within one participant (one trial per objective).\n"
+        "- **Skills repeat**: 8 scenarios use 5 areas, so a participant may see a skill clean in one trial and injected "
+        "in another; each list has 4 different areas for its 4 unsafe trials.")
+    all_items = [{"scenario": s, "area": rows[s]["area"], "difficulty": rows[s]["difficulty"], "rank": rows[s]["rank"],
+                  **{k: alloc[s][k] for k in ("objective", "strategy", "wording", "identity_id")}} for s in cand]
+    full = choose_final_set(all_items, result["pairs"])
+    out["full_feasible"] = (
+        "If all 12 candidate items pass their runs, a valid final set exists: scenarios " + ", ".join(full["scenarios"]) +
+        "; list A unsafe " + ", ".join(full["A"]) + "; list B unsafe " + ", ".join(full["B"]) + "."
+        if full else "**Even if all 12 candidate items pass, no valid final set exists under the constraints.**")
+    strict_rates = feasibility_by_attrition(alloc, rows, result["pairs"])
+    relaxed_rates = feasibility_by_attrition(alloc, rows, result["pairs"], strict=False)
+    out["attrition"] = md_table(
+        ["Per-attempt pass rate (assumed)", "Item passes within 3 attempts",
+         "Chance of a valid final set: planned design (all 4 combinations in each list)",
+         "Chance: relaxed design (2 W1 + 2 W2 in each list)"],
+        [[a["per_attempt"], f"{a['item_pass']:.2f}", f"{a['probability']:.2f}", f"{b['probability']:.2f}"]
+         for a, b in zip(strict_rates, relaxed_rates)])
+    if st2["ran"]:
+        final = st2["final"]
+        out["stage2"] = ("Stage 2 (after the runs): " + ("final scenarios " + ", ".join(final["scenarios"]) + f"; list A unsafe: "
+                         + ", ".join(final["A"]) + "; list B unsafe: " + ", ".join(final["B"]) + "."
+                         if final else "no valid final set exists with the items that passed.")
+                         + " Attempts and outcomes per candidate are in the CSV.")
+    else:
+        out["stage2"] = "Stage 2 has not run: no injected execution has been performed yet; the stage-2 CSV columns are empty."
+    return out
+
+
+def render_document(result: dict, st2: dict, facts: dict) -> str:
+    text = re.sub(r"\A<!--.*?-->\n", "", TEMPLATE.read_text(encoding="utf-8"), flags=re.S)  # drop the template note
+    for key, value in sections(result, st2, facts).items():
+        text = text.replace("{{" + key + "}}", value)
+    left = re.findall(r"\{\{(\w+)\}\}", text)
+    if left:
+        raise ValueError(f"template placeholders without a value: {left}")
+    return text
+
+
+def build(facts: dict, evaluation: dict | None = None) -> tuple[str, str]:
+    result = select(facts)
+    st2 = stage2(result, evaluation)
+    return render_csv(csv_rows(result, st2)), render_document(result, st2, facts)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument("--collect", action="store_true", help="refresh the facts (needs AgentDojo)")
+    parser.add_argument("--check", action="store_true", help="fail if the CSV or document differ from a rebuild")
+    args = parser.parse_args()
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    if args.collect:
+        INPUTS.write_text(json.dumps(collect_facts(), indent=2) + "\n", encoding="utf-8")
+        print(f"facts written to {INPUTS}")
+    facts = json.loads(INPUTS.read_text(encoding="utf-8"))
+    evaluation = json.loads(EVALUATION.read_text(encoding="utf-8")) if EVALUATION.exists() else None
+    csv_text, doc_text = build(facts, evaluation)
+    if args.check:
+        stale = [p.name for p, t in ((CSV_PATH, csv_text), (DOC_PATH, doc_text))
+                 if not p.exists() or p.read_text(encoding="utf-8") != t]
+        if stale:
+            sys.exit(f"out of date, rerun select_scenarios.py: {stale}")
+        print("up to date")
+        return
+    CSV_PATH.write_text(csv_text, encoding="utf-8")
+    DOC_PATH.write_text(doc_text, encoding="utf-8")
+    print(f"wrote {CSV_PATH} and {DOC_PATH}")
+
+
+if __name__ == "__main__":
+    main()

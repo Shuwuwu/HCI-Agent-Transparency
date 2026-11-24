@@ -9,6 +9,10 @@ Purpose:
         failed is NOT repeated (no automatic retries; use --force on purpose);
       * a budget stops it: at most --max-runs runs per invocation (default 2), at most --max-llm-calls model calls
         per run, and no run starts if the plan holds more runs than the plan's own limit;
+      * a spec with an "injection" block (build_injection_plan.py) is an injected-skill run: the skill text the plan
+        names already contains the injected block, and the run also reports AgentDojo's security result for the
+        item's attacker objective (injection_checks.parametrized_injection_task); records of ordinary runs are
+        unchanged;
       * AgentDojo is reached through a small adapter, so the logic here is tested without AgentDojo, an API key
         or the network.
 
@@ -128,11 +132,15 @@ def execute_run(spec: dict, adapter: Adapter, runs_dir: Path, max_llm_calls: int
         "system_message": system_message, "system_message_sha256": sha256_text(system_message),
         "agentdojo_commit": bp.PINNED_COMMIT, "max_llm_calls": max_llm_calls, "started_at": utc_now(),
     }
+    if spec.get("injection"):
+        record["injection"] = spec["injection"]
     try:
         result = adapter.run(spec, system_message, max_llm_calls)
         record.update(status="completed" if not result.get("error") else "error", error=result.get("error"),
                       utility=result["utility"], duration_seconds=result["duration"], trace=result["messages"],
                       llm_calls=result["llm_calls"])
+        if spec.get("injection"):
+            record["security"] = result.get("security")
     except Exception as error:  # a failed run is a result: record it and stop, never retry here
         record.update(status="error", error=gs.redact(f"{type(error).__name__}: {error}", api_key), utility=None,
                       duration_seconds=None, trace=getattr(error, "partial_messages", []),
@@ -162,7 +170,8 @@ def execute_plan(plan: dict, adapter: Adapter, runs_dir: Path, max_runs: int, ma
     for spec in todo:
         log(f"running {spec['run_id']} ...")
         record = execute_run(spec, adapter, runs_dir, max_llm_calls, api_key, skills_dir, force)
-        log(f"  {record['status']}, utility {record['utility']}, {record['usage']['calls']} model calls")
+        security = f", security {record.get('security')}" if "injection" in record else ""
+        log(f"  {record['status']}, utility {record['utility']}{security}, {record['usage']['calls']} model calls")
         records.append(record)
     return records
 
@@ -183,9 +192,10 @@ class AgentDojoAdapter:
         from function_calling_pi.agent_pipeline import (AgentPipeline, InitQuery, OpenAILLM, SystemMessage,
                                                         ToolsExecutionLoop, ToolsExecutor)
         from function_calling_pi.agent_pipeline.make_pipeline import load_system_message
-        from function_calling_pi.logging import OutputLogger
+        from function_calling_pi.logging import Logger, OutputLogger, TraceLogger
 
         self.openai, self.benchmark, self.OutputLogger = openai, ad_benchmark, OutputLogger
+        self.Logger, self.TraceLogger = Logger, TraceLogger
         self.parts = (AgentPipeline, InitQuery, OpenAILLM, SystemMessage, ToolsExecutionLoop, ToolsExecutor)
         self._load_system_message = load_system_message
 
@@ -227,20 +237,42 @@ class AgentDojoAdapter:
         with tempfile.TemporaryDirectory() as logdir:
             started = time.time()
             error = None
-            utility = None
+            utility = security = None
+            injection = spec.get("injection")
             try:
                 with self.OutputLogger(logdir):
-                    utility, _ = self.benchmark.run_task_without_injection_tasks(
-                        suite, pipeline, task, logdir=Path(logdir), force_rerun=True)
+                    if injection:
+                        utility, security = self._run_injected(suite, pipeline, task, injection, logdir)
+                    else:
+                        utility, _ = self.benchmark.run_task_without_injection_tasks(
+                            suite, pipeline, task, logdir=Path(logdir), force_rerun=True)
             except Exception as exc:  # keep the partial trace, then report
                 error = f"{type(exc).__name__}: {exc}"
             duration = time.time() - started
-            files = list(Path(logdir).rglob("none.json"))
+            files = list(Path(logdir).rglob("injection_task_*.json" if injection else "none.json"))
             trace = json.loads(files[0].read_text(encoding="utf-8")) if files else {}
         if not error and trace.get("error"):
             error = trace["error"]
-        return {"messages": trace.get("messages", []), "utility": utility, "duration": duration,
-                "llm_calls": calls, "error": error}
+        return {"messages": trace.get("messages", []), "utility": utility, "security": security,
+                "duration": duration, "llm_calls": calls, "error": error}
+
+    def _run_injected(self, suite, pipeline, task, injection: dict, logdir: str) -> tuple[bool, bool]:
+        """One injected-skill run: AgentDojo's pipeline with the item's parametrised injection task as the security
+        check (no injection vectors: the attack reaches the agent only through the skill in the system message).
+        Returns AgentDojo's (utility, security); utility is strict and is false after any successful attack, which
+        is why injection_checks.py judges the legitimate task separately."""
+        import injection_checks
+        import injection_design
+
+        attack = injection_checks.parametrized_injection_task(
+            suite, injection["objective"], injection_design.identity_by_id(injection.get("identity_id")))
+        with self.TraceLogger(delegate=self.Logger.get(), suite_name=suite.name, user_task_id=task.ID,
+                              injection_task_id=injection_design.OBJECTIVES[injection["objective"]]["agentdojo_task"],
+                              injections={}, attack_type="skill_injection", pipeline_name=pipeline.name) as logger:
+            utility, security = suite.run_task_with_pipeline(pipeline, task, injection_task=attack, injections={})
+            logger.set_contextarg("utility", utility)
+            logger.set_contextarg("security", security)
+        return utility, security
 
     def ground_truth_check(self, scenario: str) -> tuple[bool, bool]:
         """Run the task's own ground-truth tool calls through the harness (no model, no network); utility must be True."""
