@@ -1,7 +1,8 @@
 """
 Purpose:
     Researcher access to the participant database (participant_store.py): everything stored about one
-    participant, analysis-ready CSV exports derived from the database, and a consistency check of the database.
+    participant, analysis-ready CSV exports derived from the database, a consistency check of the database, and
+    verified backups and restores.
     Nothing here is reachable from the participant server; it reads the database file directly.
 
     The database stays the single source of truth: exports are rebuilt from it on every run and are never edited
@@ -26,6 +27,11 @@ Outputs:
                   events.csv          one row per interaction event, with trial_type
                   questionnaire.csv   one row per participant and item
     check       the problems found (see find_problems), one per line; exit status 1 if there are any.
+    backup      a verified copy in data/participants/backups/<environment>/<environment>-<UTC time>-manual.sqlite3
+                with a .sha256 beside it (see backup). The participant server also makes one when it starts
+                ("startup") and when it is stopped with Ctrl+C ("shutdown").
+    restore F   the database replaced by the verified backup F (--replace when it exists); its previous contents
+                are saved first as a "pre-restore" backup. Stop the participant server first.
 
 Dependencies:
     participant_store.py (connection, views), experiment_plan.py (configuration), interaction_log.py
@@ -36,11 +42,16 @@ Usage:
     python3 -B src/scripts/participant_data.py --config src/data/experiment_configs/development.json export
     python3 -B src/scripts/participant_data.py --config src/data/experiment_configs/development.json export --participant P001
     python3 -B src/scripts/participant_data.py --config src/data/experiment_configs/development.json check
+    python3 -B src/scripts/participant_data.py --config src/data/experiment_configs/development.json backup
+    python3 -B src/scripts/participant_data.py --config src/data/experiment_configs/development.json restore \
+        data/participants/backups/development/development-<time>-manual.sqlite3 --replace
     (Without --config the study configuration is used.)
 """
 
 import argparse
+import contextlib
 import csv
+import datetime
 import hashlib
 import json
 import os
@@ -257,6 +268,134 @@ def _group(conn: sqlite3.Connection, sql: str, participant: str) -> dict:
     return out
 
 
+BACKUP_LABELS = ("manual", "startup", "shutdown", "pre-restore")
+
+
+class BackupError(RuntimeError):
+    """A backup could not be made or verified, or a restore was refused."""
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def table_counts(conn: sqlite3.Connection) -> dict:
+    """Row count of every table, used to compare a backup or a restored database with its source."""
+    names = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table' "
+                                        "AND name NOT LIKE 'sqlite_%' ORDER BY name")]
+    return {name: conn.execute(f'SELECT COUNT(*) FROM "{name}"').fetchone()[0] for name in names}
+
+
+def backup(db_path: Path, environment: str, backup_dir: Path | None = None, label: str = "manual") -> dict:
+    """Copy the database into a new backup file and verify it; returns {"path", "sha256", "counts"}.
+
+    Uses SQLite's online backup API, so it is safe while the server is running and the copy is one consistent
+    state of the database, including whatever is still in the write-ahead log. The copy is a single
+    self-contained file (journal mode DELETE), named `<environment>-<UTC time>-<label>.sqlite3` in
+    backups/<environment>/ beside the database by default (data/participants/backups/<environment>/ for the
+    configured databases), with its SHA-256 in a `.sha256` file beside it; both
+    are private (0600). Verified before returning: SQLite's integrity check, the environment stamp and the row
+    count of every table must equal the source's. Raises BackupError (removing the failed copy).
+    """
+    if label not in BACKUP_LABELS:
+        raise BackupError(f"unknown backup label {label!r}")
+    db_path = Path(db_path)
+    if not db_path.is_file():
+        raise BackupError(f"{db_path} does not exist")
+    folder = store.private_dir(Path(backup_dir) if backup_dir else db_path.parent / "backups" / environment)
+    stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    target = folder / f"{environment}-{stamp}-{label}.sqlite3"
+    source = store.connect(db_path, environment)
+    copy = sqlite3.connect(target)
+    try:
+        with source:
+            source.backup(copy)
+        copy.execute("PRAGMA journal_mode = DELETE")  # one file, no -wal/-shm beside it
+        problems = []
+        if copy.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+            problems.append("integrity_check failed")
+        copy.row_factory = sqlite3.Row
+        if store.environment_of(copy) != environment:
+            problems.append("environment stamp differs")
+        counts = table_counts(copy)
+        if counts != table_counts(source):
+            problems.append("row counts differ from the source")
+    finally:
+        copy.close()
+        source.close()
+    if problems:
+        target.unlink(missing_ok=True)
+        raise BackupError(f"backup of {db_path} failed verification: {'; '.join(problems)}")
+    digest = _sha256(target)
+    sidecar = Path(f"{target}.sha256")
+    sidecar.write_text(f"{digest}  {target.name}\n", encoding="utf-8")
+    for path in (target, sidecar):
+        path.chmod(0o600)
+    return {"path": target, "sha256": digest, "counts": counts}
+
+
+def verify_backup(path: Path) -> dict:
+    """Check a backup file against its .sha256 and SQLite's integrity check; returns {"environment", "counts"}.
+    Raises BackupError when the checksum file is missing or differs, or the database is damaged."""
+    path = Path(path)
+    sidecar = Path(f"{path}.sha256")
+    if not path.is_file() or not sidecar.is_file():
+        raise BackupError(f"{path} or its .sha256 is missing")
+    if sidecar.read_text(encoding="utf-8").split()[0] != _sha256(path):
+        raise BackupError(f"{path} does not match its .sha256: the file has changed since it was written")
+    with contextlib.closing(sqlite3.connect(f"file:{path}?mode=ro", uri=True)) as conn:
+        conn.row_factory = sqlite3.Row
+        if conn.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+            raise BackupError(f"{path} fails SQLite's integrity check")
+        return {"environment": store.environment_of(conn), "counts": table_counts(conn)}
+
+
+def restore(backup_path: Path, db_path: Path, environment: str, backup_dir: Path | None = None,
+            replace: bool = False) -> dict:
+    """Make `db_path` hold exactly the contents of a verified backup; returns {"restored", "previous", "counts"}.
+
+    The backup must pass verify_backup and belong to `environment`. If the database exists, `replace` must be
+    true, and the current contents are first saved as a "pre-restore" backup (`previous`), so a restore can
+    itself be undone. The participant server must be stopped: a database another connection is writing to is
+    refused. The copy is made with SQLite's backup API, page by page, so the restored file, its write-ahead log
+    and the study triggers are all those of the backup; the result is checked against the backup's row counts.
+    Raises BackupError.
+    """
+    checked = verify_backup(backup_path)
+    if checked["environment"] != environment:
+        raise BackupError(f"{backup_path} is a {checked['environment']} backup, not {environment}")
+    db_path = Path(db_path)
+    previous = None
+    if db_path.exists():
+        if not replace:
+            raise BackupError(f"{db_path} exists; pass replace=True (--replace) to overwrite it")
+        previous = backup(db_path, environment, backup_dir, "pre-restore")["path"]
+    else:
+        store.private_dir(db_path.parent)
+    target = sqlite3.connect(db_path, timeout=1)
+    try:
+        try:
+            target.execute("BEGIN EXCLUSIVE")  # refused while the server (or anyone) holds the database
+            target.rollback()
+        except sqlite3.OperationalError as exc:
+            raise BackupError(f"{db_path} is in use; stop the participant server first ({exc})") from exc
+        with contextlib.closing(sqlite3.connect(f"file:{backup_path}?mode=ro", uri=True)) as source:
+            source.backup(target)
+        target.execute("PRAGMA journal_mode = WAL")
+    finally:
+        target.close()
+    conn = store.connect(db_path, environment)
+    try:
+        counts = table_counts(conn)
+        ok = conn.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+    finally:
+        conn.close()
+    if not ok or counts != checked["counts"]:
+        raise BackupError(f"{db_path} does not match {backup_path} after the restore; the previous contents are "
+                          f"in {previous}")
+    return {"restored": db_path, "previous": previous, "counts": counts}
+
+
 def open_database(config: ep.Config, db: Path | None) -> tuple[sqlite3.Connection, Path]:
     """Open the configuration's database (or `db`) for its environment; exits with a message if it is missing."""
     path = Path(db or config["database_path"])
@@ -279,8 +418,25 @@ def main() -> None:
     export.add_argument("--participant", help="only this participant (written to a sub-folder named after them)")
     export.add_argument("--out", type=Path, default=None, help="folder to write to instead of the default")
     commands.add_parser("check", help="report inconsistencies; exit status 1 if there are any")
+    commands.add_parser("backup", help="write a verified backup to data/participants/backups/<environment>/")
+    restore_cmd = commands.add_parser("restore", help="replace the database with a verified backup (stop the "
+                                                      "server first; the current contents are backed up first)")
+    restore_cmd.add_argument("backup_file", type=Path)
+    restore_cmd.add_argument("--replace", action="store_true", help="required when the database exists")
     args = parser.parse_args()
     config = ep.load_config(args.config)
+    if args.command in ("backup", "restore"):
+        path = Path(args.db or config["database_path"])
+        try:
+            if args.command == "backup":
+                made = backup(path, config["environment"])
+                print(f"backup {made['path']} (sha256 {made['sha256']}, verified)")
+            else:
+                done = restore(args.backup_file, path, config["environment"], replace=args.replace)
+                print(f"restored {done['restored']} from {args.backup_file}; previous contents: {done['previous']}")
+        except BackupError as exc:
+            sys.exit(f"{args.command} refused: {exc}")
+        return
     conn, path = open_database(config, args.db)
     if args.command == "show":
         try:

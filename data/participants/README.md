@@ -10,7 +10,7 @@ is kept private to its owner (mode 0700) and the databases are readable by their
 | `study.sqlite3` | Real study participants (`src/data/experiment_configs/study.json`). Created at the first study enrolment. Append-only for recorded data. |
 | `*.sqlite3-wal`, `*.sqlite3-shm` | SQLite's write-ahead log and index while a database is open. Part of the database: never delete them while the server runs, and never copy a database file without them (make a backup instead). |
 | `exports/<environment>/` | CSV files derived from a database for analysis. Rebuilt on every export; the database stays the source of truth. |
-| `backups/<environment>/` | Verified copies of a database (`<environment>-<UTC time>.sqlite3` with a `.sha256` beside it). |
+| `backups/<environment>/` | Verified copies of a database (`<environment>-<UTC time>-<label>.sqlite3` with a `.sha256` beside it; label `startup`, `shutdown`, `manual` or `pre-restore`). Made by `participant_data.py backup` and by the server when it starts and stops. |
 | `backups/legacy/` | The archive of the retired storage (`src/data/participants/participants.db` and the `src/data/interaction_logs/` files) made by `migrate_legacy_storage.py`. |
 
 Each database is the single source of truth for its environment: participants, condition assignments,

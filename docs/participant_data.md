@@ -162,6 +162,58 @@ For analysis, filter `trial_type == "experimental"`. The practice trial is never
 Free-text answers are exported exactly as participants typed them. A spreadsheet program may treat a cell that
 starts with `=`, `+`, `-` or `@` as a formula, so load the files with an analysis tool (R, pandas) instead.
 
+## Backups and recovery
+
+A backup is a verified copy of a database at one moment. It is written with SQLite's online backup API, so making
+one is safe while the server runs. Backups are written to `data/participants/backups/<environment>/` as one
+self-contained file plus a checksum:
+
+```
+<environment>-<UTC time>-<label>.sqlite3
+<environment>-<UTC time>-<label>.sqlite3.sha256
+```
+
+Both files are private (0600). Before a backup is accepted, it is checked three ways: SQLite's integrity check,
+the environment stamp, and a row count of every table that must equal the source's.
+
+| Label | Made by |
+|---|---|
+| `startup` | the participant server, when it starts |
+| `shutdown` | the participant server, when it is stopped with Ctrl+C |
+| `manual` | `participant_data.py backup` |
+| `pre-restore` | `participant_data.py restore`, which saves the current contents before replacing them |
+
+The server always makes its backups for the study database. `--no-backup` turns them off, for development only.
+
+Make a backup by hand:
+
+```bash
+python3 -B src/scripts/participant_data.py --config src/data/experiment_configs/study.json backup
+```
+
+**During the study:** after every session, make a backup and copy the newest `study-*.sqlite3` and its `.sha256`
+to the storage named in the ethics approval. Encrypted university storage, not a personal cloud folder.
+Backups are never deleted automatically. Development backups accumulate in
+`data/participants/backups/development/` and can be deleted by hand.
+
+**Restoring** replaces the database with a backup. It refuses a backup that does not match its `.sha256`, that
+fails the integrity check, or that belongs to the other environment.
+
+1. Stop the participant server (Ctrl+C). A database that is in use is refused.
+2. Run:
+
+   ```bash
+   python3 -B src/scripts/participant_data.py --config src/data/experiment_configs/study.json restore data/participants/backups/study/study-<time>-<label>.sqlite3 --replace
+   ```
+
+   `--replace` is required when the database exists. Its current contents are first saved as a `pre-restore`
+   backup, so the restore itself can be undone by restoring that file. If the database file is lost, leave out
+   `--replace`; the backup is copied into place.
+3. Run `participant_data.py check`, then start the server again.
+
+A backup copied back from external storage must arrive with its `.sha256` file; that is how the restore knows the
+copy arrived unchanged.
+
 ## Persistence
 
 - Every answer and stage change is written in one transaction with the stage it completes and committed before

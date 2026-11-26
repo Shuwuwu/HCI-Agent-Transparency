@@ -65,15 +65,17 @@ Dependencies:
     Python standard library only. Reads the files produced by build_stimuli.py. interaction_log.py (event
     validation), corpus.py (corpus configuration and eligibility rules), participant_flow.py (token
     to stage resolution), participant_store.py (participant records and progress), experiment_plan.py (the stage
-    sequence, through participant_flow).
+    sequence, through participant_flow), participant_data.py (the backups made at startup and shutdown).
 
 Usage:
     python3 -B src/scripts/participant_server.py [--port 8765] [--host 127.0.0.1]
-        [--experiment-config PATH] [--db PATH] [--corpus PATH] [--researcher-preview]
+        [--experiment-config PATH] [--db PATH] [--corpus PATH] [--researcher-preview] [--no-backup]
     --experiment-config selects the experiment the flow is served under (default the development configuration;
     src/data/experiment_configs/study.json is the real study) and, unless --corpus overrides it, which corpus of
     stimuli is served, and which participant database is used (its "database" key; --db overrides it). The
-    database must already exist and belong to the configuration's environment (development or study).
+    database must already exist and belong to the configuration's environment (development or study). The
+    server backs it up when it starts and when it is stopped with Ctrl+C (participant_data.backup, into
+    data/participants/backups/<environment>/); --no-backup skips that, for development only.
     Enrol participants and print their links first:
         python3 -B src/scripts/participant_store.py --config src/data/experiment_configs/development.json \
             --enrol-all --links --base-url http://127.0.0.1:8765
@@ -97,6 +99,7 @@ from urllib.parse import parse_qs, urlparse
 import corpus as corpus_cfg
 import experiment_plan as ep
 import interaction_log as ilog
+import participant_data as pdata
 import participant_flow as flow
 import participant_store as store
 
@@ -601,6 +604,8 @@ def main():
     parser.add_argument("--researcher-preview", action="store_true", dest="researcher_preview",
                         help="also serve the researcher routes (/ and /chat, and the s= form of the content "
                              "routes). Never use this for a server participants can reach")
+    parser.add_argument("--no-backup", action="store_false", dest="backup",
+                        help="do not back the database up when the server starts and stops (development only)")
     args = parser.parse_args()
 
     # Loading the configuration and the assignments here means a mistyped path or a mismatched simulated flag
@@ -616,6 +621,10 @@ def main():
     if not db_path.is_file():
         parser.error(f"{db_path} does not exist: enrol participants first (participant_store.py --enrol-all)")
     store.connect(db_path, config["environment"]).close()  # a database of the other environment stops the server
+    if not args.backup and not config["simulated"]:
+        parser.error("--no-backup is for development only; the study database is always backed up")
+    if args.backup:  # a verified copy of the state the server starts from
+        print(f"Backup:     {pdata.backup(db_path, config['environment'], label='startup')['path']}")
     Handler.db_path = db_path
     Handler.environment = config["environment"]
     Handler.config = config
@@ -634,6 +643,10 @@ def main():
         server.serve_forever()
     except KeyboardInterrupt:
         pass
+    finally:
+        server.server_close()
+        if args.backup:  # and of the state it stops in
+            print(f"\nBackup:     {pdata.backup(db_path, config['environment'], label='shutdown')['path']}")
 
 
 if __name__ == "__main__":
