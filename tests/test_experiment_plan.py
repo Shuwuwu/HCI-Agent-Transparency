@@ -40,6 +40,13 @@ class ConfigTests(unittest.TestCase):
         self.assertIs(ep.load_config(ep.CONFIG_PATH)["simulated"], False)
         self.assertIs(DEV_CONFIG["simulated"], True)
 
+    def test_development_and_study_data_never_share_a_database(self):
+        study, dev = ep.load_config(ep.CONFIG_PATH), DEV_CONFIG
+        self.assertNotEqual(study["database_path"], dev["database_path"])
+        self.assertEqual((study["environment"], dev["environment"]), ("study", "development"))
+        for config in (study, dev):
+            self.assertEqual(config["database_path"].parent, ROOT / "data" / "participants")
+
     def test_invalid_configurations_are_refused(self):
         for overrides in ({"version": "experiment_config_v0"}, {"trials_per_participant": 0},
                           {"trials_per_participant": True}, {"trials_per_participant": "8"},
@@ -51,7 +58,8 @@ class ConfigTests(unittest.TestCase):
                                         "omit_reason": "x"}},
                           {"practice": {"stimulus": "user_task_13__no_injection", "omit_steps": ["5"],
                                         "omit_reason": "x"}},
-                          {"safe_stimulus_suffix": ""}):
+                          {"safe_stimulus_suffix": ""}, {"database": "src/data/participants/participants.db"},
+                          {"database": "data/participants/sub/x.sqlite3"}, {"database": "data/participants/x.db"}):
             with self.subTest(overrides=overrides), self.assertRaises(ep.ConfigError):
                 write_config(**overrides)
 

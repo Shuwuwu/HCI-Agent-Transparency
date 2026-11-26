@@ -25,11 +25,13 @@ Outputs:
     event rows. The command line prints those measures for every trial in a database.
 
 Dependencies:
-    participant_store.py (EVENT_TYPES, the database, and its default location). Python standard library only.
+    participant_store.py (EVENT_TYPES and the database), experiment_plan.py (through it: which database a
+    configuration names). Python standard library only.
     Used by participant_flow.py; tests/test_interaction_log.py.
 
 Usage:
-    python3 -B src/scripts/interaction_log.py --db PATH [--participant ID]   # per-trial measures as JSON lines
+    python3 -B src/scripts/interaction_log.py --config src/data/experiment_configs/development.json [--participant ID]
+    (per-trial measures as JSON lines; --db PATH reads another database file)
 """
 
 import argparse
@@ -155,10 +157,13 @@ def summarize(events: list[dict]) -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Print the interaction measures of every trial in a database.")
-    parser.add_argument("--db", type=Path, default=store.DEFAULT_DB)
+    parser.add_argument("--config", type=Path, default=store.ep.CONFIG_PATH,
+                        help="experiment configuration whose database to read (default: the study one)")
+    parser.add_argument("--db", type=Path, default=None, help="read this database file instead")
     parser.add_argument("--participant", help="only this participant")
     args = parser.parse_args()
-    conn = store.connect(args.db)
+    config = store.ep.load_config(args.config)
+    conn = store.connect(args.db or config["database_path"], config["environment"])
     trials = conn.execute("SELECT participant_id, trial_id, practice, stimulus, condition FROM plan_stages "
                           "WHERE kind = 'scenario' AND (? IS NULL OR participant_id = ?) "
                           "ORDER BY participant_id, stage_index", (args.participant, args.participant)).fetchall()

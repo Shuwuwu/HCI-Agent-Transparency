@@ -72,7 +72,8 @@ Usage:
         [--experiment-config PATH] [--db PATH] [--corpus PATH] [--researcher-preview]
     --experiment-config selects the experiment the flow is served under (default the development configuration;
     src/data/experiment_configs/study.json is the real study) and, unless --corpus overrides it, which corpus of
-    stimuli is served. --db is the participant database the links were enrolled in.
+    stimuli is served, and which participant database is used (its "database" key; --db overrides it). The
+    database must already exist and belong to the configuration's environment (development or study).
     Enrol participants and print their links first:
         python3 -B src/scripts/participant_store.py --config src/data/experiment_configs/development.json \
             --enrol-all --links --base-url http://127.0.0.1:8765
@@ -364,12 +365,15 @@ class Handler(BaseHTTPRequestHandler):
     The class attributes are the server's configuration; main() sets them from the command line, and a test sets
     them directly:
         db_path             participant database. None leaves every flow route answering 404.
+        environment         "development" or "study": the database must be stamped for it (participant_store).
+                            None, as in the tests, skips the check.
         config, payload     the experiment configuration and the assignments payload the flow runs under.
         researcher_preview  True also serves the researcher routes (/ and /chat, and the s= form of the content
                             routes). False, the default, is the participant-facing server.
     """
 
     db_path = None
+    environment = None
     config = None
     payload = None
     researcher_preview = False
@@ -401,7 +405,7 @@ class Handler(BaseHTTPRequestHandler):
         created it, so the connection is per request rather than per server. At this scale (one participant at a
         time, a handful of statements per request) opening the file costs nothing worth saving.
         """
-        conn = store.connect(self.db_path)
+        conn = store.connect(self.db_path, self.environment)
         try:
             yield conn
         finally:
@@ -588,8 +592,9 @@ def main():
     parser.add_argument("--experiment-config", type=Path, default=ep.DEVELOPMENT_CONFIG, dest="experiment_config",
                         help="experiment configuration the flow is served under (src/data/experiment_configs/*."
                              "json); study.json is the real study, the default is the development one")
-    parser.add_argument("--db", type=Path, default=store.DEFAULT_DB,
-                        help="participant database holding the enrolled links (participant_store.py)")
+    parser.add_argument("--db", type=Path, default=None,
+                        help="participant database holding the enrolled links (default: the one the experiment "
+                             "configuration names)")
     parser.add_argument("--corpus", type=Path, default=None,
                         help="corpus file (src/data/corpora/*.json); default: the corpus the experiment "
                              "configuration names")
@@ -607,7 +612,12 @@ def main():
     flow.load_questionnaire()  # and the post-study questionnaire
     use_corpus(args.corpus if args.corpus is not None else config["corpus_path"])
     check_practice_presentation(config)
-    Handler.db_path = args.db
+    db_path = args.db or config["database_path"]
+    if not db_path.is_file():
+        parser.error(f"{db_path} does not exist: enrol participants first (participant_store.py --enrol-all)")
+    store.connect(db_path, config["environment"]).close()  # a database of the other environment stops the server
+    Handler.db_path = db_path
+    Handler.environment = config["environment"]
     Handler.config = config
     Handler.payload = payload
     Handler.researcher_preview = args.researcher_preview
@@ -616,7 +626,7 @@ def main():
     kind = "SIMULATED (not for participants)" if config["simulated"] else "STUDY"
     print(f"Experiment: {args.experiment_config} — {kind}")
     print(f"Corpus:     {CORPUS['path']}")
-    print(f"Database:   {args.db}")
+    print(f"Database:   {db_path} ({config['environment']})")
     if args.researcher_preview:
         print("Researcher preview routes are ON: / and /chat are served. Not for participants.")
     print(f"Serving on http://{args.host}:{args.port}/ (Ctrl+C to stop)")

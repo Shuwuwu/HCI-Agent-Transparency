@@ -212,6 +212,86 @@ class SchemaV5Tests(unittest.TestCase):
         self.assertEqual(raw.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()[0], "4")
 
 
+class EnvironmentTests(unittest.TestCase):
+    """Development and study data never share a database, and a study database cannot be edited."""
+
+    def test_a_database_is_stamped_once_and_refused_for_the_other_environment(self):
+        path = temp_db()
+        store.connect(path, "development").close()
+        self.assertEqual(store.environment_of(store.connect(path)), "development")
+        with self.assertRaises(store.StoreError):
+            store.connect(path, "study")
+        store.connect(path, "development").close()  # its own environment still opens it
+
+    def test_a_configurations_participants_cannot_be_enrolled_into_the_other_environment(self):
+        conn = store.connect(temp_db(), "study")
+        with self.assertRaises(store.StoreError):
+            store.enrol(conn, CONFIG, FIRST, PAYLOAD)  # the development configuration
+        self.assertEqual(conn.execute("SELECT COUNT(*) FROM participants").fetchone()[0], 0)
+
+    def test_an_unstamped_database_with_test_participants_cannot_become_a_study_database(self):
+        path = temp_db()
+        conn = store.connect(path)
+        store.enrol(conn, CONFIG, FIRST, PAYLOAD)
+        conn.close()
+        with self.assertRaises(store.StoreError):
+            store.connect(path, "study")
+        self.assertIsNone(store.environment_of(store.connect(path)))
+
+    def study_db(self):
+        """A study-stamped database holding one (development-assignment) participant with some records,
+        written before the stamp so the triggers do not stop the setup."""
+        path = temp_db()
+        conn = store.connect(path)
+        store.enrol(conn, CONFIG, FIRST, PAYLOAD)
+        conn.execute("UPDATE participants SET simulated = 0")
+        store.record_consent(conn, FIRST, "0" * 64, "text")
+        store.complete_stage(conn, CONFIG, FIRST, "consent", PAYLOAD)
+        store.enter_stage(conn, CONFIG, FIRST, PAYLOAD)
+        store.record_event(conn, FIRST, "practice_scenario", f"{FIRST}-p00", True, {"type": "stage_load"}, "server")
+        store.record_questionnaire(conn, FIRST, {"q": "1"}, "0" * 64)
+        conn.commit()
+        conn.close()
+        return store.connect(path, "study")
+
+    def test_a_study_database_refuses_changing_or_deleting_records(self):
+        conn = self.study_db()
+        attempts = ["UPDATE consents SET consent_text = 'other'", "DELETE FROM consents",
+                    "UPDATE events SET type = 'stage_load'", "DELETE FROM events",
+                    "UPDATE questionnaire_responses SET answer = '5'", "DELETE FROM questionnaire_responses",
+                    "UPDATE plan_stages SET stimulus = 'x'", "DELETE FROM plan_stages",
+                    "DELETE FROM participants", "UPDATE participants SET condition = 'high'",
+                    "UPDATE participants SET token = 'x'", "DELETE FROM progress",
+                    "UPDATE progress SET completed_at = 'later' WHERE stage_key = 'consent'",
+                    "UPDATE meta SET value = 'development' WHERE key = 'environment'",
+                    "DELETE FROM meta WHERE key = 'environment'"]
+        for sql in attempts:
+            with self.subTest(sql=sql), self.assertRaises(sqlite3.IntegrityError):
+                conn.execute(sql)
+            conn.rollback()
+        self.assertEqual(conn.execute("SELECT consent_text FROM consents").fetchone()[0], "text")
+
+    def test_a_study_database_still_records_progress_and_completion(self):
+        conn = self.study_db()
+        nxt = store.complete_stage(conn, CONFIG, FIRST, "practice_scenario", PAYLOAD)  # entered, now completed
+        self.assertEqual(nxt["key"], "practice_assessment")
+        conn.execute("UPDATE participants SET completed_at = 'now'")  # marking completed once is allowed
+        with self.assertRaises(sqlite3.IntegrityError):
+            conn.execute("UPDATE participants SET completed_at = 'again'")
+
+    def test_the_database_files_are_private(self):
+        folder = Path(tempfile.mkdtemp()) / "new"
+        path = folder / "x.sqlite3"
+        conn = store.connect(path, "development")
+        store.enrol(conn, CONFIG, FIRST, PAYLOAD)
+        conn.close()
+        store.connect(path).close()
+        self.assertEqual(folder.stat().st_mode & 0o777, 0o700)
+        for candidate in [path] + [Path(f"{path}{s}") for s in store.SIDECARS]:
+            if candidate.exists():
+                self.assertEqual(candidate.stat().st_mode & 0o777, 0o600, candidate)
+
+
 class EnrolmentTests(unittest.TestCase):
     def setUp(self):
         self.conn = store.connect(temp_db())

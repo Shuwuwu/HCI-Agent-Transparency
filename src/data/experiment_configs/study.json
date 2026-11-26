@@ -3,6 +3,7 @@
   "description": "The study configuration: the real stimuli (study corpus) and the stage-2 assignments over the unsafe items that passed injection_checks.py. Usable only once src/data/participant_assignments.json exists.",
   "corpus": "src/data/corpora/study.json",
   "assignments": "src/data/participant_assignments.json",
+  "database": "data/participants/study.sqlite3",
   "simulated": false,
   "trials_per_participant": 8,
   "safe_stimulus_suffix": "__no_injection",

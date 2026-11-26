@@ -11,9 +11,21 @@ __pycache__/
 *.pyc
 .venv-agentdojo/
 src/data/explorer/
+# Retired participant storage (before data/participants/); kept ignored until it is deleted
 src/data/interaction_logs/
-# Participant records and flow progress (research data, written by participant_store.py)
 src/data/participants/
+# Participant data: the SQLite databases, their exports and backups (research data, participant_store.py and
+# participant_data.py). Only the folder's README is tracked.
+data/participants/*
+!data/participants/README.md
+# SQLite databases and their sidecar files are research data or scratch wherever they are, never source
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+*.sqlite3-journal
+*.db
+*.db-wal
+*.db-shm
 
 # Local secrets (API key); never commit
 .env

@@ -19,6 +19,9 @@ Inputs:
         description               free text,
         corpus                    repository-relative corpus file deciding which stimuli may be served,
         assignments               repository-relative assignments file (build_assignments.py),
+        database                  repository-relative participant database (participant_store.py): a .sqlite3
+                                  file directly in data/participants/. The development and study configurations
+                                  name different files, so test participants never share the study's database,
         simulated                 true only for a development configuration that accepts a simulated
                                   assignments file (planned, not yet passing, unsafe items),
         trials_per_participant    how many of the assignment's trials to use, counted from the first,
@@ -56,8 +59,10 @@ ROOT = Path(__file__).resolve().parents[2]
 CONFIG_PATH = ROOT / "src" / "data" / "experiment_configs" / "study.json"
 DEVELOPMENT_CONFIG = ROOT / "src" / "data" / "experiment_configs" / "development.json"
 CONFIG_VERSION = "experiment_config_v1"
-REQUIRED_KEYS = ("version", "corpus", "assignments", "simulated", "trials_per_participant",
+REQUIRED_KEYS = ("version", "corpus", "assignments", "database", "simulated", "trials_per_participant",
                  "safe_stimulus_suffix", "practice")
+# Participant databases live here (gitignored, never served); a configuration's "database" must name a file in it.
+PARTICIPANT_DATA_DIR = "data/participants"
 CONDITIONS = ("low", "high")
 # Stage kinds the participant flow knows. "scenario" shows one agent conversation, "assessment" the judgment that
 # follows it; the rest are single screens whose content is study material.
@@ -69,7 +74,8 @@ class ConfigError(ValueError):
 
 
 class Config(dict):
-    """A loaded configuration: the JSON keys plus "path", "corpus_path" and "assignments_path"."""
+    """A loaded configuration: the JSON keys plus "path", "corpus_path", "assignments_path", "database_path" and
+    "environment" ("development" for a simulated configuration, "study" otherwise)."""
 
 
 def load_config(path: Path = CONFIG_PATH, root: Path = ROOT) -> Config:
@@ -103,11 +109,18 @@ def load_config(path: Path = CONFIG_PATH, root: Path = ROOT) -> Config:
         raise ConfigError(f"{path}: practice.omit_steps needs an omit_reason saying why those steps are hidden")
     if not isinstance(config["safe_stimulus_suffix"], str) or not config["safe_stimulus_suffix"]:
         raise ConfigError(f"{path}: safe_stimulus_suffix must be a non-empty string")
+    database = config["database"]
+    if (not isinstance(database, str) or not database.endswith(".sqlite3")
+            or Path(database).parent.as_posix() != PARTICIPANT_DATA_DIR):
+        raise ConfigError(f"{path}: database must be a .sqlite3 file directly in {PARTICIPANT_DATA_DIR}/, "
+                          f"not {database!r}")
     loaded = Config(config)
     loaded["path"] = path
     loaded["root"] = Path(root)
     loaded["corpus_path"] = Path(root) / config["corpus"]
     loaded["assignments_path"] = Path(root) / config["assignments"]
+    loaded["database_path"] = Path(root) / config["database"]
+    loaded["environment"] = "development" if config["simulated"] else "study"
     return loaded
 
 

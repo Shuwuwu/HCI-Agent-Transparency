@@ -42,7 +42,15 @@ Purpose:
 
 Inputs:
     An experiment configuration and assignments payload (experiment_plan.py) when enrolling participants, and a
-    database file (default src/data/participants/participants.db, gitignored: it holds research data).
+    database file: by default the one the configuration names (its "database" key: data/participants/
+    development.sqlite3 or study.sqlite3, gitignored and never served: they hold research data); --db overrides.
+
+    Environments. The development and the study configuration use separate databases, and each database is
+    stamped with the environment it was first opened for ("development" or "study", in `meta`); opening it for
+    the other one is refused, as is enrolling a configuration's participants into the other environment's
+    database. A study database is append-only for recorded data: database triggers refuse changing or deleting
+    answers, consents, events and questionnaire answers, and deleting participants or progress. The folder is
+    private (0700) and the database files are readable by their owner only (0600).
 
 Outputs:
     The SQLite database: `participants` (one row per enrolled participant: token, condition, list, trial count,
@@ -60,8 +68,9 @@ Dependencies:
 Usage:
     python3 -B src/scripts/participant_store.py --config src/data/experiment_configs/development.json --enrol-all
     python3 -B src/scripts/participant_store.py --config src/data/experiment_configs/development.json --links
-    python3 -B src/scripts/participant_store.py --status
+    python3 -B src/scripts/participant_store.py --config src/data/experiment_configs/development.json --status
     python3 -B src/scripts/participant_store.py --config src/data/experiment_configs/development.json --reset P001 P002
+    (--config defaults to the study configuration, so the study database is used unless development is named.)
 
     A link always reopens at the participant's current stage, so a test participant who has passed consent never
     sees it again. --reset sends simulated (development) participants back to the start: it clears their progress
@@ -80,7 +89,9 @@ from pathlib import Path
 import experiment_plan as ep
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_DB = ROOT / "src" / "data" / "participants" / "participants.db"
+PARTICIPANT_DATA_DIR = ROOT / ep.PARTICIPANT_DATA_DIR  # private: gitignored, never served
+ENVIRONMENTS = ("development", "study")
+SIDECARS = ("-wal", "-shm", "-journal")  # files SQLite keeps beside a database; private like the database itself
 TOKEN_BYTES = 24  # 32 URL-safe characters
 # 2: the consents table; 3: responses and experimental_responses; 4: responses.sources_other;
 # 5: plan_stages (the stage sequence each participant was enrolled under), events (interaction events, which
@@ -200,6 +211,45 @@ CREATE TABLE IF NOT EXISTS questionnaire_responses (
 );
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
+def _study_triggers() -> str:
+    """Triggers that make a study database's records append-only (see connect).
+
+    Answers, consents, events, questionnaire answers and stage-sequence snapshots can be added but never changed
+    or deleted; participants and progress rows can never be deleted, and may change only by being marked
+    completed once. The environment stamp itself cannot be changed. Restoring a backup (participant_data.py)
+    copies the file as a whole and is not affected. A real mistake in study data is corrected outside the app,
+    deliberately, with its own record of why.
+    """
+    out = []
+    for table in ("consents", "responses", "events", "questionnaire_responses", "plan_stages"):
+        out.append(f"CREATE TRIGGER IF NOT EXISTS study_keep_{table}_u BEFORE UPDATE ON {table} "
+                   f"BEGIN SELECT RAISE(ABORT, 'study records cannot be changed'); END;")
+    for table in ("consents", "responses", "events", "questionnaire_responses", "plan_stages", "participants",
+                  "progress"):
+        out.append(f"CREATE TRIGGER IF NOT EXISTS study_keep_{table}_d BEFORE DELETE ON {table} "
+                   f"BEGIN SELECT RAISE(ABORT, 'study records cannot be deleted'); END;")
+    fixed = ("participant_id", "token", "condition", "list", "trials", "simulated", "config_path",
+             "assignments_path", "plan_fingerprint", "enrolled_at")
+    changed = " OR ".join(f"NEW.{c} IS NOT OLD.{c}" for c in fixed)
+    out.append("CREATE TRIGGER IF NOT EXISTS study_keep_participants_u BEFORE UPDATE ON participants "
+               f"WHEN OLD.completed_at IS NOT NULL OR {changed} "
+               "BEGIN SELECT RAISE(ABORT, 'study participants can only be marked completed'); END;")
+    out.append("CREATE TRIGGER IF NOT EXISTS study_keep_progress_u BEFORE UPDATE ON progress "
+               "WHEN OLD.completed_at IS NOT NULL OR NEW.participant_id IS NOT OLD.participant_id "
+               "OR NEW.stage_key IS NOT OLD.stage_key OR NEW.stage_index IS NOT OLD.stage_index "
+               "OR NEW.entered_at IS NOT OLD.entered_at "
+               "BEGIN SELECT RAISE(ABORT, 'study progress can only be marked completed'); END;")
+    out.append("CREATE TRIGGER IF NOT EXISTS study_keep_environment BEFORE UPDATE ON meta WHEN OLD.key = 'environment' "
+               "BEGIN SELECT RAISE(ABORT, 'the environment of a database cannot be changed'); END;")
+    out.append("CREATE TRIGGER IF NOT EXISTS study_keep_environment_d BEFORE DELETE ON meta "
+               "WHEN OLD.key = 'environment' "
+               "BEGIN SELECT RAISE(ABORT, 'the environment of a database cannot be changed'); END;")
+    return "\n".join(out)
+
+
+STUDY_TRIGGERS = _study_triggers()
+
+
 class StoreError(ValueError):
     """The requested flow transition or participant record is not valid."""
 
@@ -209,16 +259,27 @@ def now() -> str:
     return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="milliseconds")
 
 
-def connect(path: Path = DEFAULT_DB) -> sqlite3.Connection:
+def connect(path: Path, environment: str | None = None) -> sqlite3.Connection:
     """Open (creating if needed) the participant database and apply the schema.
 
     Rows come back as sqlite3.Row. Write-ahead logging is enabled so the server can read while another request
-    writes. Foreign keys are enforced so a progress row cannot name an unknown participant. Applying the schema
-    is idempotent, so an existing database is opened unchanged. Raises StoreError if the file was written by a
-    newer schema version than this module knows.
+    writes; every commit is synced to disk (synchronous = FULL), so an answer the server has acknowledged survives
+    a crash or power loss. Foreign keys are enforced so a progress row cannot name an unknown participant. Applying
+    the schema is idempotent, so an existing database is opened unchanged. Raises StoreError if the file was
+    written by a newer schema version than this module knows.
+
+    `environment` ("development" or "study", a configuration's "environment") is checked against the one stamped
+    in the database (see _check_environment): a database is stamped the first time it is opened for one, and is
+    refused for the other from then on. None opens any database without checking (tests, researcher tools that
+    name the file themselves). A study database also refuses changes and deletions of the recorded data
+    (STUDY_TRIGGERS). The folder is created private (0700) when missing and the files are made readable by
+    their owner only (0600).
     """
     path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.parent.exists():
+        path.parent.mkdir(mode=0o700, parents=True)
+    if path.parent == PARTICIPANT_DATA_DIR:
+        PARTICIPANT_DATA_DIR.chmod(0o700)
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
@@ -226,6 +287,7 @@ def connect(path: Path = DEFAULT_DB) -> sqlite3.Connection:
     # overlap. Write-ahead logging lets readers run during a write, and the timeout waits instead of failing.
     conn.execute("PRAGMA journal_mode = WAL")
     conn.execute("PRAGMA busy_timeout = 5000")
+    conn.execute("PRAGMA synchronous = FULL")
     conn.executescript(SCHEMA)
     row = conn.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()
     if row is None:
@@ -243,8 +305,61 @@ def connect(path: Path = DEFAULT_DB) -> sqlite3.Connection:
             _rebuild_responses(conn, path)
         conn.execute("UPDATE meta SET value = ? WHERE key = 'schema_version'", (str(SCHEMA_VERSION),))
         conn.commit()
+    _check_environment(conn, path, environment)
+    if environment_of(conn) == "study":
+        conn.executescript(STUDY_TRIGGERS)
+    make_private(path)
     return conn
 
+
+def private_dir(path: Path) -> Path:
+    """Create `path` (and any missing parents) with mode 0700, and make sure every level inside
+    PARTICIPANT_DATA_DIR is 0700 too (exports, backups and their sub-folders hold participant data)."""
+    path = Path(path)
+    path.mkdir(mode=0o700, parents=True, exist_ok=True)
+    for level in [path, *path.parents]:
+        if level == PARTICIPANT_DATA_DIR or PARTICIPANT_DATA_DIR in level.parents:
+            level.chmod(0o700)
+    return path
+
+
+def make_private(path: Path) -> None:
+    """Make a database file and its SQLite sidecar files readable and writable by their owner only."""
+    for candidate in [Path(path)] + [Path(f"{path}{suffix}") for suffix in SIDECARS]:
+        if candidate.exists():
+            candidate.chmod(0o600)
+
+
+def environment_of(conn: sqlite3.Connection) -> str | None:
+    """The environment stamped in the database ("development" or "study"), or None if it was never stamped."""
+    row = conn.execute("SELECT value FROM meta WHERE key = 'environment'").fetchone()
+    return row["value"] if row else None
+
+
+def _check_environment(conn: sqlite3.Connection, path: Path, environment: str | None) -> None:
+    """Stamp `environment` into a database that has none, or refuse a database stamped for the other one.
+
+    Development and study data are kept in separate files (experiment_plan's "database" key); this stops a
+    mistyped --db or configuration mixing them. A database is never stamped "study" while it holds a simulated
+    participant, nor "development" while it holds a study participant. Raises StoreError.
+    """
+    if environment is None:
+        return
+    if environment not in ENVIRONMENTS:
+        raise StoreError(f"unknown environment {environment!r}; expected one of {ENVIRONMENTS}")
+    stamped = environment_of(conn)
+    if stamped is None:
+        foreign = conn.execute("SELECT COUNT(*) FROM participants WHERE simulated = ?",
+                               (int(environment == "study"),)).fetchone()[0]
+        if foreign:
+            conn.close()
+            raise StoreError(f"{path} holds {foreign} participant(s) of the other environment; "
+                             f"it cannot become a {environment} database")
+        conn.execute("INSERT INTO meta (key, value) VALUES ('environment', ?)", (environment,))
+        conn.commit()
+    elif stamped != environment:
+        conn.close()
+        raise StoreError(f"{path} is a {stamped} database; it cannot be opened for {environment} data")
 
 def _rebuild_responses(conn: sqlite3.Connection, path: Path) -> None:
     """Version 5: re-create `responses` with its CHECK constraints, keeping every row (SQLite cannot add a CHECK
@@ -330,6 +445,10 @@ def enrol(conn: sqlite3.Connection, config: ep.Config, participant: str, payload
     """
     payload = ep.load_assignments(config) if payload is None else payload
     plan = ep.plan_for(config, participant, payload)
+    stamped = environment_of(conn)
+    if stamped is not None and stamped != config["environment"]:
+        raise StoreError(f"{participant}: {config['path']} is a {config['environment']} configuration; this is a "
+                         f"{stamped} database")
     if conn.execute("SELECT 1 FROM participants WHERE participant_id = ?", (participant,)).fetchone():
         raise StoreError(f"{participant} is already enrolled")
     row = {"participant_id": participant, "token": token or secrets.token_urlsafe(TOKEN_BYTES),
@@ -662,7 +781,8 @@ def link(token: str, base_url: str = "") -> str:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--config", type=Path, default=ep.CONFIG_PATH)
-    parser.add_argument("--db", type=Path, default=DEFAULT_DB)
+    parser.add_argument("--db", type=Path, default=None,
+                        help="participant database (default: the one the configuration names)")
     parser.add_argument("--base-url", default="", help="prefix for the printed links, e.g. http://127.0.0.1:8765")
     parser.add_argument("--enrol-all", action="store_true", dest="enrol_all",
                         help="enrol every participant of the assignments file that is not enrolled yet")
@@ -673,7 +793,10 @@ def main() -> None:
     args = parser.parse_args()
     config = ep.load_config(args.config)
     payload = ep.load_assignments(config)
-    conn = connect(args.db)
+    db = args.db or config["database_path"]
+    if not db.exists() and not args.enrol_all:
+        parser.error(f"{db} does not exist; it is created by the first --enrol-all")
+    conn = connect(db, config["environment"])
     for participant in args.reset:
         try:
             print(json.dumps(reset(conn, config, participant, payload)))
@@ -681,7 +804,7 @@ def main() -> None:
             parser.error(f"--reset {participant}: {exc}")
     if args.enrol_all:
         added = enrol_all(conn, config, payload)
-        print(f"enrolled {len(added)} new participant(s) in {args.db}")
+        print(f"enrolled {len(added)} new participant(s) in {db}")
     rows = conn.execute("SELECT participant_id, token FROM participants ORDER BY participant_id").fetchall()
     if args.links:
         for row in rows:
