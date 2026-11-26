@@ -1,0 +1,13 @@
+{
+  "version": "experiment_config_v1",
+  "description": "Development configuration for building and testing the participant flow before the injected runs pass. It reads the simulated assignments (planned, not yet passing unsafe items) and the study corpus, which serves the 20 safe stimuli; the unsafe folders of a plan are therefore not servable yet and are reported by experiment_plan.py --check. Never use it to run participants.",
+  "corpus": "src/data/corpora/study.json",
+  "assignments": "src/data/validation/participant_assignments.json",
+  "simulated": true,
+  "trials_per_participant": 8,
+  "safe_stimulus_suffix": "__no_injection",
+  "practice": {
+    "stimulus": "user_task_13__no_injection",
+    "assessment": true
+  }
+}

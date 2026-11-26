@@ -24,18 +24,25 @@ Purpose:
 
 Inputs:
     The final set and lists chosen by select_scenarios.choose_final_set from the passing injected items (stage 2:
-    src/data/execution/injected_evaluation.json), or --simulate N for a dry run with every planned item assumed
-    to pass (no file is written).
+    src/data/execution/injected_evaluation.json), or --simulate / --write-simulated N with every planned item
+    assumed to pass (no stage-2 evaluation needed).
 
 Outputs:
-    --simulate: a validation summary on stdout. --write: src/data/participant_assignments.json.
+    --simulate: a validation summary on stdout (no file is written).
+    --write: src/data/participant_assignments.json, the study assignments ("simulated": false).
+    --write-simulated: src/data/validation/participant_assignments.json, the same design over the *planned*
+        (not yet passing) items, marked "simulated": true. It exists so that the participant flow can be built
+        and tested before the injected runs pass; the study corpus and the study assignments never read it, and
+        experiment_plan.py refuses a simulated assignments file unless its config says simulated: true.
 
 Dependencies:
     select_scenarios.py (selection, final set), injection_design.py (list validity).
+    Consumed by experiment_plan.py (which turns one assignment row into a participant's stage sequence).
 
 Usage:
-    python3 -B src/scripts/build_assignments.py --simulate 32      # dry run: validate the design with 32 participants
-    python3 -B src/scripts/build_assignments.py --write N          # after stage 2: write N assignments
+    python3 -B src/scripts/build_assignments.py --simulate 32          # dry run: validate the design with 32 participants
+    python3 -B src/scripts/build_assignments.py --write-simulated 8    # development assignments (planned items)
+    python3 -B src/scripts/build_assignments.py --write N              # after stage 2: write N assignments
 """
 
 import argparse
@@ -50,6 +57,8 @@ import select_scenarios as ss
 
 ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "src" / "data" / "participant_assignments.json"
+# Development assignments over the planned (not yet passing) items; kept with the other simulated artifacts.
+SIMULATED_OUT = ROOT / "src" / "data" / "validation" / "participant_assignments.json"
 CONDITIONS = ("low", "high")
 LISTS = ("A", "B")
 ASSIGNMENT_VERSION = "participant_assignments_v1"
@@ -175,10 +184,26 @@ def planned_items(result: dict) -> dict[str, dict]:
             for s, a in result["allocation"].items()}
 
 
+def write_assignments(path: Path, final: dict, assignments: list[dict], simulated: bool) -> None:
+    """Write an assignments file.
+
+    `simulated` records whether the unsafe items are the *planned* ones (True: the injected runs have not been
+    executed and judged, so the item ids may never become real stimuli) or the ones that passed stage 2 (False).
+    The flag is part of the file so that no consumer can mistake a development file for the study design.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {"version": ASSIGNMENT_VERSION, "seed": ss.SEED, "simulated": simulated, "final": final,
+               "assignments": assignments}
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    print(f"wrote {len(assignments)} {'simulated ' if simulated else ''}assignments to {path}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--simulate", type=int, metavar="N")
     parser.add_argument("--write", type=int, metavar="N")
+    parser.add_argument("--write-simulated", type=int, metavar="N", dest="write_simulated",
+                        help=f"write N development assignments over the planned items to {SIMULATED_OUT}")
     args = parser.parse_args()
     facts = json.loads(ss.INPUTS.read_text(encoding="utf-8"))
     result = ss.select(facts)
@@ -190,8 +215,17 @@ def main() -> None:
         print(f"{len(assignments)} simulated participants; problems: {problems or 'none'}")
         print(json.dumps(diagnostics(assignments, items)))
         return
+    if args.write_simulated is not None:
+        # Same design as --simulate, written to the validation folder so the participant flow can be developed.
+        final = ss.choose_final_set(list(items.values()), result["pairs"])
+        assignments = generate(final, items, args.write_simulated)
+        problems = validate(assignments, final, items, result["pairs"])
+        if problems:
+            sys.exit(f"invalid assignments: {problems}")
+        write_assignments(SIMULATED_OUT, final, assignments, simulated=True)
+        return
     if args.write is None:
-        parser.error("choose --simulate N or --write N")
+        parser.error("choose --simulate N, --write-simulated N or --write N")
     evaluation = ss.EVALUATION
     if not evaluation.exists():
         sys.exit("no evaluation file: the injected runs have not been executed and evaluated yet")
@@ -203,9 +237,7 @@ def main() -> None:
     problems = validate(assignments, final, items, result["pairs"])
     if problems:
         sys.exit(f"invalid assignments: {problems}")
-    OUT.write_text(json.dumps({"version": ASSIGNMENT_VERSION, "seed": ss.SEED, "final": final,
-                               "assignments": assignments}, indent=2) + "\n", encoding="utf-8")
-    print(f"wrote {len(assignments)} assignments to {OUT}")
+    write_assignments(OUT, final, assignments, simulated=False)
 
 
 if __name__ == "__main__":
