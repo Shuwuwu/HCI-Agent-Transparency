@@ -44,6 +44,13 @@ class ConfigTests(unittest.TestCase):
         for overrides in ({"version": "experiment_config_v0"}, {"trials_per_participant": 0},
                           {"trials_per_participant": True}, {"trials_per_participant": "8"},
                           {"simulated": "yes"}, {"practice": {}}, {"practice": {"stimulus": ""}},
+                          {"practice": {"stimulus": "user_task_13__no_injection", "omit_steps": [5]}},  # no reason
+                          {"practice": {"stimulus": "user_task_13__no_injection", "omit_steps": [5, 5],
+                                        "omit_reason": "x"}},
+                          {"practice": {"stimulus": "user_task_13__no_injection", "omit_steps": [0],
+                                        "omit_reason": "x"}},
+                          {"practice": {"stimulus": "user_task_13__no_injection", "omit_steps": ["5"],
+                                        "omit_reason": "x"}},
                           {"safe_stimulus_suffix": ""}):
             with self.subTest(overrides=overrides), self.assertRaises(ep.ConfigError):
                 write_config(**overrides)

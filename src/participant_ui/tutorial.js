@@ -259,34 +259,33 @@
     const inPanel = { fallback: () => toggle, fallbackText: "The workspace is closed: open it with this button to see this part." };
 
     const STEPS = [
-      { title: "Practice tour",
-        text: "This short tour shows how the study screen works, using a practice conversation. The highlighted part "
-          + "of the screen stays clickable, so you can try it as you go. Use Next and Back to move between steps." },
-      { title: "The request",
+      { title: "Practice Tutorial",
+        text: "Explore the interface using a practice conversation. "
+          + "Interact with highlighted areas and use Next and Back to navigate." },
+      { title: "User Request",
         text: "This is what Emma asked the assistant to do.",
         target: () => q(".chat .user-bubble") },
-      { title: "The assistant's activity",
-        text: "Each card is one action the assistant took while working on the request: what it did, the tool it "
-          + "used, the details it used, and the result. Cards appear in the order the actions happened. Any notes "
-          + "the assistant wrote between actions appear between the cards.",
+      { title: "Assistant Activity",
+        text: "Each card shows an action the assistant took, the tool used, and its result. "
+          + "Actions and accompanying notes appear in chronological order.",
         target: () => q(".chat .card"),
         include: () => !!q(".chat .card") },
-      { title: "The assistant's response",
-        text: "This is the reply the assistant gave Emma when it finished.",
+      { title: "Assistant Response",
+        text: "This is the assistant's reply to Emma.",
         target: () => q(".chat .assistant-bubble.final") },
-      { title: "A recorded conversation",
-        text: "The conversations in this study are recordings, so you cannot type messages here.",
+      { title: "Recorded Conversation",
+        text: "All conversations are prerecorded, so you cannot send messages to the assistant.",
         target: () => q(".composer") },
-      { title: "Emma's workspace", action: "Try it",
-        text: "Click Workspace to open Emma's email, calendar, files, and the assistant's skills.",
+      { title: "Emma's Workspace", action: "Try it",
+        text: "Click Workspace to explore Emma's digital workspace.",
         target: () => toggle, done: panelOpen },
-      Object.assign({ title: "Workspace tabs",
-        text: "Mail, Calendar and Drive show Emma's email, events and files as they were before the assistant "
-          + "started on this request. Switch between the tabs to see each one.",
+      Object.assign({ title: "Workspace Tabs",
+        text: "Switch between Mail, Calendar, and Drive to explore Emma's workspace as it was before "
+          + "the assistant began the task.",
         target: () => q("#workspace .tabs"), before: openPanel }, inPanel),
-      Object.assign({ title: "Opening an item",
-        text: "Click an email, event or file to open it, and use ← Back to list to return. Mail has separate "
-          + "Inbox and Sent lists.",
+      Object.assign({ title: "Opening an Item",
+        text: "Click an email, event or file to view it. Use ← Back to list to return. Mail has separate "
+          + "Inbox and Sent folders.",
         target: () => q("#workspace .ws-body"),
         // Reached with Back from the Skills steps, the panel would still show Skills, not what this step describes.
         before: () => { openPanel(); const s = tab("Skills"); if (s && s.classList.contains("on")) tab("Mail").click(); } },
@@ -295,17 +294,17 @@
         text: "Open the Skills tab. It lists the skills the assistant was given for this task.",
         target: () => tab("Skills"), before: openPanel,
         done: () => !!tab("Skills") && tab("Skills").classList.contains("on") }, inPanel),
-      Object.assign({ title: "Reading a skill",
-        text: "Click a skill to read its documentation, and use ← All skills to return to the list.",
+      Object.assign({ title: "Viewing a Skill",
+        text: "Click a skill to view its documentation. Use ← All skills to return to the list.",
         target: () => q("#workspace .ws-body"),
         before: () => { openPanel(); const s = tab("Skills"); if (s && !s.classList.contains("on")) s.click(); } }, inPanel),
-      { title: "Closing the workspace", action: "Try it",
-        text: "Close the workspace with ✕. The Workspace button opens it again at any time.",
+      { title: "Closing the Workspace", action: "Try it",
+        text: "Click ✕ to close the workspace. Click Workspace to open it at any time.",
         target: () => (panelOpen() ? q("#workspace .ws-close") : toggle),
         done: () => !panelOpen() },
-      { title: "Finishing the practice",
-        text: "That is the whole screen. After this tour, Continue takes you to the practice questions about this "
-          + "conversation. The conversations that follow work the same way.",
+      { title: "Tutorial Complete",
+        text: "You can explore the practice conversation further before continuing to the practice questions. "
+          + "The remaining conversations follow the same format.",
         target: () => document.querySelector("#advance button") },
     ].filter((step) => !step.include || step.include());
 

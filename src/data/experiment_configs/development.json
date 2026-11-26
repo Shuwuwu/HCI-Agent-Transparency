@@ -8,6 +8,8 @@
   "safe_stimulus_suffix": "__no_injection",
   "practice": {
     "stimulus": "user_task_13__no_injection",
-    "assessment": true
+    "assessment": true,
+    "omit_steps": [5, 6, 7],
+    "omit_reason": "Presentation only: the three failed contact lookups (search_contacts_by_name for Olivia Smith, Mia Anderson and Mason Thompson, steps 5-7) are left out of the practice to keep the tutorial conversation short, and the remaining cards are renumbered 1-5. The execution record and the stimulus files are unchanged; experimental trials are always shown in full."
   }
 }

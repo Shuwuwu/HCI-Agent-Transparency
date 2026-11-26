@@ -464,6 +464,42 @@ class ConsentSchemaTests(unittest.TestCase):
             shutil.rmtree(folder, ignore_errors=True)
 
 
+class PracticePresentationTests(unittest.TestCase):
+    """The practice hides the action-log cards its configuration lists; nothing else is ever shortened."""
+
+    def test_only_the_practice_stage_hides_its_omitted_cards(self):
+        """A high participant's practice shows five renumbered cards without the failed contact lookups, while an
+        experimental trial is served exactly as built and the practice stimulus file on disk keeps all eight."""
+        srv = FlowServer()
+        try:
+            participant = participant_with("high")
+            token = srv.tokens[participant]
+            srv.walk(participant, until="practice_scenario")
+            practice = json.loads(srv.get(f"/api/stimulus?t={token}")[1])
+            actions = [e for e in practice["trace"] if e["type"] == "action"]
+            self.assertEqual([e["step"] for e in actions], [1, 2, 3, 4, 5])
+            self.assertNotIn("search_contacts_by_name", [e["tool"] for e in actions])
+            full = ps.participant_view(CONFIG["practice"]["stimulus"], "high")
+            self.assertEqual(len([e for e in full["trace"] if e["type"] == "action"]), 8)
+            self.assertEqual(practice["final_response"], full["final_response"])
+
+            # The first experimental trial that can be served (planned unsafe items have no folder yet).
+            servable = set(ps.list_stimulus_ids())
+            stage = next(s for s in ep.scenario_stages(ep.plan_for(CONFIG, participant, PAYLOAD))
+                         if s["stimulus"] in servable)
+            srv.walk(participant, until=stage["key"])
+            served = json.loads(srv.get(f"/api/stimulus?t={token}")[1])
+            self.assertEqual(served, ps.participant_view(stage["stimulus"], stage["condition"]))
+        finally:
+            srv.close()
+
+    def test_a_step_that_is_not_an_action_of_the_practice_stimulus_stops_the_server(self):
+        config = dict(CONFIG, practice={**CONFIG["practice"], "omit_steps": [5, 9]})
+        with self.assertRaises(ValueError):
+            ps.check_practice_presentation(config)
+        ps.check_practice_presentation(CONFIG)  # the shipped configuration passes
+
+
 class ResolutionTests(unittest.TestCase):
     """participant_flow.py without a server: the token resolution and the stage descriptor."""
 

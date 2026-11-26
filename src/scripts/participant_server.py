@@ -36,7 +36,8 @@ Outputs:
         /p/<token>                      the flow page; an unknown token is answered 404
         /api/stage?t=<token>            the stage to show now (no stimulus identity); records the arrival
         /api/stimulus?t=<token>         the current scenario stage's sanitized JSON, in that participant's
-                                        condition (the trace is present only in the high condition)
+                                        condition (the trace is present only in the high condition; on the
+                                        practice stage, without the configuration's practice.omit_steps)
         /api/workspace?t=<token>        read-only workspace BEFORE the agent ran (same in both conditions)
         /api/skills?t=<token>           the agent's skills for this trial: id, name, description
         /api/skill?t=<token>&k=<skill>  one skill's documentation (Markdown), on request
@@ -329,6 +330,20 @@ def flow_status(exc: Exception) -> int:
     return 400
 
 
+def check_practice_presentation(config) -> None:
+    """Stop the server at startup if practice.omit_steps names a step that is not an action of the practice stimulus.
+
+    Run after use_corpus, against the high condition (the only one with an action log). Raises ValueError with the
+    configuration's path, so a mistyped step number is caught before any participant reaches the practice.
+    """
+    omit = config["practice"].get("omit_steps", [])
+    if omit:
+        try:
+            flow.omit_trace_steps(participant_view(config["practice"]["stimulus"], "high"), omit)
+        except (ValueError, FileNotFoundError) as exc:
+            raise ValueError(f"{config['path']}: practice.omit_steps {omit}: {exc}") from exc
+
+
 class BodyTooLarge(ValueError):
     """The request body is larger than the route allows."""
 
@@ -445,7 +460,7 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(200, body)
 
     def _resolve_content(self, q):
-        """The (stimulus folder, condition) a content request is for, or None when it may not be served.
+        """The (stimulus folder, condition, steps to omit) a content request is for.
 
         With t=<token> both come from the participant's current stage, so a participant cannot ask for another
         stimulus or the other condition. The s=/c= form names them directly and is a researcher preview: it is
@@ -459,12 +474,12 @@ class Handler(BaseHTTPRequestHandler):
                 return flow.scenario_target(conn, self.config, participant, self.payload)
         if not self.researcher_preview:
             raise FileNotFoundError("not found")
-        return q.get("s", ""), q.get("c", "")
+        return q.get("s", ""), q.get("c", ""), ()  # the researcher preview shows a stimulus exactly as built
 
     def _api_content(self, path, q):
         """Serve one of the four scenario content routes for whichever stimulus the request resolves to."""
         try:
-            stimulus, condition = self._resolve_content(q)
+            stimulus, condition, omit = self._resolve_content(q)
         except store.StoreError as exc:
             return self._flow_error(exc)
         except (ValueError, FileNotFoundError) as exc:
@@ -472,7 +487,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._flow_error(exc)
         try:
             if path == "/api/stimulus":
-                view = participant_view(stimulus, condition)
+                view = flow.omit_trace_steps(participant_view(stimulus, condition), omit)
             elif path == "/api/workspace":
                 view = participant_workspace(stimulus)
             elif path == "/api/skills":
@@ -568,6 +583,7 @@ def main():
     payload = ep.load_assignments(config)
     flow.load_consent()  # a missing or malformed consent file stops the server here, not at a participant's start
     use_corpus(args.corpus if args.corpus is not None else config["corpus_path"])
+    check_practice_presentation(config)
     Handler.log_dir = args.log_dir
     Handler.db_path = args.db
     Handler.config = config

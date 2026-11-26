@@ -22,6 +22,11 @@ Inputs:
     written as a task-list item ("- [ ] I agree to ..."). It is read on every request, so the text served and the
     text recorded are always the current file.
 
+    Practice presentation. The configuration may hide some action-log cards of the practice stimulus
+    (practice.omit_steps, with its reason in practice.omit_reason). They are removed, and the rest renumbered, when
+    the practice stage is served (scenario_target, omit_trace_steps); the stimulus files and the execution record
+    are unchanged, and experimental trials are always served exactly as built.
+
     Practice. The practice trial's interaction events, including everything a participant clicks during the
     practice tour, are written to a `practice/` subfolder of the log folder rather than beside the experimental
     trials' logs (log_dir_for), so a reader of the trial logs cannot include practice by accident.
@@ -198,8 +203,11 @@ def stage_payload(conn: sqlite3.Connection, config: ep.Config, participant: str,
 
 
 def scenario_target(conn: sqlite3.Connection, config: ep.Config, participant: str,
-                    payload: dict | None = None) -> tuple[str, str]:
-    """The (stimulus folder, condition) the scenario endpoints are to serve for this participant, right now.
+                    payload: dict | None = None) -> tuple[str, str, tuple[int, ...]]:
+    """The (stimulus folder, condition, steps to omit) the scenario endpoints are to serve for this participant now.
+
+    The steps to omit are the configuration's practice.omit_steps on the practice stage and () on every other
+    stage, so an experimental trial is always shown its stimulus exactly as built (see omit_trace_steps).
 
     Raises FileNotFoundError when the participant's current stage shows no scenario — consent, instructions, an
     assessment, the questionnaire, or the end of the sequence — so a stage that is not a scenario cannot be used
@@ -209,7 +217,35 @@ def scenario_target(conn: sqlite3.Connection, config: ep.Config, participant: st
     _, stage, _ = _plan_and_stage(conn, config, participant, payload)
     if stage is None or stage["kind"] != "scenario":
         raise FileNotFoundError("no scenario at this stage")
-    return stage["stimulus"], stage["condition"]
+    omit = tuple(config["practice"].get("omit_steps", ())) if stage.get("practice") else ()
+    return stage["stimulus"], stage["condition"], omit
+
+
+def omit_trace_steps(view: dict, steps) -> dict:
+    """A copy of a participant view without the action-log cards numbered `steps`, the rest renumbered from 1.
+
+    `view` is what participant_server.participant_view returns. Only action entries carry a step number; the
+    assistant's notes between actions are kept in place. A view without a trace (the low condition) and an empty
+    `steps` come back unchanged. The stimulus files are never touched: this is a presentation change applied when
+    the practice is served (scenario_target), so the files keep matching a fresh build of the execution record.
+    Raises ValueError if a step to omit is not an action of the view, so a mistyped configuration cannot hide the
+    wrong card silently.
+    """
+    steps = set(steps)
+    if not steps or "trace" not in view:
+        return view
+    present = {entry["step"] for entry in view["trace"] if entry["type"] == "action"}
+    if not steps <= present:
+        raise ValueError(f"steps {sorted(steps - present)} are not actions of this stimulus")
+    trace, number = [], 0
+    for entry in view["trace"]:
+        if entry["type"] == "action":
+            if entry["step"] in steps:
+                continue
+            number += 1
+            entry = {**entry, "step": number}
+        trace.append(entry)
+    return {**view, "trace": trace}
 
 
 def _complete_consent(conn: sqlite3.Connection, config: ep.Config, participant: str, stage_key: str,

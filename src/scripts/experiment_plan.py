@@ -23,7 +23,12 @@ Inputs:
                                   assignments file (planned, not yet passing, unsafe items),
         trials_per_participant    how many of the assignment's trials to use, counted from the first,
         safe_stimulus_suffix      appended to a scenario id to name its safe stimulus folder,
-        practice                  {"stimulus": <folder>, "assessment": <bool>}.
+        practice                  {"stimulus": <folder>, "assessment": <bool>}, optionally with
+                                  "omit_steps": [<step number>, ...] and "omit_reason": <text>: action-log
+                                  cards of the practice stimulus that are not shown in the practice. The
+                                  stimulus files are not changed; the server leaves those cards out of the
+                                  practice stage only and renumbers the rest (participant_flow.omit_trace_steps).
+                                  A reason is required whenever steps are omitted, so the change stays documented.
     The assignments file it names: {"version", "seed", "simulated", "final", "assignments": [...]} as written by
     build_assignments.py --write (study) or --write-simulated (development).
 
@@ -70,8 +75,9 @@ class Config(dict):
 def load_config(path: Path = CONFIG_PATH, root: Path = ROOT) -> Config:
     """Read and validate an experiment configuration; relative paths are resolved against `root`.
 
-    Raises ConfigError for a missing key, an unknown version, a non-positive trial count or a practice entry
-    without a stimulus. Does not open the corpus or the assignments file (load_assignments does that), so a
+    Raises ConfigError for a missing key, an unknown version, a non-positive trial count, a practice entry
+    without a stimulus, or practice omit_steps that are not distinct positive integers or come without an
+    omit_reason. Does not open the corpus or the assignments file (load_assignments does that), so a
     configuration can be validated before its data exists.
     """
     path = Path(path)
@@ -89,6 +95,12 @@ def load_config(path: Path = CONFIG_PATH, root: Path = ROOT) -> Config:
     practice = config["practice"]
     if not isinstance(practice, dict) or not isinstance(practice.get("stimulus"), str) or not practice["stimulus"]:
         raise ConfigError(f"{path}: practice needs a stimulus folder")
+    omit = practice.get("omit_steps", [])
+    if (not isinstance(omit, list) or len(set(omit)) != len(omit)
+            or any(not isinstance(s, int) or isinstance(s, bool) or s < 1 for s in omit)):
+        raise ConfigError(f"{path}: practice.omit_steps must be a list of distinct positive step numbers")
+    if omit and not (isinstance(practice.get("omit_reason"), str) and practice["omit_reason"].strip()):
+        raise ConfigError(f"{path}: practice.omit_steps needs an omit_reason saying why those steps are hidden")
     if not isinstance(config["safe_stimulus_suffix"], str) or not config["safe_stimulus_suffix"]:
         raise ConfigError(f"{path}: safe_stimulus_suffix must be a non-empty string")
     loaded = Config(config)
