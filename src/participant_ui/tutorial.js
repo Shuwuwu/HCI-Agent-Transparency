@@ -90,7 +90,9 @@
   }
 
   /**
-   * Run a tour over `steps`. A step is {title, text, target?, fallback?, fallbackText?, before?, done?, action?}:
+   * Run a tour over `steps`. A step is
+   * {title, text, intro?, target?, fallback?, fallbackText?, before?, done?, action?}:
+   *   intro         an optional paragraph shown above the text and its action label;
    *   target()      the element to spotlight, looked up again on every frame (panels re-render their DOM);
    *                 a step without one is a centred message;
    *   fallback()    spotlit instead while target() is not on screen (for example a panel the participant closed),
@@ -109,12 +111,15 @@
     const tip = overlay.appendChild(el("div", "tour-tip"));
     tip.setAttribute("role", "dialog");
     tip.setAttribute("aria-labelledby", "tour-title");
-    tip.setAttribute("aria-describedby", "tour-text");
+    tip.setAttribute("aria-describedby", "tour-intro tour-text"); // a missing or hidden intro is simply skipped
     tip.tabIndex = -1;
     const arrow = tip.appendChild(el("div", "tour-arrow"));
     const count = tip.appendChild(el("p", "tour-count"));
     const title = tip.appendChild(el("h2", "tour-title"));
     title.id = "tour-title";
+    const intro = tip.appendChild(el("p", "tour-intro")); // a step's optional lead-in, above its instruction
+    intro.id = "tour-intro";
+    intro.hidden = true;
     const text = tip.appendChild(el("p", "tour-text"));
     text.id = "tour-text";
     const nav = tip.appendChild(el("div", "tour-nav"));
@@ -148,7 +153,12 @@
       tip.focus({ preventScroll: true }); // screen readers announce the new step (role=dialog, labelled)
     }
 
+    /** Fill the tooltip's body: the step's optional intro paragraph, then its instruction (with the bold action
+     *  label, such as "Try it now:", when the step has one) and, while the step's target is not on screen, the
+     *  fallback note. Steps without an intro look exactly as before. */
     function setText(step, fallback) {
+      intro.textContent = step.intro || "";
+      intro.hidden = !step.intro;
       text.replaceChildren();
       if (step.action && !fallback) text.appendChild(el("strong", "tour-action", step.action + ": "));
       text.appendChild(document.createTextNode(step.text));
@@ -266,8 +276,9 @@
         text: "This is what Emma asked the assistant to do.",
         target: () => q(".chat .user-bubble") },
       { title: "Assistant Activity",
-        text: "Each card shows an action the assistant took, the tool used, and its result. "
-          + "Actions and accompanying notes appear in chronological order.",
+          intro: "These steps show what the assistant did, in chronological order.",
+          action: "Try it now",
+          text: "Click the highlighted step to view its details. Click again to close it.",
         target: () => q(".chat .card"),
         include: () => !!q(".chat .card") },
       { title: "Assistant Response",
