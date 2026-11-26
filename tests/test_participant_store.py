@@ -187,6 +187,33 @@ class FlowTests(unittest.TestCase):
         self.assertIsNone(state["completed_at"])
 
 
+class ResetTests(unittest.TestCase):
+    """--reset: a test participant can start again from consent, a study participant can never be erased."""
+
+    def setUp(self):
+        self.conn = store.connect(temp_db())
+        self.row = store.enrol(self.conn, CONFIG, FIRST, PAYLOAD)
+        for key in ("consent", "instructions", "practice_scenario"):
+            store.complete_stage(self.conn, CONFIG, FIRST, key, PAYLOAD)
+        store.record_consent(self.conn, FIRST, "0" * 64, "consent text")
+
+    def test_a_simulated_participant_restarts_at_consent_with_the_same_link(self):
+        cleared = store.reset(self.conn, FIRST)
+        self.assertEqual(cleared["stages_cleared"], 3)
+        self.assertTrue(cleared["consent_cleared"])
+        self.assertEqual(store.current_stage(self.conn, CONFIG, FIRST, PAYLOAD)["key"], "consent")
+        self.assertIsNone(store.consent_of(self.conn, FIRST))
+        self.assertEqual(store.by_token(self.conn, self.row["token"])["participant_id"], FIRST)
+
+    def test_a_study_participant_cannot_be_reset(self):
+        self.conn.execute("UPDATE participants SET simulated = 0 WHERE participant_id = ?", (FIRST,))
+        self.conn.commit()
+        with self.assertRaises(store.StoreError):
+            store.reset(self.conn, FIRST)
+        self.assertEqual(len(store.completed_stages(self.conn, FIRST)), 3)
+        self.assertIsNotNone(store.consent_of(self.conn, FIRST))
+
+
 class PlanChangeTests(unittest.TestCase):
     def setUp(self):
         self.conn = store.connect(temp_db())

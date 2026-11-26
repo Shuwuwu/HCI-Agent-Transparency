@@ -43,6 +43,11 @@ Usage:
     python3 -B src/scripts/participant_store.py --config src/data/experiment_configs/development.json --enrol-all
     python3 -B src/scripts/participant_store.py --config src/data/experiment_configs/development.json --links
     python3 -B src/scripts/participant_store.py --status
+    python3 -B src/scripts/participant_store.py --config src/data/experiment_configs/development.json --reset P001 P002
+
+    A link always reopens at the participant's current stage, so a test participant who has passed consent never
+    sees it again. --reset sends simulated (development) participants back to the start: it clears their progress
+    and consent but keeps their link. It refuses any participant enrolled from a study configuration.
 """
 
 import argparse
@@ -332,6 +337,27 @@ def status(conn: sqlite3.Connection, config: ep.Config, participant: str,
     return out
 
 
+def reset(conn: sqlite3.Connection, participant: str) -> dict:
+    """Send a simulated participant back to the first stage: delete their progress and consent, keep their link.
+
+    For re-testing the flow from consent with the same link. Only a participant enrolled from a simulated
+    (development) configuration can be reset; one enrolled from a study configuration raises StoreError, so real
+    participants' progress and consent can never be erased this way. The enrolment itself (token, condition, list,
+    plan fingerprint) is kept. Interaction logs are not in this database and are not touched: a reset participant's
+    trials append to their existing log files. Returns {"participant_id", "stages_cleared", "consent_cleared"}.
+    Raises KeyError for a participant who is not enrolled.
+    """
+    row = record(conn, participant)
+    if not row["simulated"]:
+        raise StoreError(f"{participant}: enrolled from a study configuration ({row['config_path']}); "
+                         "study participants cannot be reset")
+    stages = conn.execute("DELETE FROM progress WHERE participant_id = ?", (participant,)).rowcount
+    consent = conn.execute("DELETE FROM consents WHERE participant_id = ?", (participant,)).rowcount
+    conn.execute("UPDATE participants SET completed_at = NULL WHERE participant_id = ?", (participant,))
+    conn.commit()
+    return {"participant_id": participant, "stages_cleared": stages, "consent_cleared": bool(consent)}
+
+
 def link(token: str, base_url: str = "") -> str:
     """The participant link for a token: `<base_url>/p/<token>` (a relative path when no base url is given)."""
     return f"{base_url.rstrip('/')}/p/{token}"
@@ -346,10 +372,17 @@ def main() -> None:
                         help="enrol every participant of the assignments file that is not enrolled yet")
     parser.add_argument("--links", action="store_true", help="print every enrolled participant's link")
     parser.add_argument("--status", action="store_true", help="print how far each enrolled participant has come")
+    parser.add_argument("--reset", nargs="+", metavar="ID", default=[],
+                        help="send these simulated participants back to the first stage (their links are kept)")
     args = parser.parse_args()
     config = ep.load_config(args.config)
     payload = ep.load_assignments(config)
     conn = connect(args.db)
+    for participant in args.reset:
+        try:
+            print(json.dumps(reset(conn, participant)))
+        except (KeyError, StoreError) as exc:
+            parser.error(f"--reset {participant}: {exc}")
     if args.enrol_all:
         added = enrol_all(conn, config, payload)
         print(f"enrolled {len(added)} new participant(s) in {args.db}")
@@ -360,8 +393,8 @@ def main() -> None:
     if args.status:
         for row in rows:
             print(json.dumps(status(conn, config, row["participant_id"], payload)))
-    if not (args.enrol_all or args.links or args.status):
-        parser.error("choose --enrol-all, --links or --status")
+    if not (args.enrol_all or args.links or args.status or args.reset):
+        parser.error("choose --enrol-all, --links, --status or --reset")
 
 
 if __name__ == "__main__":
