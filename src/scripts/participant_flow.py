@@ -33,8 +33,8 @@ Inputs:
 
     Questionnaire. The post-study questionnaire (src/study_materials/questionnaire.json, read on every request
     like the other study materials) is sent with the questionnaire stage; its answers are validated here and
-    stored in the same transaction as the stage completion (participant_store.record_questionnaire). The shipped
-    file is a marked placeholder until the real items are written.
+    stored in the same transaction as the stage completion (participant_store.record_questionnaire). Every
+    participant gets the same questionnaire, whatever their condition.
 
     Practice presentation. The configuration may hide some action-log cards of the practice stimulus
     (practice.omit_steps, with its reason in practice.omit_reason). They are removed, and the rest renumbered, when
@@ -230,7 +230,8 @@ def load_questionnaire(path=QUESTIONNAIRE_PATH) -> dict:
     """The post-study questionnaire: the parsed file plus its "sha256", which each stored answer records.
 
     Items are {"id", "type", "text", "required"} plus, by type: "scale" a whole-number "min" < "max" with optional
-    "anchors" inside that range; "choice" a list of "options" with distinct ids; "text" a positive "max_chars".
+    "anchors" inside that range and an optional "not_applicable" {"id", "label"}, an answer off the scale (such as
+    "Did not consult"); "choice" a list of "options" with distinct ids; "text" a positive "max_chars".
     Raises ValueError for anything else (or repeated item ids), so a broken file stops the server at startup.
     """
     raw = Path(path).read_bytes()
@@ -249,6 +250,13 @@ def load_questionnaire(path=QUESTIONNAIRE_PATH) -> dict:
                                     and item["min"] < item["max"]
                                     and all(item["min"] <= int(k) <= item["max"] for k in item.get("anchors", {}))):
             raise ValueError(f"{path}: scale {item['id']} needs whole-number min < max and anchors inside it")
+        if kind == "scale" and "not_applicable" in item:
+            na = item["not_applicable"]
+            # A string id so it can never be mistaken for a point on the scale.
+            if not (isinstance(na, dict) and isinstance(na.get("id"), str) and re.match(r"^[a-z_]{1,64}$", na["id"])
+                    and na.get("label")):
+                raise ValueError(f"{path}: scale {item['id']} not_applicable needs an id of lower-case letters and "
+                                 f"a label")
         if kind == "choice":
             options = [o.get("id") for o in item.get("options", [])]
             if not options or len(set(options)) != len(options):
@@ -270,8 +278,8 @@ def questionnaire_for(spec: dict | None = None) -> dict:
 def validate_questionnaire(answers, spec: dict) -> dict:
     """The submitted questionnaire answers, checked and normalised to {item id: text}, or QuestionnaireError.
 
-    `answers` is {"sha256", "items": {item id: answer}}. A scale answer must be a whole number on its scale, a
-    choice one of its option ids, a text at most max_chars (surrounding whitespace removed). A required item left
+    `answers` is {"sha256", "items": {item id: answer}}. A scale answer must be a whole number on its scale (or,
+    where the scale has one, its not_applicable id, stored as that id), a choice one of its option ids, a text at most max_chars (surrounding whitespace removed). A required item left
     unanswered is refused; an optional one is stored as ''. Unknown item ids are refused, and the hash must match
     the current file, so an answer is never stored against wording the participant did not see.
     """
@@ -290,6 +298,8 @@ def validate_questionnaire(answers, spec: dict) -> dict:
             if item["required"]:
                 raise QuestionnaireError(f"{item_id} is required")
             out[item_id] = ""
+        elif item["type"] == "scale" and value == item.get("not_applicable", {}).get("id"):
+            out[item_id] = value
         elif item["type"] == "scale":
             if not (isinstance(value, int) and not isinstance(value, bool) and item["min"] <= value <= item["max"]):
                 raise QuestionnaireError(f"{item_id} must be a whole number from {item['min']} to {item['max']}")

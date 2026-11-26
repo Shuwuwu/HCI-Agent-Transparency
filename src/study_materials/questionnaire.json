@@ -1,32 +1,114 @@
 {
-  "version": "questionnaire_placeholder_v1",
-  "placeholder": true,
+  "version": "questionnaire_v1",
   "intro": "These questions are about the session as a whole, not one conversation.",
   "items": [
     {
-      "id": "placeholder_scale",
+      "id": "safety_judgement_approach",
+      "type": "text",
+      "text": "How did you decide whether the assistant's behaviour was safe or unsafe?",
+      "required": true,
+      "max_chars": 2000
+    },
+    {
+      "id": "unsafe_meaning",
+      "type": "text",
+      "text": "What did unsafe behaviour mean to you in this study?",
+      "required": true,
+      "max_chars": 2000
+    },
+    {
+      "id": "actions_visible",
       "type": "scale",
-      "text": "Placeholder question: how easy was it to review the conversations?",
+      "text": "I could see what the assistant did to complete each request.",
       "required": true,
       "min": 1,
       "max": 5,
-      "anchors": {"1": "Very difficult", "3": "Neither easy nor difficult", "5": "Very easy"}
+      "anchors": {"1": "Strongly disagree", "2": "Disagree", "3": "Neither agree nor disagree", "4": "Agree",
+                  "5": "Strongly agree"}
     },
     {
-      "id": "placeholder_choice",
+      "id": "information_sufficient",
+      "type": "scale",
+      "text": "I had enough information to assess the assistant's behaviour.",
+      "required": true,
+      "min": 1,
+      "max": 5,
+      "anchors": {"1": "Strongly disagree", "2": "Disagree", "3": "Neither agree nor disagree", "4": "Agree",
+                  "5": "Strongly agree"}
+    },
+    {
+      "id": "information_overload",
+      "type": "scale",
+      "text": "There was too much information to review.",
+      "required": true,
+      "min": 1,
+      "max": 5,
+      "anchors": {"1": "Strongly disagree", "2": "Disagree", "3": "Neither agree nor disagree", "4": "Agree",
+                  "5": "Strongly agree"}
+    },
+    {
+      "id": "skill_docs_usefulness",
+      "type": "scale",
+      "text": "How useful was the skill documentation in assessing the assistant's behaviour?",
+      "required": true,
+      "min": 1,
+      "max": 5,
+      "anchors": {"1": "Not at all useful", "2": "Slightly useful", "3": "Moderately useful", "4": "Very useful",
+                  "5": "Extremely useful"},
+      "not_applicable": {"id": "did_not_consult", "label": "Did not consult"}
+    },
+    {
+      "id": "skill_docs_purpose_understood",
+      "type": "scale",
+      "text": "How well did you understand the purpose of the skill documentation?",
+      "required": true,
+      "min": 1,
+      "max": 5,
+      "anchors": {"1": "Not at all", "2": "Slightly", "3": "Moderately", "4": "Very well", "5": "Completely"}
+    },
+    {
+      "id": "ai_chat_frequency",
       "type": "choice",
-      "text": "Placeholder question: have you used an AI assistant for email, calendar or files before?",
+      "text": "How often do you use AI chat assistants (for example, ChatGPT, Claude or Gemini)?",
       "required": true,
       "options": [
         {"id": "never", "label": "Never"},
-        {"id": "sometimes", "label": "Sometimes"},
-        {"id": "often", "label": "Often"}
+        {"id": "less_than_monthly", "label": "Less than once a month"},
+        {"id": "monthly", "label": "A few times a month"},
+        {"id": "weekly", "label": "A few times a week"},
+        {"id": "daily", "label": "Daily or almost daily"}
       ]
     },
     {
-      "id": "placeholder_comments",
+      "id": "agent_experience",
+      "type": "choice",
+      "text": "Have you previously used AI assistants that perform actions on your behalf (for example, sending emails, scheduling events or managing files)?",
+      "required": true,
+      "options": [
+        {"id": "never", "label": "No, never"},
+        {"id": "once_or_twice", "label": "Yes, once or twice"},
+        {"id": "occasionally", "label": "Yes, occasionally"},
+        {"id": "regularly", "label": "Yes, regularly"},
+        {"id": "not_sure", "label": "Not sure"}
+      ]
+    },
+    {
+      "id": "prompt_injection_familiarity",
+      "type": "choice",
+      "text": "Before this study, how familiar were you with prompt injection?",
+      "required": true,
+      "options": [
+        {"id": "never_heard", "label": "I had never heard of it"},
+        {"id": "heard_of", "label": "I had heard of it but did not know what it means"},
+        {"id": "basic_idea", "label": "I understood the basic idea"},
+        {"id": "could_explain", "label": "I could explain it to someone else"},
+        {"id": "worked_with", "label": "I have studied it or worked with it"}
+      ]
+    },
+    {
+      "id": "additional_information_wanted",
       "type": "text",
-      "text": "Placeholder question: is there anything else you would like to tell us?",
+      "text": "What additional information would have helped you assess the assistant's behaviour?",
       "required": false,
       "max_chars": 2000
     }

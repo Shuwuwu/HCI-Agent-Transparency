@@ -1,18 +1,20 @@
 /*
  * Purpose:
  *   The questions at the end of the session, as one form. Three kinds of item: a rating scale (radio-button stops,
- *   none selected until the participant picks one), a single choice from a list, and free text. The form only
+ *   none selected until the participant picks one, optionally with an answer off the scale, such as "Did not
+ *   consult", drawn below it), a single choice from a list, and free text. The form only
  *   collects answers and says which required ones are missing; the server checks them again and stores them.
  *
  * Inputs:
  *   QuestionnaireForm.render(container, spec): `spec` is the stage's questionnaire as sent by the server:
  *   {intro, placeholder, sha256, items: [{id, type: "scale"|"choice"|"text", text, required, min?, max?, anchors?,
- *   options?, max_chars?}, ...]} in the order to ask them.
+ *   not_applicable?: {id, label}, options?, max_chars?}, ...]} in the order to ask them.
  *
  * Outputs:
  *   The form drawn into `container`. render() returns {collect, showErrors, showMessage}:
  *     collect()          {answers: {sha256, items: {id: value}}, errors: [{id, message}]}; a scale value is a
- *                        number, a choice its option id, text a string; unanswered items are left out.
+ *                        number (or the not_applicable id when that was picked), a choice its option id, text a
+ *                        string; unanswered items are left out.
  *     showErrors(errors) marks those items and focuses the first.
  *     showMessage(text)  a message for the whole form.
  *
@@ -52,6 +54,15 @@
         scale.appendChild(stop);
       }
       set.appendChild(scale);
+      if (item.not_applicable) {
+        // Same radio group as the stops, so picking it clears the scale and the other way round.
+        const na = item.not_applicable;
+        const list = el("div", "q-choices q-inline q-scale-na");
+        const wrap = el("label", "q-choice");
+        wrap.append(radio(id, na.id, id + "-" + na.id), el("span", null, na.label));
+        list.appendChild(wrap);
+        set.appendChild(list);
+      }
     },
     choice(set, id, item) {
       const list = el("div", "q-choices");
@@ -108,7 +119,8 @@
       if (item.type === "text") return set.querySelector("textarea").value.trim();
       const picked = set.querySelector("input:checked");
       if (!picked) return "";
-      return item.type === "scale" ? Number(picked.value) : picked.value;
+      if (item.type !== "scale" || (item.not_applicable && picked.value === item.not_applicable.id)) return picked.value;
+      return Number(picked.value);
     }
 
     function collect() {

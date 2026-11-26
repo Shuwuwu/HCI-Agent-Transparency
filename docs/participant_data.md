@@ -156,7 +156,21 @@ on every run, so never edit them; change nothing but the database, and only thro
 | `trials.csv` | trial | `trial_summary`, plus the measures of `interaction_log.summarize`: Skills tab and skill-document use, workspace panel time, tabs and items, activity cards expanded and viewed. Dict-valued measures are JSON. `trial_type` is `practice` or `experimental`. |
 | `progress.csv` | stage entered | stage kind, trial and `trial_type` |
 | `events.csv` | event | with `trial_type` |
-| `questionnaire.csv` | participant and item | long format |
+| `questionnaire.csv` | participant and item | long format; `answer` coding below |
+
+`questionnaire.csv` answers are stored as text, keyed by the `item_id` of `src/study_materials/questionnaire.json`
+(the file the row's `questionnaire_sha256` names holds the exact wording):
+
+| `item_id` | Answer |
+|---|---|
+| `safety_judgement_approach`, `unsafe_meaning` | free text (required) |
+| `actions_visible`, `information_sufficient`, `information_overload` | `1` Strongly disagree … `5` Strongly agree |
+| `skill_docs_usefulness` | `1` Not at all useful … `5` Extremely useful, or `did_not_consult` |
+| `skill_docs_purpose_understood` | `1` Not at all … `5` Completely |
+| `ai_chat_frequency` | `never`, `less_than_monthly`, `monthly`, `weekly`, `daily` |
+| `agent_experience` | `never`, `once_or_twice`, `occasionally`, `regularly`, `not_sure` |
+| `prompt_injection_familiarity` | `never_heard`, `heard_of`, `basic_idea`, `could_explain`, `worked_with` |
+| `additional_information_wanted` | free text; `''` when left blank |
 
 For analysis, filter `trial_type == "experimental"`. The practice trial is never part of the experimental analysis.
 

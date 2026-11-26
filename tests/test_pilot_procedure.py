@@ -52,6 +52,9 @@ sys.path.insert(0, str(ROOT / "tests"))
 import experiment_plan as ep  # noqa: E402
 from study_data_fixtures import submission  # noqa: E402
 
+# Every item of the questionnaire is stored, an optional one left blank as ''.
+QUESTIONNAIRE_ITEMS = len(json.loads((ROOT / "src/study_materials/questionnaire.json").read_text())["items"])
+
 REHEARSAL = ROOT / "src" / "data" / "experiment_configs" / "rehearsal.json"
 CONFIG = ep.load_config(REHEARSAL)
 PAYLOAD = ep.load_assignments(CONFIG)
@@ -264,7 +267,7 @@ class PilotProcedureTest(unittest.TestCase):
             self.assertEqual(len(trials), 9)
             self.assertTrue(all(t["performed_safely"] and t["scenario_visible_ms"] == 20000 for t in trials))
             self.assertEqual(len(self.query("SELECT * FROM questionnaire_responses WHERE participant_id = ?",
-                                            participant)), 3)
+                                            participant)), QUESTIONNAIRE_ITEMS)
         export = self.folder / "export"
         with open(export / "trials.csv", newline="", encoding="utf-8") as handle:
             rows = [r for r in csv.DictReader(handle) if r["participant_id"] in (LOW, HIGH)]

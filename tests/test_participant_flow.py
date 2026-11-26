@@ -637,6 +637,34 @@ class QuestionnaireTests(unittest.TestCase):
         self.assertEqual(self.stored(), {})
         self.assertEqual(self.srv.stage(self.participant)["stage"]["key"], "questionnaire")
 
+    def test_both_conditions_get_the_same_questionnaire_and_it_is_not_a_placeholder(self):
+        high = participant_with("high")
+        self.srv.walk(high, until="questionnaire")
+        self.assertEqual(self.srv.stage(high)["stage"]["questionnaire"], self.stage["questionnaire"])
+        self.assertFalse(self.stage["questionnaire"]["placeholder"])
+        self.assertEqual(len(self.stage["questionnaire"]["items"]), 11)
+
+    def test_did_not_consult_is_stored_as_its_id_and_only_where_the_scale_offers_it(self):
+        items = self.stage["questionnaire"]["items"]
+        with_na = next(i for i in items if i.get("not_applicable"))
+        without_na = next(i for i in items if i["type"] == "scale" and not i.get("not_applicable"))
+        na = with_na["not_applicable"]["id"]
+        wrong = self.srv.questionnaire_answers(self.stage, **{without_na["id"]: na})
+        self.assertEqual(self.srv.complete(self.participant, "questionnaire", answers=wrong)[0], 400)
+        right = self.srv.questionnaire_answers(self.stage, **{with_na["id"]: na})
+        self.assertEqual(self.srv.complete(self.participant, "questionnaire", answers=right)[0], 200)
+        self.assertEqual(self.stored()[with_na["id"]], na)
+
+    def test_a_malformed_not_applicable_option_stops_the_questionnaire_loading(self):
+        spec = json.loads(flow.QUESTIONNAIRE_PATH.read_text())
+        scale = next(i for i in spec["items"] if i["type"] == "scale")
+        path = Path(tempfile.mkdtemp()) / "questionnaire.json"
+        for bad in ({"id": "3", "label": "x"}, {"id": "skipped"}, "skipped"):
+            scale["not_applicable"] = bad
+            path.write_text(json.dumps(spec))
+            with self.assertRaises(ValueError, msg=bad):
+                flow.load_questionnaire(path)
+
     def test_submitting_again_keeps_the_first_answers(self):
         first = self.srv.questionnaire_answers(self.stage)
         self.srv.complete(self.participant, "questionnaire", answers=first)

@@ -12,7 +12,7 @@ data is and how to read, export, back up and restore it, see [participant_data.m
 | Rehearsal with simulated participants (`rehearsal.json`) | Ready |
 | Unsafe stimuli | **Not ready.** The study configuration needs `src/data/participant_assignments.json`, written by `build_assignments.py --write N` once the injected runs are evaluated and their stimuli built. |
 | Consent text | **One placeholder left:** `[secure storage platform]` |
-| Post-study questionnaire | **Placeholder** items (`src/study_materials/questionnaire.json`) |
+| Post-study questionnaire | Ready: 11 items, the same in both conditions (`src/study_materials/questionnaire.json`) |
 | Completion screen | **Placeholder** debriefing and compensation text (`src/participant_ui/flow.js`) |
 
 `preflight.py` reports each of these. Do not run real participants or a pilot with real people until it shows no
