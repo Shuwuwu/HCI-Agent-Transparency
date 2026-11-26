@@ -17,18 +17,23 @@ Purpose:
     practice stimulus, re-written assignments), resuming raises StoreError instead of silently showing a
     participant a different experiment than the one their stored progress belongs to.
 
-    This module stores flow state only. Questionnaire responses and interaction events are separate records of the
-    data-collection step and are not written here.
+    Consent. When a participant agrees to take part, the time, the exact consent text they were shown and its
+    SHA-256 are stored with their record (`consents`). Keeping the text itself, not only a version label, means the
+    database alone answers "what did this participant agree to?" even after the consent file has been revised.
+
+    Apart from consent, this module stores flow state only. Questionnaire responses and interaction events are
+    separate records of the data-collection step and are not written here.
 
 Inputs:
     An experiment configuration and assignments payload (experiment_plan.py) when enrolling participants, and a
     database file (default src/data/participants/participants.db, gitignored: it holds research data).
 
 Outputs:
-    The SQLite database, with two tables: `participants` (one row per enrolled participant: token, condition,
-    list, trial count, configuration provenance, stage fingerprint, timestamps) and `progress` (one row per stage
-    a participant has entered, with its completion time). The command line enrols participants, prints their
-    links, and prints how far each participant has come.
+    The SQLite database, with three tables: `participants` (one row per enrolled participant: token, condition,
+    list, trial count, configuration provenance, stage fingerprint, timestamps), `progress` (one row per stage a
+    participant has entered, with its completion time) and `consents` (at most one row per participant: when they
+    agreed, and the consent text and its hash). The command line enrols participants, prints their links, and
+    prints how far each participant has come, including whether they have consented.
 
 Dependencies:
     experiment_plan.py (configuration, assignments and the derived stage sequence). Python standard library only.
@@ -53,7 +58,7 @@ import experiment_plan as ep
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DB = ROOT / "src" / "data" / "participants" / "participants.db"
 TOKEN_BYTES = 24  # 32 URL-safe characters
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2  # 2: the consents table
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS participants (
     participant_id   TEXT PRIMARY KEY,
@@ -75,6 +80,12 @@ CREATE TABLE IF NOT EXISTS progress (
     entered_at     TEXT NOT NULL,
     completed_at   TEXT,
     PRIMARY KEY (participant_id, stage_key)
+);
+CREATE TABLE IF NOT EXISTS consents (
+    participant_id TEXT PRIMARY KEY REFERENCES participants(participant_id),
+    agreed_at      TEXT NOT NULL,
+    consent_sha256 TEXT NOT NULL,
+    consent_text   TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
@@ -113,6 +124,11 @@ def connect(path: Path = DEFAULT_DB) -> sqlite3.Connection:
         conn.commit()
     elif int(row["value"]) > SCHEMA_VERSION:
         raise StoreError(f"{path}: schema version {row['value']} is newer than this module ({SCHEMA_VERSION})")
+    elif int(row["value"]) < SCHEMA_VERSION:
+        # Every change so far only adds tables, which the CREATE TABLE IF NOT EXISTS script above has just made,
+        # so an older database is upgraded by recording the new version. Existing rows are untouched.
+        conn.execute("UPDATE meta SET value = ? WHERE key = 'schema_version'", (str(SCHEMA_VERSION),))
+        conn.commit()
     return conn
 
 
@@ -191,6 +207,28 @@ def completed_stages(conn: sqlite3.Connection, participant: str) -> list[str]:
     rows = conn.execute("SELECT stage_key FROM progress WHERE participant_id = ? AND completed_at IS NOT NULL "
                         "ORDER BY stage_index", (participant,)).fetchall()
     return [row["stage_key"] for row in rows]
+
+
+def record_consent(conn: sqlite3.Connection, participant: str, consent_sha256: str, consent_text: str,
+                   commit: bool = True) -> dict:
+    """Store that `participant` agreed to the consent text `consent_text` (whose SHA-256 is `consent_sha256`).
+
+    Only the first agreement is kept: a repeated submission does not move the time or replace the text, so the
+    record always shows what the participant agreed to before they started. Pass commit=False to make this part
+    of a larger transaction (participant_flow.advance commits it together with completing the consent stage, so
+    neither can be saved without the other). Returns the stored consent.
+    """
+    conn.execute("INSERT INTO consents (participant_id, agreed_at, consent_sha256, consent_text) VALUES (?, ?, ?, ?) "
+                 "ON CONFLICT (participant_id) DO NOTHING", (participant, now(), consent_sha256, consent_text))
+    if commit:
+        conn.commit()
+    return consent_of(conn, participant)
+
+
+def consent_of(conn: sqlite3.Connection, participant: str) -> dict | None:
+    """The participant's stored consent ({participant_id, agreed_at, consent_sha256, consent_text}), or None."""
+    row = conn.execute("SELECT * FROM consents WHERE participant_id = ?", (participant,)).fetchone()
+    return dict(row) if row else None
 
 
 def checked_plan(conn: sqlite3.Connection, config: ep.Config, participant: str,
@@ -281,6 +319,8 @@ def status(conn: sqlite3.Connection, config: ep.Config, participant: str,
     out = {"participant": participant, "condition": stored["condition"], "list": stored["list"],
            "simulated": bool(stored["simulated"]), "enrolled_at": stored["enrolled_at"],
            "completed_at": stored["completed_at"], "stages_completed": len(done), "plan_changed": False}
+    consent = consent_of(conn, participant)
+    out["consented_at"] = consent["agreed_at"] if consent else None
     try:
         plan = checked_plan(conn, config, participant, payload)
     except StoreError:
