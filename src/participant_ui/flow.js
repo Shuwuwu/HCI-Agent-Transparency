@@ -8,7 +8,7 @@
  *   The consent screen shows the real consent text (src/study_materials/consent.md, sent by the server with the
  *   stage) and its agreement checkbox; ticking it and continuing is what stores the participant's consent. The
  *   assessment after each conversation is the shared form of assessment.js, the same for the practice and every
- *   trial; the questionnaire is still a placeholder. The scenario stage is drawn by scenario_view.js;
+ *   trial; the questions at the end are the form of questionnaire.js. The scenario stage is drawn by scenario_view.js;
  *   on the practice scenario, the guided tour of tutorial.js runs over it before the participant can continue.
  *
  * Inputs:
@@ -21,14 +21,15 @@
  * Outputs:
  *   The stage drawn into #stage and its continue button into #advance; POST /api/stage/complete to advance (at
  *   consent, with {agreed: true, sha256} so the server records the agreement to the exact text shown; at an
- *   assessment, with the answers, which the server stores against the trial).
+ *   assessment, with the answers, which the server stores against the trial; at the questionnaire, with its
+ *   answers).
  *   For a trial, the mounted scenario view and its interaction events, logged with the link token under that
  *   trial's id (the server records when the trial started), including scenario_visible: how long the
  *   conversation was on screen while the page was visible.
  *
  * Dependencies:
  *   scenario_view.js (ScenarioView), interaction.js (Interaction), tutorial.js (PracticeTour), assessment.js
- *   (AssessmentForm), and through them
+ *   (AssessmentForm), questionnaire.js (QuestionnaireForm), and through them
  *   markdown.js, previews.js, workspace.js, skills.js. participant_server.py (/api/stage, /api/stage/complete and
  *   the content routes).
  */
@@ -146,16 +147,6 @@
     }).then(asJson).then(draw, (err) => (err && err.status === 400 ? onRefused() : fail(err)));
   }
 
-  /** A card screen: heading, optional lead paragraph, a placeholder box, and a continue button. */
-  function card(heading, lead, note, label, key) {
-    const box = el("div", "stage-card");
-    box.appendChild(el("h1", null, heading));
-    if (lead) box.appendChild(el("p", null, lead));
-    box.appendChild(placeholder(note));
-    host.appendChild(box);
-    setButton(label, () => advance(key));
-  }
-
   /** The information letter and consent form. Continue stays disabled until the box is ticked, and the server
    *  refuses the consent stage without the agreement anyway, so this check is a convenience, not the guard. */
   function consentScreen(stage) {
@@ -206,9 +197,24 @@
     });
   }
 
+  /** The questions at the end of the session (questionnaire.js). As with the assessment, Continue checks the
+   *  answers first, the server checks and stores them, and a refusal keeps the form and its answers. */
   function questionnaireScreen(stage) {
-    card("A few last questions", "These questions are about the session as a whole, not one conversation.",
-      " The post-study questionnaire goes here.", "Finish", stage.key);
+    if (!stage.questionnaire) return fail();
+    const form = QuestionnaireForm.render(host, stage.questionnaire);
+    const button = setButton("Finish", () => {
+      const result = form.collect();
+      form.showMessage("");
+      form.showErrors(result.errors);
+      if (result.errors.length) {
+        button.disabled = false;
+        return;
+      }
+      submit(stage.key, { answers: result.answers }, () => {
+        form.showMessage("Your answers could not be saved. Please check them and try again, or tell the researcher.");
+        button.disabled = false;
+      });
+    });
   }
 
   /** The last screen. Reaching it completes the final stage, which is what marks the participant finished in

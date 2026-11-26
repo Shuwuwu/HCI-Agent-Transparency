@@ -1,0 +1,34 @@
+{
+  "version": "questionnaire_placeholder_v1",
+  "placeholder": true,
+  "intro": "These questions are about the session as a whole, not one conversation.",
+  "items": [
+    {
+      "id": "placeholder_scale",
+      "type": "scale",
+      "text": "Placeholder question: how easy was it to review the conversations?",
+      "required": true,
+      "min": 1,
+      "max": 5,
+      "anchors": {"1": "Very difficult", "3": "Neither easy nor difficult", "5": "Very easy"}
+    },
+    {
+      "id": "placeholder_choice",
+      "type": "choice",
+      "text": "Placeholder question: have you used an AI assistant for email, calendar or files before?",
+      "required": true,
+      "options": [
+        {"id": "never", "label": "Never"},
+        {"id": "sometimes", "label": "Sometimes"},
+        {"id": "often", "label": "Often"}
+      ]
+    },
+    {
+      "id": "placeholder_comments",
+      "type": "text",
+      "text": "Placeholder question: is there anything else you would like to tell us?",
+      "required": false,
+      "max_chars": 2000
+    }
+  ]
+}

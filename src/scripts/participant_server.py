@@ -24,7 +24,7 @@ Inputs:
     agent was given, served only on request and only if the file still matches
     the recorded hash.
     Static front-end files in src/participant_ui/ (index.html, flow.html, app.js, flow.js, tutorial.js, assessment.js,
-    scenario_view.js, style.css, markdown.js, previews.js, workspace.js, skills.js, interaction.js).
+    questionnaire.js, scenario_view.js, style.css, markdown.js, previews.js, workspace.js, skills.js, interaction.js).
 
 Outputs:
     A local HTTP server (default http://127.0.0.1:8765).
@@ -44,7 +44,8 @@ Outputs:
         POST /api/stage/complete        {"token", "stage_key"}: complete that stage and return the next one. The
                                         consent stage also needs "consent": {"agreed": true, "sha256": <hash of
                                         the consent text shown>}, and stores that agreement; an assessment stage
-                                        needs "answers" and stores them (participant_flow.py)
+                                        and the questionnaire stage need "answers" and store them
+                                        (participant_flow.py)
         POST /api/log                   {"token", "trial_id", "type", ...}: one interaction event (see
                                         interaction_log.py), stored in the participant database only for the
                                         trial that token's participant is on now; never read back by any route
@@ -106,7 +107,8 @@ STATIC_FILES = {"style.css": "text/css", "markdown.js": "text/javascript",
                 "previews.js": "text/javascript", "workspace.js": "text/javascript",
                 "skills.js": "text/javascript", "interaction.js": "text/javascript",
                 "scenario_view.js": "text/javascript", "flow.js": "text/javascript",
-                "tutorial.js": "text/javascript", "assessment.js": "text/javascript"}
+                "tutorial.js": "text/javascript", "assessment.js": "text/javascript",
+                "questionnaire.js": "text/javascript"}
 # Served at /static/<file> only with --researcher-preview. app.js is the /chat page's script: it reads the stimulus
 # and the condition from its URL by design, so a participant-facing server must not serve it.
 RESEARCHER_STATIC_FILES = {"app.js": "text/javascript"}
@@ -602,6 +604,7 @@ def main():
     payload = ep.load_assignments(config)
     flow.load_consent()  # a missing or malformed consent file stops the server here, not at a participant's start
     flow.load_assessment()  # likewise the assessment questions
+    flow.load_questionnaire()  # and the post-study questionnaire
     use_corpus(args.corpus if args.corpus is not None else config["corpus_path"])
     check_practice_presentation(config)
     Handler.db_path = args.db

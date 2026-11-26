@@ -114,6 +114,20 @@ class FlowServer:
         answers.update(overrides)
         return answers
 
+    @staticmethod
+    def questionnaire_answers(stage, **overrides):
+        """A complete, valid questionnaire submission for the questionnaire stage, as the form would send it."""
+        items = {}
+        for item in stage["questionnaire"]["items"]:
+            if item["type"] == "scale":
+                items[item["id"]] = item["min"]
+            elif item["type"] == "choice":
+                items[item["id"]] = item["options"][0]["id"]
+            elif item["required"]:
+                items[item["id"]] = "A test answer."
+        items.update(overrides)
+        return {"sha256": stage["questionnaire"]["sha256"], "items": items}
+
     def answer(self, participant, **overrides):
         """Answer the participant's current assessment stage the way the form does."""
         stage = self.stage(participant)["stage"]
@@ -134,6 +148,8 @@ class FlowServer:
                 answer = self.agree(participant)
             elif stage["kind"] == "assessment":
                 answer = self.complete(participant, stage["key"], answers=self.answers_for(stage))
+            elif stage["kind"] == "questionnaire":
+                answer = self.complete(participant, stage["key"], answers=self.questionnaire_answers(stage))
             else:
                 answer = self.complete(participant, stage["key"])
             assert answer[0] == 200, answer
@@ -183,7 +199,9 @@ class ExposureTests(FlowTestCase):
             self.assertNotIn("scenario", stage)
             answer = (self.srv.agree(participant) if stage["kind"] == "consent"
                       else self.srv.complete(participant, stage["key"], answers=self.srv.answers_for(stage))
-                      if stage["kind"] == "assessment" else self.srv.complete(participant, stage["key"]))
+                      if stage["kind"] == "assessment"
+                      else self.srv.complete(participant, stage["key"], answers=self.srv.questionnaire_answers(stage))
+                      if stage["kind"] == "questionnaire" else self.srv.complete(participant, stage["key"]))
             self.assertEqual(answer[0], 200)
         for text in seen:
             for secret in secrets:
@@ -294,7 +312,7 @@ class IntegrityTests(FlowTestCase):
         try:
             participant = participant_with("low")
             before = srv.stage(participant)
-            for stage_key in ("questionnaire", "trial_04_scenario", "completion"):
+            for stage_key in ("questionnaire", "trial_04_scenario", "trial_02_assessment", "completion"):
                 self.assertEqual(srv.complete(participant, stage_key)[0], 409, stage_key)
             for stage_key in ("debriefing", "trial_99_scenario"):
                 self.assertEqual(srv.complete(participant, stage_key)[0], 409, stage_key)
@@ -559,6 +577,74 @@ class AssessmentTests(unittest.TestCase):
         again = self.srv.complete(participant, stage["key"], answers=FlowServer.answers_for(stage, confidence=5))
         self.assertEqual(again[0], 200)
         self.assertEqual(self.rows(participant)["practice_assessment"]["confidence"], 1)
+
+
+class QuestionnaireTests(unittest.TestCase):
+    """The post-study questionnaire: stored with the participant, validated, and saved once."""
+
+    def setUp(self):
+        self.srv = FlowServer()
+        self.participant = participant_with("low")
+        self.srv.walk(self.participant, until="questionnaire")
+        self.stage = self.srv.stage(self.participant)["stage"]
+
+    def tearDown(self):
+        self.srv.close()
+
+    def stored(self):
+        conn = store.connect(self.srv.handler.db_path)
+        try:
+            return store.questionnaire_of(conn, self.participant)
+        finally:
+            conn.close()
+
+    def test_the_stage_carries_the_questionnaire_file(self):
+        spec = flow.load_questionnaire()
+        self.assertEqual(self.stage["questionnaire"]["sha256"], spec["sha256"])
+        self.assertEqual([i["id"] for i in self.stage["questionnaire"]["items"]], [i["id"] for i in spec["items"]])
+
+    def test_answers_are_stored_per_item_with_the_file_hash_and_the_participant_finishes(self):
+        answers = self.srv.questionnaire_answers(self.stage)
+        status, body = self.srv.complete(self.participant, "questionnaire", answers=answers)
+        self.assertEqual(status, 200, body)
+        stored = self.stored()
+        spec = flow.load_questionnaire()
+        self.assertEqual(list(stored), [i["id"] for i in spec["items"]])
+        optional = [i["id"] for i in spec["items"] if not i["required"]]
+        self.assertTrue(all(stored[i] == "" for i in optional if i not in answers["items"]))
+        conn = store.connect(self.srv.handler.db_path)
+        try:
+            hashes = {r[0] for r in conn.execute("SELECT questionnaire_sha256 FROM questionnaire_responses")}
+        finally:
+            conn.close()
+        self.assertEqual(hashes, {spec["sha256"]})
+        self.assertEqual(json.loads(body)["stage"]["kind"], "completion")
+
+    def test_missing_unknown_or_out_of_range_answers_are_refused_and_nothing_is_stored(self):
+        spec = flow.load_questionnaire()
+        scale = next(i for i in spec["items"] if i["type"] == "scale")
+        good = self.srv.questionnaire_answers(self.stage)
+        bad = [
+            {**good, "sha256": "0" * 64},
+            {**good, "items": {k: v for k, v in good["items"].items() if k != scale["id"]}},
+            {**good, "items": {**good["items"], scale["id"]: scale["max"] + 1}},
+            {**good, "items": {**good["items"], scale["id"]: True}},
+            {**good, "items": {**good["items"], "not_an_item": "x"}},
+            None,
+        ]
+        for answers in bad:
+            self.assertEqual(self.srv.complete(self.participant, "questionnaire", answers=answers)[0], 400, answers)
+        self.assertEqual(self.stored(), {})
+        self.assertEqual(self.srv.stage(self.participant)["stage"]["key"], "questionnaire")
+
+    def test_submitting_again_keeps_the_first_answers(self):
+        first = self.srv.questionnaire_answers(self.stage)
+        self.srv.complete(self.participant, "questionnaire", answers=first)
+        kept = self.stored()
+        scale = next(i for i in self.stage["questionnaire"]["items"] if i["type"] == "scale")
+        again = self.srv.questionnaire_answers(self.stage, **{scale["id"]: scale["max"]})
+        self.assertEqual(self.srv.complete(self.participant, "questionnaire", answers=again)[0], 200)
+        self.assertEqual(self.stored(), kept)
 
 
 class ConsentTests(unittest.TestCase):

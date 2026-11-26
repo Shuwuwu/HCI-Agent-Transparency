@@ -375,6 +375,11 @@ class ResetTests(unittest.TestCase):
         self.assertEqual(store.reset(self.conn, CONFIG, FIRST, PAYLOAD)["events_cleared"], 1)
         self.assertEqual(store.trial_events(self.conn, FIRST, f"{FIRST}-p00"), [])
 
+    def test_reset_also_clears_the_questionnaire(self):
+        store.record_questionnaire(self.conn, FIRST, {"q": "3"}, "0" * 64)
+        self.assertEqual(store.reset(self.conn, CONFIG, FIRST, PAYLOAD)["questionnaire_cleared"], 1)
+        self.assertEqual(store.questionnaire_of(self.conn, FIRST), {})
+
     def test_a_study_participant_cannot_be_reset(self):
         self.conn.execute("UPDATE participants SET simulated = 0 WHERE participant_id = ?", (FIRST,))
         self.conn.commit()

@@ -37,7 +37,8 @@ Purpose:
     whether the browser or the server produced it. The allowed types are EVENT_TYPES; interaction_log.py validates
     their fields and participant_flow.log_event checks the trial is the participant's current one.
 
-    The post-study questionnaire is not written here yet.
+    Post-study questionnaire (`questionnaire_responses`): one row per item, with the hash of the questionnaire file
+    the participant answered. Only the first submission is kept.
 
 Inputs:
     An experiment configuration and assignments payload (experiment_plan.py) when enrolling participants, and a
@@ -48,8 +49,8 @@ Outputs:
     configuration provenance, stage fingerprint, timestamps), `plan_stages` (their stage sequence, one row per
     stage), `progress` (one row per stage a participant has entered, with its completion time), `consents` (at
     most one row per participant: when they agreed, and the consent text and its hash), `responses` (one row per
-    completed assessment), `events` (interaction events) and the view `experimental_responses` (responses
-    without the practice). CHECK constraints refuse out-of-range answers, unknown event types and conditions. The command line enrols participants, prints their links, and
+    completed assessment), `events` (interaction events), `questionnaire_responses` (the post-study questionnaire,
+    one row per item) and the view `experimental_responses` (responses without the practice). CHECK constraints refuse out-of-range answers, unknown event types and conditions. The command line enrols participants, prints their links, and
     prints how far each participant has come, including whether they have consented.
 
 Dependencies:
@@ -83,8 +84,8 @@ DEFAULT_DB = ROOT / "src" / "data" / "participants" / "participants.db"
 TOKEN_BYTES = 24  # 32 URL-safe characters
 # 2: the consents table; 3: responses and experimental_responses; 4: responses.sources_other;
 # 5: plan_stages (the stage sequence each participant was enrolled under), events (interaction events, which
-#    replace the JSON-lines log files) and CHECK constraints on responses.
-SCHEMA_VERSION = 5
+#    replace the JSON-lines log files) and CHECK constraints on responses; 6: questionnaire_responses.
+SCHEMA_VERSION = 6
 STAGE_KINDS = ("consent", "scenario", "assessment", "questionnaire", "completion")  # as experiment_plan.STAGE_KINDS
 CONDITIONS = ("low", "high")
 # Every interaction event type the database accepts. interaction_log.EVENT_FIELDS validates the fields of each
@@ -189,6 +190,14 @@ CREATE TABLE IF NOT EXISTS events (
     server_time    TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS events_by_trial ON events (participant_id, trial_id, seq);
+CREATE TABLE IF NOT EXISTS questionnaire_responses (
+    participant_id       TEXT NOT NULL REFERENCES participants(participant_id),
+    item_id              TEXT NOT NULL,
+    answer               TEXT NOT NULL,     -- '' for an optional item left unanswered
+    questionnaire_sha256 TEXT NOT NULL,     -- of src/study_materials/questionnaire.json as served
+    submitted_at         TEXT NOT NULL,
+    PRIMARY KEY (participant_id, item_id)
+);
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
 class StoreError(ValueError):
@@ -475,6 +484,27 @@ def trial_events(conn: sqlite3.Connection, participant: str, trial_id: str | Non
         "SELECT * FROM events WHERE participant_id = ? AND trial_id IS ? ORDER BY seq", (participant, trial_id))]
 
 
+def record_questionnaire(conn: sqlite3.Connection, participant: str, answers: dict, questionnaire_sha256: str,
+                         commit: bool = True) -> dict:
+    """Store the post-study questionnaire: one row per item of `answers` ({item id: answer text}, already
+    validated by participant_flow.py). Only the first submission is kept, as for the assessments. Pass
+    commit=False to make it part of a larger transaction (participant_flow.advance commits it with the stage).
+    Returns the stored answers."""
+    stamp = now()
+    conn.executemany("INSERT INTO questionnaire_responses (participant_id, item_id, answer, questionnaire_sha256, "
+                     "submitted_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT (participant_id, item_id) DO NOTHING",
+                     [(participant, item, answer, questionnaire_sha256, stamp) for item, answer in answers.items()])
+    if commit:
+        conn.commit()
+    return questionnaire_of(conn, participant)
+
+
+def questionnaire_of(conn: sqlite3.Connection, participant: str) -> dict:
+    """The participant's stored questionnaire answers, {item id: answer}; empty when none are stored."""
+    return {row["item_id"]: row["answer"] for row in conn.execute(
+        "SELECT item_id, answer FROM questionnaire_responses WHERE participant_id = ? ORDER BY rowid", (participant,))}
+
+
 def consent_of(conn: sqlite3.Connection, participant: str) -> dict | None:
     """The participant's stored consent ({participant_id, agreed_at, consent_sha256, consent_text}), or None."""
     row = conn.execute("SELECT * FROM consents WHERE participant_id = ?", (participant,)).fetchone()
@@ -593,8 +623,9 @@ def reset(conn: sqlite3.Connection, config: ep.Config, participant: str, payload
     Only a participant enrolled from a simulated (development) configuration can be reset, and only under a
     simulated configuration; anything else raises StoreError, so real participants' progress and consent can never
     be erased this way and a test participant cannot be attached to the study design. The token and the enrolment
-    time are kept; their assessment responses and interaction events are deleted with their progress. Returns
-    {"participant_id", "stages_cleared", "consent_cleared", "responses_cleared", "events_cleared", "plan_changed"}. Raises KeyError for a participant who is not enrolled or not in the assignments.
+    time are kept; their assessment responses, interaction events and questionnaire answers are deleted with their
+    progress. Returns {"participant_id", "stages_cleared", "consent_cleared", "responses_cleared", "events_cleared",
+    "questionnaire_cleared", "plan_changed"}. Raises KeyError for a participant who is not enrolled or not in the assignments.
     """
     row = record(conn, participant)
     if not row["simulated"]:
@@ -610,6 +641,8 @@ def reset(conn: sqlite3.Connection, config: ep.Config, participant: str, payload
     responses = conn.execute("DELETE FROM responses WHERE participant_id = ?", (participant,)).rowcount
     # And their interaction events, so a redone trial's measures are not mixed with the earlier attempt's.
     events = conn.execute("DELETE FROM events WHERE participant_id = ?", (participant,)).rowcount
+    questionnaire = conn.execute("DELETE FROM questionnaire_responses WHERE participant_id = ?",
+                                 (participant,)).rowcount
     conn.execute("UPDATE participants SET completed_at = NULL, plan_fingerprint = ?, config_path = ?, "
                  "assignments_path = ?, condition = ?, list = ?, trials = ? WHERE participant_id = ?",
                  (fingerprint, str(config["path"]), str(config["assignments_path"]), plan["condition"], plan["list"],
@@ -617,7 +650,7 @@ def reset(conn: sqlite3.Connection, config: ep.Config, participant: str, payload
     snapshot_plan(conn, participant, plan)
     conn.commit()
     return {"participant_id": participant, "stages_cleared": stages, "consent_cleared": bool(consent),
-            "responses_cleared": responses, "events_cleared": events,
+            "responses_cleared": responses, "events_cleared": events, "questionnaire_cleared": questionnaire,
             "plan_changed": fingerprint != row["plan_fingerprint"]}
 
 
