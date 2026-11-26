@@ -12,10 +12,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src" / "scripts"))
+sys.path.insert(0, str(ROOT / "tests"))
 
 import corpus  # noqa: E402
 import participant_server as ps  # noqa: E402
 import review_stimuli as rv  # noqa: E402
+from participant_http import preview_handler  # noqa: E402
 
 STUDY = ROOT / "src" / "data" / "corpora" / "study.json"
 VALIDATION = ROOT / "src" / "data" / "corpora" / "validation.json"
@@ -176,7 +178,7 @@ class StatusAndMarkTests(unittest.TestCase):
 class ResearcherOnlyTests(unittest.TestCase):
     def test_no_participant_route_serves_the_review_records_or_their_content(self):
         ps.use_corpus(STUDY)
-        srv = ThreadingHTTPServer(("127.0.0.1", 0), ps.Handler)
+        srv = ThreadingHTTPServer(("127.0.0.1", 0), preview_handler())
         threading.Thread(target=srv.serve_forever, daemon=True).start()
         base = f"http://127.0.0.1:{srv.server_address[1]}"
 

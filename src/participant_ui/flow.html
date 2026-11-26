@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Workspace Assistant Study</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<!-- Participant flow page, served at /p/<token>. flow.js reads the token from the path, asks /api/stage which
+     stage to show, and draws it into #stage: a placeholder screen for consent, the instructions, an assessment,
+     the questionnaire and the completion notice, or the scenario view (scenario_view.js) for a trial. The page
+     holds no stage of its own, so reloading it resumes wherever the participant was. -->
+<header class="topbar">
+  <span class="topbar-title"><span class="logo">✦</span> Workspace Assistant</span>
+  <span class="topbar-buttons">
+    <span id="progress" class="progress-label"></span>
+    <button id="ws-toggle" class="panel-toggle" hidden aria-controls="workspace" aria-expanded="false">Workspace</button>
+  </span>
+</header>
+<div id="stage" class="stage-host" aria-live="polite"></div>
+<footer id="advance" class="advance" hidden></footer>
+<script src="/static/markdown.js"></script>
+<script src="/static/previews.js"></script>
+<script src="/static/interaction.js"></script>
+<script src="/static/workspace.js"></script>
+<script src="/static/skills.js"></script>
+<script src="/static/scenario_view.js"></script>
+<script src="/static/flow.js"></script>
+</body>
+</html>

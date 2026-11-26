@@ -16,10 +16,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src" / "scripts"))
+sys.path.insert(0, str(ROOT / "tests"))
 
 import corpus  # noqa: E402
 import injection_design as design  # noqa: E402
 import participant_server as ps  # noqa: E402
+from participant_http import preview_handler  # noqa: E402
 
 STUDY = ROOT / "src" / "data" / "corpora" / "study.json"
 VALIDATION = ROOT / "src" / "data" / "corpora" / "validation.json"
@@ -90,7 +92,7 @@ class LoadsInBothConditions(unittest.TestCase):
         fixture = corpus.load_corpus(VALIDATION)["default_stimulus"]
         for corpus_path, expected in ((VALIDATION, 200), (STUDY, 404)):
             ps.use_corpus(corpus_path)
-            srv = ThreadingHTTPServer(("127.0.0.1", 0), ps.Handler)
+            srv = ThreadingHTTPServer(("127.0.0.1", 0), preview_handler())
             threading.Thread(target=srv.serve_forever, daemon=True).start()
             try:
                 for route in ("/api/stimulus?s={s}&c=low", "/api/stimulus?s={s}&c=high", "/api/workspace?s={s}",

@@ -12,8 +12,10 @@ from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src" / "scripts"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tests"))
 
 import participant_server as ps  # noqa: E402
+from participant_http import preview_handler  # noqa: E402
 
 SID = ps.DEFAULT_STIMULUS
 assert SID == "user_task_1__no_injection"
@@ -112,9 +114,12 @@ class ViewTest(unittest.TestCase):
 
 
 class HttpTest(unittest.TestCase):
+    """The researcher form of the server. / and /chat and the s= form of the content routes are opt-in
+    (participant_server.py --researcher-preview); preview_handler() turns them on for these tests only."""
+
     @classmethod
     def setUpClass(cls):
-        cls.srv = ThreadingHTTPServer(("127.0.0.1", 0), ps.Handler)
+        cls.srv = ThreadingHTTPServer(("127.0.0.1", 0), preview_handler())
         cls.base = f"http://127.0.0.1:{cls.srv.server_address[1]}"
         threading.Thread(target=cls.srv.serve_forever, daemon=True).start()
 

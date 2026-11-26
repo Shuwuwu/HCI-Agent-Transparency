@@ -13,9 +13,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src" / "scripts"))
+sys.path.insert(0, str(ROOT / "tests"))
 
 import interaction_log as ilog  # noqa: E402
 import participant_server as ps  # noqa: E402
+from participant_http import preview_handler  # noqa: E402
 
 FOLDER = "user_task_13__no_injection"
 SESSION = "11111111-2222-3333-4444-555555555555"
@@ -88,7 +90,7 @@ class ServerTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory()
-        handler = type("TestHandler", (ps.Handler,), {"log_dir": Path(cls.tmp.name)})
+        handler = preview_handler(log_dir=Path(cls.tmp.name))
         cls.srv = ThreadingHTTPServer(("127.0.0.1", 0), handler)
         cls.base = f"http://127.0.0.1:{cls.srv.server_address[1]}"
         threading.Thread(target=cls.srv.serve_forever, daemon=True).start()

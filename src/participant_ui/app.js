@@ -1,8 +1,9 @@
 /*
  * Purpose:
- *   Page script of the standalone chat page (/chat): reads the stimulus and condition from the URL and mounts the
- *   reusable scenario view (scenario_view.js) into the page. The rendering itself lives in scenario_view.js so
- *   that other pages can show a scenario the same way.
+ *   Page script of the researcher scenario page (/chat, served only with --researcher-preview): reads the
+ *   stimulus and condition from the URL and mounts the reusable scenario view (scenario_view.js). Participants
+ *   never load this page — they are served flow.html, which mounts the same view for one trial at a time and
+ *   identifies the scenario by their link token instead.
  *
  * Inputs:
  *   Query params ?s=<stimulus folder>&c=low|high (and optional pid=<participant id>). Researcher-preview
@@ -26,7 +27,7 @@
   Interaction.log("session_start", Object.assign({ stimulus, condition },
     Interaction.participantId ? { pid: Interaction.participantId } : {}));
   ScenarioView.mount(document.getElementById("scenario"), {
-    stimulus, condition,
+    query: "s=" + encodeURIComponent(stimulus) + "&c=" + encodeURIComponent(condition),
     toggle: document.getElementById("ws-toggle"),
     panel: tab ? { tab, item: p.get("i"), syncUrl: true } : {},
   });

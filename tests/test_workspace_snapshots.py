@@ -17,10 +17,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src" / "scripts"))
+sys.path.insert(0, str(ROOT / "tests"))
 
 import build_workspace_snapshots as bws  # noqa: E402
 import participant_server as ps  # noqa: E402
 import tool_result_parser as trp  # noqa: E402
+from participant_http import preview_handler  # noqa: E402
 
 FOLDER = "user_task_13__no_injection"
 WS_DIR = ROOT / "src" / "data" / "workspace" / FOLDER
@@ -124,7 +126,7 @@ class SnapshotDataTest(unittest.TestCase):
 class WorkspaceApiTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.srv = ThreadingHTTPServer(("127.0.0.1", 0), ps.Handler)
+        cls.srv = ThreadingHTTPServer(("127.0.0.1", 0), preview_handler())
         cls.base = f"http://127.0.0.1:{cls.srv.server_address[1]}"
         threading.Thread(target=cls.srv.serve_forever, daemon=True).start()
 

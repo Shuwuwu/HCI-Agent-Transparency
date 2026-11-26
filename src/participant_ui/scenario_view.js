@@ -10,10 +10,13 @@
  * Inputs:
  *   ScenarioView.mount(container, options):
  *     container  element the view is drawn into (it gets the "layout" class; its previous content is replaced).
- *     options    {stimulus: folder id, condition: "low" | "high",
+ *     options    {query: the query string identifying the scenario for the content endpoints — "t=<token>"
+ *                 in the participant flow (the server resolves the stimulus and the condition from the
+ *                 participant's current stage), or "s=<folder>&c=<condition>" in the researcher preview,
  *                 toggle: the button that opens/closes the workspace panel (kept hidden until the panel is ready),
  *                 panel: optional {tab, item, syncUrl} for researcher deep links (see workspace.js)}.
- *   JSON from /api/stimulus?s=&c= and /api/workspace?s= (no condition parameter: same in both conditions).
+ *   JSON from /api/stimulus?<query> and /api/workspace?<query>. The view never learns the condition: the
+ *   high condition is simply the response that carries a "trace", so the same code draws both.
  *
  * Outputs:
  *   DOM inside `container`. Text is inserted with textContent; only the final response and agent messages go
@@ -87,8 +90,7 @@
   const getJson = (url) => fetch(url).then((r) => (r.ok ? r.json() : Promise.reject(r.status)));
 
   function mount(container, options) {
-    const stimulus = options.stimulus || "";
-    const condition = options.condition || "";
+    const query = options.query || "";
     const toggle = options.toggle;
     let alive = true;      // false after unmount: late responses are then ignored
     let controller = null; // workspace panel, once its data has arrived
@@ -135,14 +137,14 @@
 
     function startPanel(data) {
       if (!alive) return;
-      controller = root.WorkspaceSidebar.init(panel, data, stimulus, () => setOpen(false), options.panel || {});
+      controller = root.WorkspaceSidebar.init(panel, data, query, () => setOpen(false), options.panel || {});
       toggle.hidden = false;
       if (options.panel && options.panel.tab) setOpen(true); // researcher deep link only; participants open it themselves
     }
     // The snapshot may be missing for a scenario; the panel (with its Skills tab) is offered either way.
-    getJson("/api/workspace?s=" + encodeURIComponent(stimulus)).then(startPanel, () => startPanel(null));
+    getJson("/api/workspace?" + query).then(startPanel, () => startPanel(null));
 
-    const ready = getJson("/api/stimulus?s=" + encodeURIComponent(stimulus) + "&c=" + encodeURIComponent(condition))
+    const ready = getJson("/api/stimulus?" + query)
       .then((view) => { if (alive) renderConversation(chat, view); return alive; })
       .catch(() => {
         if (alive) chat.replaceChildren(el("p", "error-msg", "This conversation could not be loaded."));

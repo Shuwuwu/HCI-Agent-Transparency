@@ -13,10 +13,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src" / "scripts"))
+sys.path.insert(0, str(ROOT / "tests"))
 
 import agentdojo_runs as runs  # noqa: E402
 import participant_server as ps  # noqa: E402
 import tool_result_parser as trp  # noqa: E402
+from participant_http import preview_handler  # noqa: E402
 
 FOLDERS = sorted(p.name for p in (ROOT / "src/data/stimuli").iterdir() if p.is_dir())
 KIND_KEY = {"emails": "subject", "events": "title", "files": "filename"}
@@ -132,7 +134,7 @@ class CoverageTest(unittest.TestCase):
 class AllScenariosHttpTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.srv = ThreadingHTTPServer(("127.0.0.1", 0), ps.Handler)
+        cls.srv = ThreadingHTTPServer(("127.0.0.1", 0), preview_handler())
         cls.base = f"http://127.0.0.1:{cls.srv.server_address[1]}"
         threading.Thread(target=cls.srv.serve_forever, daemon=True).start()
 

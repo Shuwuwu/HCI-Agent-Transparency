@@ -5,9 +5,9 @@
  *   Also provides visibility-aware timers: time while the browser tab is hidden does not count as viewing time.
  *
  * Inputs:
- *   Calls from app.js, workspace.js and skills.js: Interaction.log(type, fields), Interaction.startTimer(key),
- *   Interaction.stopTimer(key). URL parameters: pid (optional participant id), preview=1 (log nothing; for
- *   researchers inspecting the interface).
+ *   Calls from app.js, flow.js, workspace.js and skills.js: Interaction.log(type, fields),
+ *   Interaction.startTimer(key), Interaction.stopTimer(key), Interaction.setSession(id). URL parameters: pid
+ *   (optional participant id), preview=1 (log nothing; for researchers inspecting the interface).
  *
  * Outputs:
  *   POST /api/log with {session, type, client_ms, ...fields}; the allowed types and fields are those of
@@ -20,8 +20,16 @@
   "use strict";
   const params = new URLSearchParams(location.search);
   const enabled = params.get("preview") !== "1";
-  const session = (crypto.randomUUID && crypto.randomUUID()) ||
+  // One session id per page by default. In the experiment flow each trial is its own session, so flow.js
+  // replaces it with that trial's id (P001-t03) before the scenario is mounted; the server stamps the same id on
+  // the session_start event it writes itself, which is what ties the events of a trial together.
+  let session = (crypto.randomUUID && crypto.randomUUID()) ||
     ("s-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 10));
+
+  /** Name the session after the trial being shown. Ignored for anything that is not a non-empty string. */
+  function setSession(id) {
+    if (typeof id === "string" && id) session = id;
+  }
 
   /** Send one event; failures are ignored so logging can never disturb the participant. */
   function log(type, fields) {
@@ -52,6 +60,7 @@
     });
   });
 
-  root.Interaction = { log, startTimer, stopTimer, session, enabled,
+  root.Interaction = { log, startTimer, stopTimer, setSession, enabled,
+                       get session() { return session; },
                        participantId: params.get("pid") };
 })(window);

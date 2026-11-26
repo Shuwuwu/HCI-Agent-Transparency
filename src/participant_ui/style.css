@@ -88,3 +88,16 @@ body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui,-ap
 .skill-md code{background:var(--bg);padding:1px 5px;border-radius:4px;font-size:.9em}
 .skill-md pre{background:var(--bg);padding:10px;border-radius:8px;overflow-x:auto}
 .skill-md hr{border:0;border-top:1px solid var(--line)}
+/* ---- experiment flow (flow.html) ---- */
+.stage-host{flex:1;display:flex;min-height:0}
+.stage-card{margin:auto;max-width:640px;padding:28px 20px;display:flex;flex-direction:column;gap:14px}
+.stage-card h1{font-size:22px;margin:0}
+.stage-card p{margin:0;color:var(--muted)}
+.placeholder{border:1px dashed var(--line);border-radius:10px;padding:14px;color:var(--muted);font-size:14px;background:var(--surface)}
+.placeholder-tag{display:block;font-weight:600;color:var(--text);margin-bottom:4px;font-size:13px}
+.consent-check{display:flex;gap:10px;align-items:flex-start;font-size:15px}
+.advance{background:var(--surface);border-top:1px solid var(--line);padding:12px 16px;display:flex;justify-content:center;gap:12px;align-items:center}
+.advance button{border:1px solid var(--accent);background:var(--accent);color:#fff;border-radius:18px;padding:9px 22px;font:inherit;cursor:pointer}
+.advance button:disabled{border-color:var(--line);background:var(--bg);color:var(--muted);cursor:default}
+.progress-label{color:var(--muted);font-size:13px;font-weight:400}
+.flow-error{margin:auto;max-width:520px;padding:28px 20px;text-align:center;color:var(--muted)}

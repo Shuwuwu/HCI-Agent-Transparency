@@ -92,15 +92,20 @@ def now() -> str:
 def connect(path: Path = DEFAULT_DB) -> sqlite3.Connection:
     """Open (creating if needed) the participant database and apply the schema.
 
-    Rows come back as sqlite3.Row. Foreign keys are enforced so a progress row cannot name an unknown
-    participant. Applying the schema is idempotent, so an existing database is opened unchanged. Raises
-    StoreError if the file was written by a newer schema version than this module knows.
+    Rows come back as sqlite3.Row. Write-ahead logging is enabled so the server can read while another request
+    writes. Foreign keys are enforced so a progress row cannot name an unknown participant. Applying the schema
+    is idempotent, so an existing database is opened unchanged. Raises StoreError if the file was written by a
+    newer schema version than this module knows.
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    # The server opens one connection per request and handles requests on separate threads, so two writes can
+    # overlap. Write-ahead logging lets readers run during a write, and the timeout waits instead of failing.
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA busy_timeout = 5000")
     conn.executescript(SCHEMA)
     row = conn.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()
     if row is None:
@@ -188,7 +193,7 @@ def completed_stages(conn: sqlite3.Connection, participant: str) -> list[str]:
     return [row["stage_key"] for row in rows]
 
 
-def _checked_plan(conn: sqlite3.Connection, config: ep.Config, participant: str,
+def checked_plan(conn: sqlite3.Connection, config: ep.Config, participant: str,
                   payload: dict | None = None) -> dict:
     """The participant's plan, verified against the fingerprint stored at enrolment.
 
@@ -210,7 +215,7 @@ def current_stage(conn: sqlite3.Connection, config: ep.Config, participant: str,
     This is the resume point. It is derived from the plan and the stored progress alone, so reopening a link any
     number of times always lands on the same stage.
     """
-    plan = _checked_plan(conn, config, participant, payload)
+    plan = checked_plan(conn, config, participant, payload)
     done = set(completed_stages(conn, participant))
     return next((stage for stage in plan["stages"] if stage["key"] not in done), None)
 
@@ -242,7 +247,7 @@ def complete_stage(conn: sqlite3.Connection, config: ep.Config, participant: str
     StoreError (so no stage can be skipped). When the last stage is completed, the participant is marked
     complete. Raises StoreError for a stage key that is not in their sequence.
     """
-    plan = _checked_plan(conn, config, participant, payload)
+    plan = checked_plan(conn, config, participant, payload)
     keys = [stage["key"] for stage in plan["stages"]]
     if stage_key not in keys:
         raise StoreError(f"{participant}: {stage_key!r} is not one of their stages")
@@ -277,7 +282,7 @@ def status(conn: sqlite3.Connection, config: ep.Config, participant: str,
            "simulated": bool(stored["simulated"]), "enrolled_at": stored["enrolled_at"],
            "completed_at": stored["completed_at"], "stages_completed": len(done), "plan_changed": False}
     try:
-        plan = _checked_plan(conn, config, participant, payload)
+        plan = checked_plan(conn, config, participant, payload)
     except StoreError:
         out["plan_changed"] = True
         return out

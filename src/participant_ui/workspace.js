@@ -8,7 +8,7 @@
  *   Skills tab is logged with its own event types, separate from the workspace tabs.
  *
  * Inputs:
- *   JSON from /api/workspace?s=<stimulus folder>: {account, state}, or null when no snapshot exists for this
+ *   JSON from /api/workspace?<query>: {account, state}, or null when no snapshot exists for this
  *   conversation (then Mail/Calendar/Drive show a notice and Skills still works). Options from the caller
  *   (researcher preview only, all optional; app.js takes them from the URL parameters w= and i=):
  *   {tab: "mail"|"calendar"|"drive"|"skills", item: <item id>, syncUrl: true to keep w=/i= in the URL in sync}.
@@ -204,10 +204,10 @@
    * Create the sidebar controller. `options` = {tab, item, syncUrl} (all optional; see the header). Returns
    * {opened(), closed()}, called by scenario_view.js when the panel opens/closes.
    */
-  function init(container, data, folder, onClose, options) {
+  function init(container, data, query, onClose, options) {
     const opts = options || {};
     const state = data ? data.state : null;
-    const skillsView = root.SkillsView.create(folder, () => render());
+    const skillsView = root.SkillsView.create(query, () => render());
     const ui = {
       tab: TABS.some((t) => t[0] === opts.tab) ? opts.tab : "mail",
       folder: "received", item: opts.item || null,

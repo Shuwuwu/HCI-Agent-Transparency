@@ -5,7 +5,8 @@
  *   automatically: the list is fetched when the tab is first selected and a document only when a skill is clicked.
  *
  * Inputs:
- *   /api/skills?s=<folder> and /api/skill?s=<folder>&k=<skill id>; markdown.js (renderMarkdown).
+ *   /api/skills?<query> and /api/skill?<query>&k=<skill id>, where <query> identifies the scenario the way
+ *   scenario_view.js documents it; markdown.js (renderMarkdown).
  *
  * Outputs:
  *   DOM inside the body element given to render(); interaction events skill_doc_open / skill_doc_view (with
@@ -30,7 +31,7 @@
    * the tab is showing. Returns {render(body), leave()}: render draws the current state (list or document) into
    * `body`; leave() ends a running document view (tab switched, panel closed, page hidden).
    */
-  function create(folder, redraw) {
+  function create(query, redraw) {
     let skills = null;   // list from the server, loaded on first render
     let loading = false;
     let failed = false;
@@ -43,7 +44,7 @@
     }
 
     function openDoc(id) {
-      fetch("/api/skill?s=" + encodeURIComponent(folder) + "&k=" + encodeURIComponent(id))
+      fetch("/api/skill?" + query + "&k=" + encodeURIComponent(id))
         .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
         .then((d) => {
           // The document counts as opened only once it is actually displayed.
@@ -72,7 +73,7 @@
         body.appendChild(el("p", "missing", "Loading…"));
         if (!loading) {
           loading = true;
-          fetch("/api/skills?s=" + encodeURIComponent(folder))
+          fetch("/api/skills?" + query)
             .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
             .then((list) => { skills = list; redraw(); })
             .catch(() => { failed = true; redraw(); });
