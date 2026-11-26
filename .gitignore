@@ -12,6 +12,8 @@ __pycache__/
 .venv-agentdojo/
 src/data/explorer/
 src/data/interaction_logs/
+# Participant records and flow progress (research data, written by participant_store.py)
+src/data/participants/
 
 # Local secrets (API key); never commit
 .env
