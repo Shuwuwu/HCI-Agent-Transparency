@@ -10,7 +10,7 @@
  *
  * Outputs:
  *   DOM inside the body element given to render(); interaction events skill_doc_open / skill_doc_view (with
- *   visible duration) via interaction.js. Identical in the low and the high condition.
+ *   visible duration) via interaction.js.
  *
  * Dependencies:
  *   markdown.js, interaction.js. Used by workspace.js, which owns the tabs.

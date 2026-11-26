@@ -41,7 +41,16 @@ body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui,-ap
 .chat-col{flex:1;min-width:0;display:flex;flex-direction:column}
 .workspace{display:none;width:440px;flex:none;background:var(--surface);border-left:1px solid var(--line);flex-direction:column;height:calc(100vh - 53px);position:sticky;top:53px}
 .layout.workspace-open .workspace{display:flex}
-@media (max-width:959px){.workspace{position:fixed;inset:53px 0 0 0;width:auto;height:auto;z-index:10}}
+/* Narrow screens: the open workspace is a fixed layer under the 53px top bar, so the bar is sticky to stay at the
+   window top (with the Workspace button in view) however far the page has scrolled; z-index keeps it above the
+   panel. scroll-padding-top stops scrollIntoView (the practice tour uses it) scrolling an element up under the bar.
+   Desktop keeps a scrolling bar: anything below the layout (such as a page footer) pushes the sticky workspace up at
+   the bottom of the page, and a sticky bar would then cover the workspace header. */
+@media (max-width:959px){
+  html{scroll-padding-top:53px}
+  .topbar{position:sticky;top:0;z-index:20}
+  .workspace{position:fixed;inset:53px 0 0 0;width:auto;height:auto;z-index:10}
+}
 .ws-head{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid var(--line)}
 .ws-title{font-weight:600;font-size:14px;overflow-wrap:anywhere}
 .ws-close{border:0;background:none;color:var(--muted);font-size:16px;cursor:pointer}

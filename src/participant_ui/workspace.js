@@ -3,8 +3,8 @@
  *   Read-only workspace panel of the participant chatbot with four equal tabs: Mail, Calendar, Drive and Skills
  *   (the agent's skill documentation, see skills.js). Mail, Calendar and Drive show the workspace as it was
  *   BEFORE the agent ran (the server never sends the state after), each with a list and a readable preview.
- *   Mail is the default tab. Identical in the low and the high transparency condition (it never reads the
- *   condition or the action log). Logs which tabs and items are opened and for how long (interaction.js); the
+ *   Mail is the default tab. It reads only the workspace snapshot and the skills, never the conversation itself.
+ *   Logs which tabs and items are opened and for how long (interaction.js); the
  *   Skills tab is logged with its own event types, separate from the workspace tabs.
  *
  * Inputs:

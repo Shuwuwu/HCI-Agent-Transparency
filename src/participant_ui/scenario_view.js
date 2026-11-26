@@ -1,22 +1,21 @@
 /*
  * Purpose:
- *   Reusable participant view of ONE scenario in ONE transparency condition: the chat (user request, the activity
- *   cards and in-between agent messages in the high condition only, then the final response) next to the
- *   read-only workspace panel (Mail | Calendar | Drive | Skills). Both conditions use exactly this component; the
- *   only difference is the "trace" the server includes in the high condition's /api/stimulus response.
- *   Mounted by app.js on the standalone /chat page; written so that a later experiment flow can mount it for each
- *   trial and unmount it afterwards (unmount ends running view timers, so no viewing time is lost).
+ *   Reusable view of ONE conversation: the chat (the user request, then any activity cards and in-between agent
+ *   messages, then the final response) next to the read-only workspace panel (Mail | Calendar | Drive | Skills).
+ *   It draws exactly what /api/stimulus returns: activity cards and in-between messages appear when the response
+ *   has a "trace" list, and the chat goes straight from the request to the final response when it has none.
+ *   Mounted by flow.js for each conversation of the flow and by app.js on the researcher /chat page; unmount()
+ *   ends running view timers, so no viewing time is lost.
  *
  * Inputs:
  *   ScenarioView.mount(container, options):
  *     container  element the view is drawn into (it gets the "layout" class; its previous content is replaced).
  *     options    {query: the query string identifying the scenario for the content endpoints — "t=<token>"
- *                 in the participant flow (the server resolves the stimulus and the condition from the
- *                 participant's current stage), or "s=<folder>&c=<condition>" in the researcher preview,
+ *                 in the participant flow (the server works out the conversation from the participant's
+ *                 current stage), or the researcher preview's own query (see app.js),
  *                 toggle: the button that opens/closes the workspace panel (kept hidden until the panel is ready),
  *                 panel: optional {tab, item, syncUrl} for researcher deep links (see workspace.js)}.
- *   JSON from /api/stimulus?<query> and /api/workspace?<query>. The view never learns the condition: the
- *   high condition is simply the response that carries a "trace", so the same code draws both.
+ *   JSON from /api/stimulus?<query> ({user_request, final_response, trace?}) and /api/workspace?<query>.
  *
  * Outputs:
  *   DOM inside `container`. Text is inserted with textContent; only the final response and agent messages go
@@ -51,7 +50,7 @@
     return b;
   }
 
-  /** One action of the execution trace: neutral action sentence, tool name, arguments and outcome summary. */
+  /** One activity card: the action sentence, tool name, arguments and outcome summary of one step. */
   function activityCard(step) {
     const card = el("div", "card " + step.outcome.status);
     const head = el("div", "card-head");
@@ -74,7 +73,7 @@
     return card;
   }
 
-  /** Draw the conversation; `view.trace` exists only in the high condition, so the low view has no cards. */
+  /** Draw the conversation: the request, the `view.trace` entries if there are any, then the final response. */
   function renderConversation(chat, view) {
     chat.replaceChildren(userMessage(view.user_request));
     const reply = el("div", "row assistant");

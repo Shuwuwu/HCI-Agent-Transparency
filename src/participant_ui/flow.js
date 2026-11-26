@@ -15,14 +15,13 @@
  *   The link token, read from location.pathname (/p/<token>); it is never written into a query string.
  *   JSON from GET /api/stage?t=<token>: {stage: {key, kind, index, trial_id?, practice?, trial?, trials?} | null,
  *   progress: {completed, total}}. The consent stage also carries consent: {markdown, checkbox, sha256}. The
- *   stage deliberately carries no stimulus folder, scenario name or transparency condition (participant_flow.py
- *   explains why), so this script cannot reveal them.
+ *   stage identifies a trial by its trial id only; the server decides what that trial shows.
  *
  * Outputs:
  *   The stage drawn into #stage and its continue button into #advance; POST /api/stage/complete to advance (at
  *   consent, with {agreed: true, sha256} so the server records the agreement to the exact text shown).
  *   For a trial, the mounted scenario view and its interaction events, logged under that trial's id as the
- *   session (the matching session_start event is written by the server, which knows the condition).
+ *   session (the matching session_start event is written by the server).
  *
  * Dependencies:
  *   scenario_view.js (ScenarioView), interaction.js (Interaction), tutorial.js (PracticeTour), and through them

@@ -46,7 +46,8 @@ Outputs:
         POST /api/log                   one interaction event (see interaction_log.py); written to the separate
                                         log folder (practice-trial events to its practice/ subfolder), never
                                         read back by any route
-        /static/<file>                  whitelisted front-end files
+        /static/<file>                  whitelisted front-end files (STATIC_FILES); they are sent as they are,
+                                        comments included, so they must not describe the study design
     The four content routes answer 404 unless the participant's current stage is a scenario stage, so no stage
     can be used to fetch the next trial's content early or the previous trial's content again.
 
@@ -54,6 +55,7 @@ Outputs:
     does not expose them at all):
         /                                      landing page linking both conditions of every stimulus
         /chat?s=<folder>&c=low|high             the scenario page on its own, outside any participant flow
+        /static/app.js                          that page's script (RESEARCHER_STATIC_FILES)
         /api/stimulus|workspace|skills|skill?s=<folder>[&c=low|high]   the s= form of the content routes
 
 Dependencies:
@@ -95,11 +97,16 @@ import participant_store as store
 
 ROOT = Path(__file__).resolve().parents[2]
 UI_DIR = ROOT / "src" / "participant_ui"
-STATIC_FILES = {"app.js": "text/javascript", "style.css": "text/css", "markdown.js": "text/javascript",
+# Files a participant's browser may fetch at /static/<file>. They are sent byte for byte, comments included, so they
+# must not describe the study design (tests/test_served_ui_wording.py checks every file here and flow.html).
+STATIC_FILES = {"style.css": "text/css", "markdown.js": "text/javascript",
                 "previews.js": "text/javascript", "workspace.js": "text/javascript",
                 "skills.js": "text/javascript", "interaction.js": "text/javascript",
                 "scenario_view.js": "text/javascript", "flow.js": "text/javascript",
                 "tutorial.js": "text/javascript"}
+# Served at /static/<file> only with --researcher-preview. app.js is the /chat page's script: it reads the stimulus
+# and the condition from its URL by design, so a participant-facing server must not serve it.
+RESEARCHER_STATIC_FILES = {"app.js": "text/javascript"}
 # Workspace fields a participant may receive (same list as build_workspace_snapshots.py).
 WORKSPACE_FIELDS = {
     "emails": ("id_", "sender", "recipients", "cc", "bcc", "subject", "body", "status", "timestamp", "attachments"),
@@ -401,6 +408,9 @@ class Handler(BaseHTTPRequestHandler):
             name = url.path[len("/static/"):]
             return self._send(200, (UI_DIR / name).read_bytes(), STATIC_FILES[name])
         if self.researcher_preview:
+            if url.path.startswith("/static/") and url.path[len("/static/"):] in RESEARCHER_STATIC_FILES:
+                name = url.path[len("/static/"):]
+                return self._send(200, (UI_DIR / name).read_bytes(), RESEARCHER_STATIC_FILES[name])
             if url.path == "/":
                 return self._send(200, landing_page(), "text/html")
             if url.path == "/chat":
