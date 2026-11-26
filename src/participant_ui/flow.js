@@ -7,7 +7,7 @@
  *
  *   The consent screen shows the real consent text (src/study_materials/consent.md, sent by the server with the
  *   stage) and its agreement checkbox; ticking it and continuing is what stores the participant's consent. The
- *   screens for the instructions, the assessment and the questionnaire are still placeholders: participant
+ *   screens for the assessment and the questionnaire are still placeholders: participant
  *   responses are not collected until the data collection block. The scenario stage is drawn by scenario_view.js;
  *   on the practice scenario, the guided tour of tutorial.js runs over it before the participant can continue.
  *
@@ -144,12 +144,6 @@
     };
   }
 
-  function instructionsScreen(stage) {
-    card("Before you start", "You will see a series of recorded conversations with a workspace assistant.",
-      " The study instructions go here: what the assistant is, what the participant is asked to judge about each"
-      + " conversation, and how long the session takes.", "Continue", stage.key);
-  }
-
   function assessmentScreen(stage) {
     const what = stage.practice
       ? " The practice assessment items go here, so the participant answers one set before the trials begin."
@@ -207,7 +201,6 @@
 
   const SCREENS = {
     consent: consentScreen,
-    instructions: instructionsScreen,
     scenario: scenarioScreen,
     assessment: assessmentScreen,
     questionnaire: questionnaireScreen,

@@ -147,7 +147,7 @@ class FlowTests(unittest.TestCase):
         before = store.completed_stages(self.conn, FIRST)
         nxt = store.complete_stage(self.conn, CONFIG, FIRST, "consent", PAYLOAD)
         self.assertEqual(store.completed_stages(self.conn, FIRST), before)
-        self.assertEqual(nxt["key"], "instructions")
+        self.assertEqual(nxt["key"], "practice_scenario")
 
     def test_a_stage_cannot_be_skipped(self):
         with self.assertRaises(store.StoreError):
@@ -159,17 +159,17 @@ class FlowTests(unittest.TestCase):
             store.complete_stage(self.conn, CONFIG, FIRST, "debriefing", PAYLOAD)
 
     def test_progress_survives_reopening_the_database(self):
-        for key in ("consent", "instructions", "practice_scenario"):
+        for key in ("consent", "practice_scenario", "practice_assessment"):
             store.complete_stage(self.conn, CONFIG, FIRST, key, PAYLOAD)
         expected = store.current_stage(self.conn, CONFIG, FIRST, PAYLOAD)["key"]
         self.conn.close()
         reopened = store.connect(self.path)
         self.assertEqual(store.completed_stages(reopened, FIRST),
-                         ["consent", "instructions", "practice_scenario"])
+                         ["consent", "practice_scenario", "practice_assessment"])
         self.assertEqual(store.current_stage(reopened, CONFIG, FIRST, PAYLOAD)["key"], expected)
 
     def test_reopening_the_link_mid_trial_returns_the_same_stage(self):
-        for key in ("consent", "instructions", "practice_scenario", "practice_assessment"):
+        for key in ("consent", "practice_scenario", "practice_assessment"):
             store.complete_stage(self.conn, CONFIG, FIRST, key, PAYLOAD)
         stage = store.enter_stage(self.conn, CONFIG, FIRST, PAYLOAD)
         self.assertEqual(stage["key"], "trial_01_scenario")
@@ -182,7 +182,7 @@ class FlowTests(unittest.TestCase):
         state = store.status(self.conn, CONFIG, FIRST, PAYLOAD)
         self.assertEqual(state["stages_completed"], 1)
         self.assertEqual(state["stages"], len(self.plan["stages"]))
-        self.assertEqual(state["current_stage"], "instructions")
+        self.assertEqual(state["current_stage"], "practice_scenario")
         self.assertIs(state["plan_changed"], False)
         self.assertIsNone(state["completed_at"])
 
@@ -193,12 +193,12 @@ class ResetTests(unittest.TestCase):
     def setUp(self):
         self.conn = store.connect(temp_db())
         self.row = store.enrol(self.conn, CONFIG, FIRST, PAYLOAD)
-        for key in ("consent", "instructions", "practice_scenario"):
+        for key in ("consent", "practice_scenario", "practice_assessment"):
             store.complete_stage(self.conn, CONFIG, FIRST, key, PAYLOAD)
         store.record_consent(self.conn, FIRST, "0" * 64, "consent text")
 
     def test_a_simulated_participant_restarts_at_consent_with_the_same_link(self):
-        cleared = store.reset(self.conn, FIRST)
+        cleared = store.reset(self.conn, CONFIG, FIRST, PAYLOAD)
         self.assertEqual(cleared["stages_cleared"], 3)
         self.assertTrue(cleared["consent_cleared"])
         self.assertEqual(store.current_stage(self.conn, CONFIG, FIRST, PAYLOAD)["key"], "consent")
@@ -209,9 +209,26 @@ class ResetTests(unittest.TestCase):
         self.conn.execute("UPDATE participants SET simulated = 0 WHERE participant_id = ?", (FIRST,))
         self.conn.commit()
         with self.assertRaises(store.StoreError):
-            store.reset(self.conn, FIRST)
+            store.reset(self.conn, CONFIG, FIRST, PAYLOAD)
         self.assertEqual(len(store.completed_stages(self.conn, FIRST)), 3)
         self.assertIsNotNone(store.consent_of(self.conn, FIRST))
+
+
+    def test_reset_reattaches_a_link_enrolled_under_an_older_stage_sequence(self):
+        """A test link enrolled before the sequence changed is refused until reset, then starts at consent."""
+        older = alternative_config(trials_per_participant=3)
+        self.conn.execute("UPDATE participants SET plan_fingerprint = ? WHERE participant_id = ?",
+                          (store.plan_fingerprint(ep.plan_for(older, FIRST, PAYLOAD)), FIRST))
+        self.conn.commit()
+        with self.assertRaises(store.StoreError):
+            store.current_stage(self.conn, CONFIG, FIRST, PAYLOAD)
+        self.assertTrue(store.reset(self.conn, CONFIG, FIRST, PAYLOAD)["plan_changed"])
+        self.assertEqual(store.current_stage(self.conn, CONFIG, FIRST, PAYLOAD)["key"], "consent")
+
+    def test_a_study_configuration_cannot_be_used_to_reset(self):
+        with self.assertRaises(store.StoreError):
+            store.reset(self.conn, alternative_config(simulated=False), FIRST, PAYLOAD)
+        self.assertEqual(len(store.completed_stages(self.conn, FIRST)), 3)
 
 
 class PlanChangeTests(unittest.TestCase):

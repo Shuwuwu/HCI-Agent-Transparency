@@ -115,10 +115,10 @@ class StageSequenceTests(unittest.TestCase):
         self.plan = ep.plan_for(DEV_CONFIG, FIRST, DEV_PAYLOAD)
         self.stages = self.plan["stages"]
 
-    def test_sequence_is_consent_instructions_practice_trials_questionnaire_completion(self):
+    def test_sequence_is_consent_practice_trials_questionnaire_completion(self):
         keys = [s["key"] for s in self.stages]
         trials = DEV_CONFIG["trials_per_participant"]
-        expected = ["consent", "instructions", "practice_scenario", "practice_assessment"]
+        expected = ["consent", "practice_scenario", "practice_assessment"]
         for n in range(1, trials + 1):
             expected += [f"trial_{n:02d}_scenario", f"trial_{n:02d}_assessment"]
         expected += ["questionnaire", "completion"]

@@ -47,7 +47,8 @@ Usage:
 
     A link always reopens at the participant's current stage, so a test participant who has passed consent never
     sees it again. --reset sends simulated (development) participants back to the start: it clears their progress
-    and consent but keeps their link. It refuses any participant enrolled from a study configuration.
+    and consent but keeps their link, and stores their stage sequence as --config derives it now, so links enrolled
+    before a change to the sequence work again. It refuses study participants and study configurations.
 """
 
 import argparse
@@ -337,25 +338,38 @@ def status(conn: sqlite3.Connection, config: ep.Config, participant: str,
     return out
 
 
-def reset(conn: sqlite3.Connection, participant: str) -> dict:
-    """Send a simulated participant back to the first stage: delete their progress and consent, keep their link.
+def reset(conn: sqlite3.Connection, config: ep.Config, participant: str, payload: dict | None = None) -> dict:
+    """Start a simulated participant over under `config`: delete their progress and consent, keep their link.
 
-    For re-testing the flow from consent with the same link. Only a participant enrolled from a simulated
-    (development) configuration can be reset; one enrolled from a study configuration raises StoreError, so real
-    participants' progress and consent can never be erased this way. The enrolment itself (token, condition, list,
-    plan fingerprint) is kept. Interaction logs are not in this database and are not touched: a reset participant's
-    trials append to their existing log files. Returns {"participant_id", "stages_cleared", "consent_cleared"}.
-    Raises KeyError for a participant who is not enrolled.
+    For re-testing the flow from consent with the same link, including after the stage sequence itself has changed:
+    the participant's plan is derived again from `config` and its fingerprint stored, so a link that would otherwise
+    be refused as "the stage sequence changed since enrolment" works again. That is safe only because all their
+    progress is deleted at the same time, so no old progress can be resumed into the new sequence.
+
+    Only a participant enrolled from a simulated (development) configuration can be reset, and only under a
+    simulated configuration; anything else raises StoreError, so real participants' progress and consent can never
+    be erased this way and a test participant cannot be attached to the study design. The token and the enrolment
+    time are kept. Interaction logs are not in this database and are not touched: a reset participant's trials
+    append to their existing log files. Returns {"participant_id", "stages_cleared", "consent_cleared",
+    "plan_changed"}. Raises KeyError for a participant who is not enrolled or not in the assignments.
     """
     row = record(conn, participant)
     if not row["simulated"]:
         raise StoreError(f"{participant}: enrolled from a study configuration ({row['config_path']}); "
                          "study participants cannot be reset")
+    if not config["simulated"]:
+        raise StoreError(f"{participant}: {config['path']} is a study configuration; reset under a simulated one")
+    plan = ep.plan_for(config, participant, payload)
+    fingerprint = plan_fingerprint(plan)
     stages = conn.execute("DELETE FROM progress WHERE participant_id = ?", (participant,)).rowcount
     consent = conn.execute("DELETE FROM consents WHERE participant_id = ?", (participant,)).rowcount
-    conn.execute("UPDATE participants SET completed_at = NULL WHERE participant_id = ?", (participant,))
+    conn.execute("UPDATE participants SET completed_at = NULL, plan_fingerprint = ?, config_path = ?, "
+                 "assignments_path = ?, condition = ?, list = ?, trials = ? WHERE participant_id = ?",
+                 (fingerprint, str(config["path"]), str(config["assignments_path"]), plan["condition"], plan["list"],
+                  plan["trials"], participant))
     conn.commit()
-    return {"participant_id": participant, "stages_cleared": stages, "consent_cleared": bool(consent)}
+    return {"participant_id": participant, "stages_cleared": stages, "consent_cleared": bool(consent),
+            "plan_changed": fingerprint != row["plan_fingerprint"]}
 
 
 def link(token: str, base_url: str = "") -> str:
@@ -380,7 +394,7 @@ def main() -> None:
     conn = connect(args.db)
     for participant in args.reset:
         try:
-            print(json.dumps(reset(conn, participant)))
+            print(json.dumps(reset(conn, config, participant, payload)))
         except (KeyError, StoreError) as exc:
             parser.error(f"--reset {participant}: {exc}")
     if args.enrol_all:

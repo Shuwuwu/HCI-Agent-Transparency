@@ -209,7 +209,7 @@ def scenario_target(conn: sqlite3.Connection, config: ep.Config, participant: st
     The steps to omit are the configuration's practice.omit_steps on the practice stage and () on every other
     stage, so an experimental trial is always shown its stimulus exactly as built (see omit_trace_steps).
 
-    Raises FileNotFoundError when the participant's current stage shows no scenario — consent, instructions, an
+    Raises FileNotFoundError when the participant's current stage shows no scenario — consent, an
     assessment, the questionnaire, or the end of the sequence — so a stage that is not a scenario cannot be used
     to fetch scenario content, and a participant cannot reach the next trial's content early or the previous
     trial's content again.

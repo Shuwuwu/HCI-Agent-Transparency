@@ -1,7 +1,7 @@
 """
 Purpose:
     Turn researcher configuration plus one participant's assignment row into the ordered sequence of stages that
-    participant walks through: consent, study instructions, a practice scenario, then each assigned trial
+    participant walks through: consent, a practice scenario (with its guided tour), then each assigned trial
     (scenario view followed by its assessment), the post-study questionnaire and the completion screen.
 
     The sequence is a pure function of the configuration and the assignment row, so deriving it again yields the
@@ -61,7 +61,7 @@ REQUIRED_KEYS = ("version", "corpus", "assignments", "simulated", "trials_per_pa
 CONDITIONS = ("low", "high")
 # Stage kinds the participant flow knows. "scenario" shows one agent conversation, "assessment" the judgment that
 # follows it; the rest are single screens whose content is study material.
-STAGE_KINDS = ("consent", "instructions", "scenario", "assessment", "questionnaire", "completion")
+STAGE_KINDS = ("consent", "scenario", "assessment", "questionnaire", "completion")
 
 
 class ConfigError(ValueError):
@@ -182,7 +182,7 @@ def _scenario_of(folder: str) -> str:
 def stage_sequence(config: Config, assignment: dict) -> list[dict]:
     """The ordered stages of one participant, derived from the configuration and their assignment row.
 
-    Order: consent, instructions, the practice scenario (and its assessment unless practice.assessment is false),
+    Order: consent, the practice scenario (and its assessment unless practice.assessment is false),
     then for each assigned trial its scenario stage followed by its assessment stage, then the questionnaire and
     the completion screen. `trials_per_participant` takes the first N trials of the row, keeping the
     counterbalanced order; the condition is the row's and applies to every scenario stage, practice included, so
@@ -203,7 +203,9 @@ def stage_sequence(config: Config, assignment: dict) -> list[dict]:
                           f"{len(trials)}")
     participant = assignment["participant"]
     suffix = config["safe_stimulus_suffix"]
-    stages: list[dict] = [{"key": "consent", "kind": "consent"}, {"key": "instructions", "kind": "instructions"}]
+    # Consent leads straight into the practice: the practice tour introduces the interface, so there is no
+    # separate instructions screen.
+    stages: list[dict] = [{"key": "consent", "kind": "consent"}]
 
     def trial_stages(prefix: str, tid: str, ordinal: int, folder: str, version: str, with_assessment: bool,
                      practice: bool) -> list[dict]:

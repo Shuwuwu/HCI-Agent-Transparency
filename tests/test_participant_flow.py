@@ -192,13 +192,13 @@ class ExposureTests(FlowTestCase):
             srv.close()
 
     def test_scenario_content_is_refused_at_every_stage_that_shows_no_scenario(self):
-        """Consent, the instructions, an assessment and the questionnaire must not be usable to fetch a trial's
+        """Consent, an assessment and the questionnaire must not be usable to fetch a trial's
         content: that is how a participant could otherwise read the next trial early or the last one again."""
         srv = FlowServer()
         try:
             participant = participant_with("low")
             token = srv.tokens[participant]
-            for stage_key in ("consent", "instructions", "practice_assessment", "questionnaire"):
+            for stage_key in ("consent", "practice_assessment", "questionnaire"):
                 srv.walk(participant, until=stage_key)
                 self.assertEqual(srv.stage(participant)["stage"]["key"], stage_key)
                 for route in CONTENT_ROUTES:
@@ -295,9 +295,9 @@ class IntegrityTests(FlowTestCase):
             first = srv.agree(participant)
             second = srv.complete(participant, "consent")  # a replay needs no agreement and changes nothing
             self.assertEqual((first[0], second[0]), (200, 200))
-            self.assertEqual(json.loads(first[1])["stage"]["key"], "instructions")
-            self.assertEqual(json.loads(second[1])["stage"]["key"], "instructions")
-            self.assertEqual(srv.stage(participant)["stage"]["key"], "instructions")
+            self.assertEqual(json.loads(first[1])["stage"]["key"], "practice_scenario")
+            self.assertEqual(json.loads(second[1])["stage"]["key"], "practice_scenario")
+            self.assertEqual(srv.stage(participant)["stage"]["key"], "practice_scenario")
         finally:
             srv.close()
 
@@ -437,7 +437,7 @@ class ConsentTests(unittest.TestCase):
         self.srv.complete(self.participant, "consent")
         self.srv.get(f"/p/{self.srv.tokens[self.participant]}")
         self.assertEqual(self.consent_row(), first)
-        self.assertEqual(self.srv.stage(self.participant)["stage"]["key"], "instructions")
+        self.assertEqual(self.srv.stage(self.participant)["stage"]["key"], "practice_scenario")
 
 
 class ConsentSchemaTests(unittest.TestCase):
