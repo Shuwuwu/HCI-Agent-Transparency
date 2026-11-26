@@ -13,7 +13,8 @@ Inputs:
     nothing but the listed interaction facts can be stored.
 
 Outputs:
-    <log-dir>/<session id>.jsonl (default src/data/interaction_logs/, gitignored). One line per event:
+    <log-dir>/<session id>.jsonl (default src/data/interaction_logs/, gitignored); the participant server writes
+    the practice trial's events to <log-dir>/practice/ instead (participant_flow.log_dir_for). One line per event:
     {"seq", "server_time" (UTC, stamped here, not trusted from the browser), "session", "type", ...fields}.
     summarize() turns one session's events into the measures asked for by the research questions.
 

@@ -9,7 +9,8 @@
 <body>
 <!-- Participant flow page, served at /p/<token>. flow.js reads the token from the path, asks /api/stage which
      stage to show, and draws it into #stage: a placeholder screen for consent, the instructions, an assessment,
-     the questionnaire and the completion notice, or the scenario view (scenario_view.js) for a trial. The page
+     the questionnaire and the completion notice, or the scenario view (scenario_view.js) for a trial, with the
+     guided tour (tutorial.js) over the practice trial. The page
      holds no stage of its own, so reloading it resumes wherever the participant was. -->
 <header class="topbar">
   <span class="topbar-title"><span class="logo">✦</span> Workspace Assistant</span>
@@ -26,6 +27,7 @@
 <script src="/static/workspace.js"></script>
 <script src="/static/skills.js"></script>
 <script src="/static/scenario_view.js"></script>
+<script src="/static/tutorial.js"></script>
 <script src="/static/flow.js"></script>
 </body>
 </html>

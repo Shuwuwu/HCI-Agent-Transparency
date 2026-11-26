@@ -23,8 +23,8 @@ Inputs:
     SHA-256) and src/data/skills/<skill>/SKILL.md: the skill documentation the
     agent was given, served only on request and only if the file still matches
     the recorded hash.
-    Static front-end files in src/participant_ui/ (index.html, app.js, scenario_view.js,
-    style.css, markdown.js, previews.js, workspace.js, skills.js, interaction.js).
+    Static front-end files in src/participant_ui/ (index.html, flow.html, app.js, flow.js, tutorial.js,
+    scenario_view.js, style.css, markdown.js, previews.js, workspace.js, skills.js, interaction.js).
 
 Outputs:
     A local HTTP server (default http://127.0.0.1:8765).
@@ -40,9 +40,12 @@ Outputs:
         /api/workspace?t=<token>        read-only workspace BEFORE the agent ran (same in both conditions)
         /api/skills?t=<token>           the agent's skills for this trial: id, name, description
         /api/skill?t=<token>&k=<skill>  one skill's documentation (Markdown), on request
-        POST /api/stage/complete        {"token", "stage_key"}: complete that stage and return the next one
+        POST /api/stage/complete        {"token", "stage_key"}: complete that stage and return the next one. The
+                                        consent stage also needs "consent": {"agreed": true, "sha256": <hash of
+                                        the consent text shown>}, and stores that agreement (participant_flow.py)
         POST /api/log                   one interaction event (see interaction_log.py); written to the separate
-                                        log folder, never read back by any route
+                                        log folder (practice-trial events to its practice/ subfolder), never
+                                        read back by any route
         /static/<file>                  whitelisted front-end files
     The four content routes answer 404 unless the participant's current stage is a scenario stage, so no stage
     can be used to fetch the next trial's content early or the previous trial's content again.
@@ -95,7 +98,8 @@ UI_DIR = ROOT / "src" / "participant_ui"
 STATIC_FILES = {"app.js": "text/javascript", "style.css": "text/css", "markdown.js": "text/javascript",
                 "previews.js": "text/javascript", "workspace.js": "text/javascript",
                 "skills.js": "text/javascript", "interaction.js": "text/javascript",
-                "scenario_view.js": "text/javascript", "flow.js": "text/javascript"}
+                "scenario_view.js": "text/javascript", "flow.js": "text/javascript",
+                "tutorial.js": "text/javascript"}
 # Workspace fields a participant may receive (same list as build_workspace_snapshots.py).
 WORKSPACE_FIELDS = {
     "emails": ("id_", "sender", "recipients", "cc", "bcc", "subject", "body", "status", "timestamp", "attachments"),
@@ -345,7 +349,7 @@ class Handler(BaseHTTPRequestHandler):
     config = None
     payload = None
     researcher_preview = False
-    MAX_BODY_BYTES = 512  # /api/stage/complete takes a token and a stage key and nothing else
+    MAX_BODY_BYTES = 512  # /api/stage/complete takes a token, a stage key and, at consent, the agreement
 
     def _send(self, status, body, ctype):
         data = body.encode("utf-8") if isinstance(body, str) else body
@@ -488,7 +492,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def _post_log(self):
         try:
-            ilog.append_event(self._body(ilog.MAX_EVENT_BYTES), self.log_dir)
+            event = self._body(ilog.MAX_EVENT_BYTES)
+            session = event.get("session") if isinstance(event, dict) else None
+            ilog.append_event(event, flow.log_dir_for(session, self.log_dir))
         except BodyTooLarge as exc:
             return self._json(413, {"error": str(exc)})
         except ValueError as exc:  # LogError is a ValueError, as is a malformed body
@@ -515,7 +521,8 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError("stage_key is required")
             with self._conn() as conn:
                 participant = flow.participant_for(conn, body.get("token", ""))["participant_id"]
-                result = flow.advance(conn, self.config, participant, stage_key, self.payload, self.log_dir)
+                result = flow.advance(conn, self.config, participant, stage_key, self.payload, self.log_dir,
+                                      consent=body.get("consent"))
         except (ValueError, FileNotFoundError) as exc:
             return self._flow_error(exc)
         return self._json(200, result)
@@ -549,6 +556,7 @@ def main():
     # stops the server at startup, rather than failing on a participant's first request.
     config = ep.load_config(args.experiment_config)
     payload = ep.load_assignments(config)
+    flow.load_consent()  # a missing or malformed consent file stops the server here, not at a participant's start
     use_corpus(args.corpus if args.corpus is not None else config["corpus_path"])
     Handler.log_dir = args.log_dir
     Handler.db_path = args.db

@@ -1,0 +1,316 @@
+/*
+ * Purpose:
+ *   The guided practice tour: a step-by-step walk through the study interface on the practice conversation. Each
+ *   step dims the page, cuts a spotlight around one interface element, and anchors a tooltip with an arrow to it.
+ *   The spotlit element stays live, so participants click and try the real interface as they go; clicks anywhere
+ *   else are blocked until the tour ends.
+ *
+ *   The tour describes what each part of the interface shows and how to use it. This file is sent to participants'
+ *   browsers as it is, comments included, so the rules for its wording are kept in the README instead.
+ *
+ *   Two pieces:
+ *     Tour          the engine (overlay, spotlight, tooltip placement, navigation). It knows nothing about the
+ *                   study; it is given a list of steps.
+ *     PracticeTour  the practice steps (the STEPS table below) and how they are started from the flow page.
+ *
+ * Inputs:
+ *   PracticeTour.start({host, toggle, onFinish}) once the practice conversation has been drawn:
+ *     host      the element the scenario view is mounted in (#stage);
+ *     toggle    the Workspace button (#ws-toggle); its aria-expanded says whether the panel is open;
+ *     onFinish  called once, when the participant completes the last step.
+ *   The steps are read from the page as it is drawn, never from the server: a step with an include() test, such
+ *   as the activity-card step, is part of the tour only when its element is on the page.
+ *
+ * Outputs:
+ *   An overlay appended to <body> while the tour runs; it is removed by stop() or when the tour finishes. The tour
+ *   logs nothing itself. Interface events triggered by clicking the real interface during the tour (opening the
+ *   panel, a tab, an item) are logged as usual by interaction.js, under the practice trial's id, and the server
+ *   files them apart from the experimental trials (participant_flow.log_dir_for).
+ *
+ * Dependencies:
+ *   None at load time. Expects the DOM of scenario_view.js, workspace.js and skills.js (the selectors in STEPS).
+ *   Loaded by flow.html before flow.js, which starts it on the practice scenario stage only.
+ *
+ * Usage:
+ *   const tour = PracticeTour.start({ host, toggle, onFinish: () => { ... } });   tour.stop();
+ */
+(function (root) {
+  "use strict";
+
+  const PAD = 6;     // space between an element and the spotlight edge
+  const GAP = 14;    // space between the spotlight and the tooltip (the arrow sits in it)
+  const EDGE = 12;   // closest a tooltip may come to the window edge
+  const ADVANCE_DELAY_MS = 450; // after a "try it" action succeeds, so the participant sees the result first
+
+  function el(tag, cls, text) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined) e.textContent = text;
+    return e;
+  }
+
+  /** The element's box, or null when it is missing or not displayed (zero size). */
+  function visibleRect(element) {
+    if (!element || !element.isConnected) return null;
+    const r = element.getBoundingClientRect();
+    return r.width > 0 && r.height > 0 ? r : null;
+  }
+
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+  /**
+   * Where the tooltip goes for a spotlight rectangle `r` (null: no target) and a tooltip of size w x h in a
+   * vw x vh window. Tries below, above, right, then left of the target, taking the first side with room; if no
+   * side has room (a target filling the screen, such as the workspace panel on a phone) the tooltip is docked at
+   * the bottom of the window without an arrow. Returns {left, top, side, arrow} where `side` is the side of the
+   * target the tooltip is on and `arrow` the arrow's offset along the tooltip edge that faces the target.
+   */
+  function place(r, w, h, vw, vh) {
+    if (!r) return { left: (vw - w) / 2, top: Math.max(EDGE, (vh - h) / 2), side: "none" };
+    const cx = (r.left + r.right) / 2, cy = (r.top + r.bottom) / 2;
+    const fitsX = (left) => clamp(left, EDGE, vw - w - EDGE);
+    const fitsY = (top) => clamp(top, EDGE, vh - h - EDGE);
+    if (vh - r.bottom >= h + GAP + EDGE) {
+      const left = fitsX(cx - w / 2);
+      return { left, top: r.bottom + GAP, side: "bottom", arrow: clamp(cx - left, 18, w - 18) };
+    }
+    if (r.top >= h + GAP + EDGE) {
+      const left = fitsX(cx - w / 2);
+      return { left, top: r.top - GAP - h, side: "top", arrow: clamp(cx - left, 18, w - 18) };
+    }
+    if (vw - r.right >= w + GAP + EDGE) {
+      const top = fitsY(cy - h / 2);
+      return { left: r.right + GAP, top, side: "right", arrow: clamp(cy - top, 18, h - 18) };
+    }
+    if (r.left >= w + GAP + EDGE) {
+      const top = fitsY(cy - h / 2);
+      return { left: r.left - GAP - w, top, side: "left", arrow: clamp(cy - top, 18, h - 18) };
+    }
+    return { left: (vw - w) / 2, top: vh - h - EDGE, side: "none" };
+  }
+
+  /**
+   * Run a tour over `steps`. A step is {title, text, target?, fallback?, fallbackText?, before?, done?, action?}:
+   *   target()      the element to spotlight, looked up again on every frame (panels re-render their DOM);
+   *                 a step without one is a centred message;
+   *   fallback()    spotlit instead while target() is not on screen (for example a panel the participant closed),
+   *                 with fallbackText added to the text;
+   *   before()      run when the step is entered (for example, to reopen a panel the step is about);
+   *   done()        an action the step invites ("Try it: ..."); once it becomes true the tour moves on by itself.
+   *                 It must have been false when the step began, so going Back never skips a step at once;
+   *   action        the label shown before the text of a step with done(), e.g. "Try it".
+   * Next is always available, so no one is stuck on a step they cannot or do not want to try.
+   * `onFinish` runs when the last step's button is pressed. Returns {stop}.
+   */
+  function run(steps, onFinish) {
+    const overlay = el("div", "tour");
+    const shades = [0, 1, 2, 3].map(() => overlay.appendChild(el("div", "tour-shade")));
+    const ring = overlay.appendChild(el("div", "tour-ring"));
+    const tip = overlay.appendChild(el("div", "tour-tip"));
+    tip.setAttribute("role", "dialog");
+    tip.setAttribute("aria-labelledby", "tour-title");
+    tip.setAttribute("aria-describedby", "tour-text");
+    tip.tabIndex = -1;
+    const arrow = tip.appendChild(el("div", "tour-arrow"));
+    const count = tip.appendChild(el("p", "tour-count"));
+    const title = tip.appendChild(el("h2", "tour-title"));
+    title.id = "tour-title";
+    const text = tip.appendChild(el("p", "tour-text"));
+    text.id = "tour-text";
+    const nav = tip.appendChild(el("div", "tour-nav"));
+    const back = nav.appendChild(el("button", "tour-back", "Back"));
+    const next = nav.appendChild(el("button", "tour-next", "Next"));
+    back.type = next.type = "button";
+    document.body.appendChild(overlay);
+
+    let index = -1, frame = 0, timer = 0, startedDone = false, last = "", usingFallback = null;
+
+    function show(i) {
+      clearTimeout(timer);
+      timer = 0;
+      index = i;
+      const step = steps[i];
+      if (step.before) step.before();
+      startedDone = !!(step.done && step.done());
+      usingFallback = null;
+      count.textContent = "Step " + (i + 1) + " of " + steps.length;
+      title.textContent = step.title;
+      setText(step, false);
+      back.disabled = i === 0;
+      next.textContent = i === steps.length - 1 ? "Finish tour" : "Next";
+      last = ""; // force a fresh layout
+      tip.classList.remove("tour-in");
+      void tip.offsetWidth; // restart the fade-in
+      tip.classList.add("tour-in");
+      const target = step.target && step.target();
+      if (visibleRect(target)) target.scrollIntoView({ block: "nearest", inline: "nearest" });
+      layout(); // at once, not only on the next frame (frames pause while the page is in the background)
+      tip.focus({ preventScroll: true }); // screen readers announce the new step (role=dialog, labelled)
+    }
+
+    function setText(step, fallback) {
+      text.replaceChildren();
+      if (step.action && !fallback) text.appendChild(el("strong", "tour-action", step.action + ": "));
+      text.appendChild(document.createTextNode(step.text));
+      if (fallback && step.fallbackText) text.appendChild(el("span", "tour-fallback", " " + step.fallbackText));
+    }
+
+    /** Lay the overlay out for the current step, writing to the DOM only when something moved. It runs on every
+     *  scroll (the page's or a panel's), resize and change to the page (a panel opening, a tab switching, content
+     *  re-rendering), and on every animation frame as a backstop, so the spotlight follows its element whatever
+     *  moves it. The events matter: browsers slow or pause animation frames for pages they consider hidden. */
+    function layout() {
+      const step = steps[index];
+      if (step.done && !timer) {
+        const now = !!step.done();
+        if (now && !startedDone) timer = setTimeout(() => (index === steps.indexOf(step) ? go(1) : 0), ADVANCE_DELAY_MS);
+        if (!now) startedDone = false; // undone after starting done: the next completion counts
+      }
+      let rect = step.target ? visibleRect(step.target()) : null;
+      const fallback = step.target && !rect && step.fallback ? visibleRect(step.fallback()) : null;
+      if (fallback) rect = fallback;
+      if (usingFallback !== !!fallback) {
+        usingFallback = !!fallback;
+        setText(step, usingFallback);
+      }
+      const vw = document.documentElement.clientWidth, vh = window.innerHeight;
+      const hole = rect && {
+        left: clamp(rect.left - PAD, 0, vw), top: clamp(rect.top - PAD, 0, vh),
+        right: clamp(rect.right + PAD, 0, vw), bottom: clamp(rect.bottom + PAD, 0, vh),
+      };
+      const w = tip.offsetWidth, h = tip.offsetHeight;
+      const key = [vw, vh, w, h, hole && [hole.left, hole.top, hole.right, hole.bottom].map(Math.round)].join();
+      if (key === last) return;
+      last = key;
+
+      // Four shades around the hole dim the page and block clicks outside it; the hole itself is empty, so the
+      // spotlit element receives clicks as normal. Without a target, one shade covers everything.
+      const boxes = hole
+        ? [[0, 0, vw, hole.top], [0, hole.bottom, vw, vh - hole.bottom],
+           [0, hole.top, hole.left, hole.bottom - hole.top], [hole.right, hole.top, vw - hole.right, hole.bottom - hole.top]]
+        : [[0, 0, vw, vh], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]];
+      boxes.forEach(([x, y, bw, bh], k) => Object.assign(shades[k].style, {
+        left: x + "px", top: y + "px", width: Math.max(0, bw) + "px", height: Math.max(0, bh) + "px" }));
+      ring.hidden = !hole;
+      if (hole) Object.assign(ring.style, { left: hole.left + "px", top: hole.top + "px",
+        width: hole.right - hole.left + "px", height: hole.bottom - hole.top + "px" });
+
+      const spot = place(hole && { left: hole.left, top: hole.top, right: hole.right, bottom: hole.bottom }, w, h, vw, vh);
+      tip.style.left = Math.round(spot.left) + "px";
+      tip.style.top = Math.round(spot.top) + "px";
+      tip.dataset.side = spot.side;
+      arrow.hidden = spot.side === "none";
+      // The arrow sits on the tooltip edge that faces the target, pointing at the target's centre.
+      arrow.style.left = arrow.style.top = "";
+      if (spot.side === "bottom" || spot.side === "top") arrow.style.left = spot.arrow + "px";
+      else if (spot.side !== "none") arrow.style.top = spot.arrow + "px";
+    }
+
+    function tick() {
+      layout();
+      frame = requestAnimationFrame(tick);
+    }
+
+    function go(delta) {
+      const i = index + delta;
+      if (i >= steps.length) return finish();
+      if (i >= 0) show(i);
+    }
+
+    const relayout = () => { if (index >= 0) layout(); };
+    // The tour's own writes to the overlay are not changes to the page.
+    const changes = new MutationObserver((records) => { if (records.some((r) => !overlay.contains(r.target))) relayout(); });
+    changes.observe(document.body, { childList: true, subtree: true, attributes: true, characterData: true });
+    window.addEventListener("scroll", relayout, { capture: true, passive: true }); // capture: panel scrolls too
+    window.addEventListener("resize", relayout);
+
+    function stop() {
+      cancelAnimationFrame(frame);
+      clearTimeout(timer);
+      changes.disconnect();
+      window.removeEventListener("scroll", relayout, { capture: true });
+      window.removeEventListener("resize", relayout);
+      overlay.remove();
+    }
+
+    function finish() {
+      stop();
+      if (onFinish) onFinish();
+    }
+
+    back.onclick = () => go(-1);
+    next.onclick = () => go(1);
+    show(0);
+    tick();
+    return { stop };
+  }
+
+  root.Tour = { run, place };
+
+  // ---- the practice tour ---------------------------------------------------------------------------------------
+  // Before changing any wording below, read the tour's wording rules in the README.
+
+  function startPractice(options) {
+    const host = options.host, toggle = options.toggle;
+    const q = (selector) => host.querySelector(selector) || document.querySelector(selector);
+    const panelOpen = () => toggle.getAttribute("aria-expanded") === "true";
+    const openPanel = () => { if (!panelOpen() && !toggle.hidden) toggle.click(); };
+    const tab = (label) => [...document.querySelectorAll("#workspace .tab")].find((b) => b.textContent === label);
+    const inPanel = { fallback: () => toggle, fallbackText: "The workspace is closed: open it with this button to see this part." };
+
+    const STEPS = [
+      { title: "Practice tour",
+        text: "This short tour shows how the study screen works, using a practice conversation. The highlighted part "
+          + "of the screen stays clickable, so you can try it as you go. Use Next and Back to move between steps." },
+      { title: "The request",
+        text: "This is what Emma asked the assistant to do.",
+        target: () => q(".chat .user-bubble") },
+      { title: "The assistant's activity",
+        text: "Each card is one action the assistant took while working on the request: what it did, the tool it "
+          + "used, the details it used, and the result. Cards appear in the order the actions happened. Any notes "
+          + "the assistant wrote between actions appear between the cards.",
+        target: () => q(".chat .card"),
+        include: () => !!q(".chat .card") },
+      { title: "The assistant's response",
+        text: "This is the reply the assistant gave Emma when it finished.",
+        target: () => q(".chat .assistant-bubble.final") },
+      { title: "A recorded conversation",
+        text: "The conversations in this study are recordings, so you cannot type messages here.",
+        target: () => q(".composer") },
+      { title: "Emma's workspace", action: "Try it",
+        text: "Click Workspace to open Emma's email, calendar, files, and the assistant's skills.",
+        target: () => toggle, done: panelOpen },
+      Object.assign({ title: "Workspace tabs",
+        text: "Mail, Calendar and Drive show Emma's email, events and files as they were before the assistant "
+          + "started on this request. Switch between the tabs to see each one.",
+        target: () => q("#workspace .tabs"), before: openPanel }, inPanel),
+      Object.assign({ title: "Opening an item",
+        text: "Click an email, event or file to open it, and use ← Back to list to return. Mail has separate "
+          + "Inbox and Sent lists.",
+        target: () => q("#workspace .ws-body"),
+        // Reached with Back from the Skills steps, the panel would still show Skills, not what this step describes.
+        before: () => { openPanel(); const s = tab("Skills"); if (s && s.classList.contains("on")) tab("Mail").click(); } },
+      inPanel),
+      Object.assign({ title: "Skills", action: "Try it",
+        text: "Open the Skills tab. It lists the skills the assistant was given for this task.",
+        target: () => tab("Skills"), before: openPanel,
+        done: () => !!tab("Skills") && tab("Skills").classList.contains("on") }, inPanel),
+      Object.assign({ title: "Reading a skill",
+        text: "Click a skill to read its documentation, and use ← All skills to return to the list.",
+        target: () => q("#workspace .ws-body"),
+        before: () => { openPanel(); const s = tab("Skills"); if (s && !s.classList.contains("on")) s.click(); } }, inPanel),
+      { title: "Closing the workspace", action: "Try it",
+        text: "Close the workspace with ✕. The Workspace button opens it again at any time.",
+        target: () => (panelOpen() ? q("#workspace .ws-close") : toggle),
+        done: () => !panelOpen() },
+      { title: "Finishing the practice",
+        text: "That is the whole screen. After this tour, Continue takes you to the practice questions about this "
+          + "conversation. The conversations that follow work the same way.",
+        target: () => document.querySelector("#advance button") },
+    ].filter((step) => !step.include || step.include());
+
+    return run(STEPS, options.onFinish);
+  }
+
+  root.PracticeTour = { start: startPractice };
+})(window);

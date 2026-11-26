@@ -1,8 +1,9 @@
 """Tests of participant_flow.py and the participant routes of participant_server.py, over real HTTP.
 
-Two things are checked, and nothing else: that no participant-facing response reveals which stimulus or which
+Three things are checked, and nothing else: that no participant-facing response reveals which stimulus or which
 transparency condition a trial holds (the folder name says whether a trial is injected, so leaking it would tell
-a participant what to expect), and that the flow cannot lose, duplicate or reorder a trial.
+a participant what to expect), that the flow cannot lose, duplicate or reorder a trial, and that no participant
+gets past the consent stage without their agreement to the exact consent text being recorded.
 
 Each test server is its own Handler subclass rather than a mutation of participant_server.Handler, whose class
 attributes are global: the tests can then run in any order alongside tests/test_participant_server.py.
@@ -94,8 +95,17 @@ class FlowServer:
         assert status == 200, (status, body)
         return json.loads(body)
 
-    def complete(self, participant, stage_key):
-        return self.post("/api/stage/complete", {"token": self.tokens[participant], "stage_key": stage_key})
+    def complete(self, participant, stage_key, **extra):
+        return self.post("/api/stage/complete",
+                         {"token": self.tokens[participant], "stage_key": stage_key, **extra})
+
+    def agree(self, participant):
+        """Tick the consent box and continue, the way the consent page does: the agreement carries the hash of
+        the consent text the stage was served with."""
+        stage = self.stage(participant)["stage"]
+        assert stage["kind"] == "consent", stage
+        return self.complete(participant, stage["key"],
+                             consent={"agreed": True, "sha256": stage["consent"]["sha256"]})
 
     def walk(self, participant, until=None):
         """Advance the way the browser does, stopping when `until` is the current stage (or the sequence ends).
@@ -107,7 +117,10 @@ class FlowServer:
         walked = []
         stage = self.stage(participant)["stage"]
         while stage is not None and stage["key"] != until:
-            answer = self.complete(participant, stage["key"])
+            if stage["kind"] == "consent":
+                answer = self.agree(participant)
+            else:
+                answer = self.complete(participant, stage["key"])
             assert answer[0] == 200, answer
             walked.append(stage["key"])
             stage = json.loads(answer[1])["stage"]
@@ -136,9 +149,10 @@ class ExposureTests(FlowTestCase):
         plan = ep.plan_for(CONFIG, participant, PAYLOAD)
         secrets = {s["stimulus"] for s in plan["stages"] if "stimulus" in s}
         secrets |= {s["scenario"] for s in plan["stages"] if "scenario" in s}
-        # The safe/unsafe distinction is the secret; "practice", the practice trial's version, is not —
-        # participants are told which trial is the practice one, and the descriptor says so.
-        secrets |= {s["version"] for s in plan["stages"] if s.get("version") in ("safe", "unsafe")}
+        # The safe/unsafe label of a trial is a secret too, but as a JSON value ("safe"), not as a word: the
+        # consent text asks whether the assistant acted "safely". "practice", the practice trial's version, is
+        # not a secret — participants are told which trial is the practice one, and the descriptor says so.
+        secrets |= {json.dumps(s["version"]) for s in plan["stages"] if s.get("version") in ("safe", "unsafe")}
         self.assertTrue(secrets)
 
         page = self.srv.get(f"/p/{self.srv.tokens[participant]}")[1]
@@ -152,7 +166,9 @@ class ExposureTests(FlowTestCase):
             self.assertNotIn("condition", stage)
             self.assertNotIn("stimulus", stage)
             self.assertNotIn("scenario", stage)
-            self.assertEqual(self.srv.complete(participant, stage["key"])[0], 200)
+            answer = (self.srv.agree(participant) if stage["kind"] == "consent"
+                      else self.srv.complete(participant, stage["key"]))
+            self.assertEqual(answer[0], 200)
         for text in seen:
             for secret in secrets:
                 self.assertNotIn(secret, text)
@@ -276,8 +292,8 @@ class IntegrityTests(FlowTestCase):
         try:
             participant = participant_with("low")
             self.assertEqual(srv.stage(participant)["stage"]["key"], "consent")
-            first = srv.complete(participant, "consent")
-            second = srv.complete(participant, "consent")
+            first = srv.agree(participant)
+            second = srv.complete(participant, "consent")  # a replay needs no agreement and changes nothing
             self.assertEqual((first[0], second[0]), (200, 200))
             self.assertEqual(json.loads(first[1])["stage"]["key"], "instructions")
             self.assertEqual(json.loads(second[1])["stage"]["key"], "instructions")
@@ -306,7 +322,9 @@ class IntegrityTests(FlowTestCase):
             scenarios = ep.scenario_stages(plan, practice=True)
             srv.walk(participant)
             for stage in scenarios:
-                path = srv.logs / f"{stage['trial_id']}.jsonl"
+                # Practice is kept apart from the experimental trials: it lives in its own subfolder.
+                folder = srv.logs / flow.PRACTICE_LOG_SUBDIR if stage["practice"] else srv.logs
+                path = folder / f"{stage['trial_id']}.jsonl"
                 self.assertTrue(path.is_file(), stage["trial_id"])
                 events = ilog.read_session(path)
                 self.assertEqual([e["type"] for e in events], ["session_start"])
@@ -329,6 +347,24 @@ class IntegrityTests(FlowTestCase):
         finally:
             srv.close()
 
+    def test_practice_interactions_never_land_beside_the_experimental_trial_logs(self):
+        """Everything clicked during the practice tour is practice data. A reader of the trial logs takes the
+        top-level *.jsonl files, so no practice file may be there, and the browser's practice events must follow
+        the server's session_start into the practice folder."""
+        srv = FlowServer()
+        try:
+            participant = participant_with("high")
+            srv.walk(participant, until="practice_assessment")
+            practice_id = ep.scenario_stages(ep.plan_for(CONFIG, participant, PAYLOAD), practice=True)[0]["trial_id"]
+            for event in ({"type": "workspace_panel_open"}, {"type": "skills_tab_open"}):
+                answer = srv.post("/api/log", {"session": practice_id, "client_ms": 1, **event})
+                self.assertEqual(answer[0], 204, answer)
+            practice = ilog.read_session(srv.logs / flow.PRACTICE_LOG_SUBDIR / f"{practice_id}.jsonl")
+            self.assertEqual([e["type"] for e in practice], ["session_start", "workspace_panel_open", "skills_tab_open"])
+            self.assertEqual([p.name for p in srv.logs.glob("*.jsonl")], [])
+        finally:
+            srv.close()
+
     def test_a_changed_stage_sequence_stops_the_participant_instead_of_resuming_them(self):
         """Enrolled under eight trials, served a three-trial configuration: the flow must refuse rather than mix
         two different experiments in one participant's record."""
@@ -347,6 +383,85 @@ class IntegrityTests(FlowTestCase):
             self.assertEqual(srv.complete(participant, "trial_01_scenario")[0], 409)
         finally:
             srv.close()
+
+
+class ConsentTests(unittest.TestCase):
+    """The electronic consent: it must be recorded, per participant, before anything else can happen."""
+
+    def setUp(self):
+        self.srv = FlowServer()
+        self.participant = participant_with("low")
+
+    def tearDown(self):
+        self.srv.close()
+
+    def consent_row(self, participant=None):
+        conn = store.connect(self.srv.handler.db_path)
+        try:
+            return store.consent_of(conn, participant or self.participant)
+        finally:
+            conn.close()
+
+    def test_the_consent_stage_serves_the_consent_file(self):
+        material = flow.load_consent()
+        stage = self.srv.stage(self.participant)["stage"]
+        self.assertEqual(stage["consent"], {key: material[key] for key in ("markdown", "checkbox", "sha256")})
+        self.assertEqual(stage["consent"]["checkbox"], "I agree to participate in this research study.")
+
+    def test_consent_cannot_be_passed_without_a_valid_agreement(self):
+        """Clicking through without the box ticked, with a forged or stale hash, or with a truthy non-true value
+        must leave the participant at consent with nothing recorded."""
+        sha = self.srv.stage(self.participant)["stage"]["consent"]["sha256"]
+        for consent in (None, {}, {"agreed": False, "sha256": sha}, {"agreed": "yes", "sha256": sha},
+                        {"agreed": 1, "sha256": sha}, {"agreed": True}, {"agreed": True, "sha256": "0" * 64}):
+            extra = {} if consent is None else {"consent": consent}
+            self.assertEqual(self.srv.complete(self.participant, "consent", **extra)[0], 400, consent)
+            self.assertEqual(self.srv.stage(self.participant)["stage"]["key"], "consent", consent)
+        self.assertIsNone(self.consent_row())
+
+    def test_agreeing_records_the_time_and_the_exact_text_for_this_participant_only(self):
+        material = flow.load_consent()
+        self.assertEqual(self.srv.agree(self.participant)[0], 200)
+        row = self.consent_row()
+        self.assertEqual(row["consent_text"], material["text"])
+        self.assertEqual(row["consent_sha256"], material["sha256"])
+        self.assertIsNotNone(row["agreed_at"])
+        others = [p for p in self.srv.tokens if p != self.participant]
+        self.assertTrue(all(self.consent_row(p) is None for p in others))
+
+    def test_the_first_agreement_is_kept_through_replays_and_reopened_links(self):
+        self.srv.agree(self.participant)
+        first = self.consent_row()
+        sha = first["consent_sha256"]
+        self.srv.complete(self.participant, "consent", consent={"agreed": True, "sha256": sha})
+        self.srv.complete(self.participant, "consent")
+        self.srv.get(f"/p/{self.srv.tokens[self.participant]}")
+        self.assertEqual(self.consent_row(), first)
+        self.assertEqual(self.srv.stage(self.participant)["stage"]["key"], "instructions")
+
+
+class ConsentSchemaTests(unittest.TestCase):
+    """Participant databases created before consent was stored must open and gain the consents table."""
+
+    def test_a_version_1_database_is_upgraded_in_place_and_keeps_its_participants(self):
+        folder = Path(tempfile.mkdtemp())
+        try:
+            path = folder / "participants.db"
+            conn = store.connect(path)
+            row = store.enrol(conn, CONFIG, participant_with("low"), PAYLOAD)
+            conn.execute("DROP TABLE consents")
+            conn.execute("UPDATE meta SET value = '1' WHERE key = 'schema_version'")
+            conn.commit()
+            conn.close()
+
+            conn = store.connect(path)
+            version = conn.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()["value"]
+            self.assertEqual(version, str(store.SCHEMA_VERSION))
+            self.assertEqual(store.by_token(conn, row["token"])["participant_id"], row["participant_id"])
+            self.assertIsNone(store.consent_of(conn, row["participant_id"]))
+            conn.close()
+        finally:
+            shutil.rmtree(folder, ignore_errors=True)
 
 
 class ResolutionTests(unittest.TestCase):

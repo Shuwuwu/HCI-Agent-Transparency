@@ -44,6 +44,7 @@ Usage:
 
 import argparse
 import json
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -147,6 +148,18 @@ def trial_id(participant: str, ordinal: int, practice: bool = False) -> str:
     creating duplicates. The format stays within the token pattern the interaction log accepts.
     """
     return f"{participant}-{'p' if practice else 't'}{ordinal:02d}"
+
+
+PRACTICE_TRIAL_RE = re.compile(r"-p\d{2}$")  # the practice form of trial_id above
+
+
+def is_practice_trial_id(value) -> bool:
+    """True for a practice trial id such as "P001-p00" (see trial_id); False for anything else, including non-strings.
+
+    Used to keep practice records apart from experimental ones wherever the trial id is all a record carries,
+    such as an interaction event posted by the browser.
+    """
+    return isinstance(value, str) and bool(PRACTICE_TRIAL_RE.search(value))
 
 
 def _scenario_of(folder: str) -> str:

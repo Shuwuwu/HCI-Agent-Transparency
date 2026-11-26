@@ -11,14 +11,26 @@ Purpose:
     expect from the trial; the condition would tell them that other participants see something different. Both are
     resolved on the server and only the resulting content is sent.
 
+    Consent. The consent stage cannot be passed by clicking through: completing it requires the agreement and the
+    hash of the consent text the page showed, and the agreement is stored in the same transaction as the stage
+    completion (participant_store.record_consent). Anyone past the consent stage therefore has a consent record.
+
 Inputs:
     A participant database connection (participant_store.py), an experiment configuration and the assignments
     payload it names (experiment_plan.py), and a link token taken from the request.
+    src/study_materials/consent.md: the consent text, in Markdown, whose last line is the agreement checkbox
+    written as a task-list item ("- [ ] I agree to ..."). It is read on every request, so the text served and the
+    text recorded are always the current file.
+
+    Practice. The practice trial's interaction events, including everything a participant clicks during the
+    practice tour, are written to a `practice/` subfolder of the log folder rather than beside the experimental
+    trials' logs (log_dir_for), so a reader of the trial logs cannot include practice by accident.
 
 Outputs:
-    Stage descriptors and progress counts for the browser (no stimulus identity); the (stimulus folder, condition)
-    pair the scenario endpoints resolve on the server; and a `session_start` interaction event, stamped with the
-    true stimulus and condition, the first time a scenario stage is entered.
+    Stage descriptors and progress counts for the browser (no stimulus identity; the consent stage also carries
+    the consent text, its checkbox statement and its hash); the (stimulus folder, condition) pair the scenario
+    endpoints resolve on the server; a stored consent when the consent stage is completed; and a `session_start`
+    interaction event, stamped with the true stimulus and condition, the first time a scenario stage is entered.
 
 Dependencies:
     participant_store.py (participant records and stage progress), experiment_plan.py (the derived stage
@@ -30,13 +42,52 @@ Usage:
             --experiment-config src/data/experiment_configs/development.json
 """
 
+import hashlib
 import re
 import sqlite3
 import sys
+from pathlib import Path
 
 import experiment_plan as ep
 import interaction_log as ilog
 import participant_store as store
+
+CONSENT_PATH = ep.ROOT / "src" / "study_materials" / "consent.md"
+PRACTICE_LOG_SUBDIR = "practice"
+
+
+def log_dir_for(session, log_dir) -> Path:
+    """The folder an interaction event of `session` is written to: `<log_dir>/practice` for the practice trial,
+    `log_dir` itself for everything else (experimental trials and researcher-preview sessions).
+
+    `session` is the trial id the event is logged under, which may come from the browser; anything that is not a
+    practice trial id goes to the main folder, where interaction_log.py validates it as before.
+    """
+    return Path(log_dir) / PRACTICE_LOG_SUBDIR if ep.is_practice_trial_id(session) else Path(log_dir)
+CHECKBOX_RE = re.compile(r"^- \[ \] (\S.*)$")  # the agreement line that ends the consent file
+
+
+class ConsentError(ValueError):
+    """The consent stage was submitted without a valid agreement to the current consent text."""
+
+
+def load_consent(path=CONSENT_PATH) -> dict:
+    """The consent material: {"markdown", "checkbox", "sha256", "text"}.
+
+    `text` is the whole file and `sha256` its hash: that is what a participant's consent records. `markdown` is the
+    file without its last line, which must be the agreement checkbox written as a task-list item
+    ("- [ ] I agree to ..."); `checkbox` is that statement, shown next to the real checkbox. Raises ValueError if
+    the last line is not such an item, and OSError if the file cannot be read.
+    """
+    raw = path.read_bytes()
+    text = raw.decode("utf-8")
+    lines = text.rstrip().split("\n")
+    match = CHECKBOX_RE.match(lines[-1].strip())
+    if not match:
+        raise ValueError(f"{path}: the last line must be the agreement checkbox, '- [ ] <statement>'")
+    return {"markdown": "\n".join(lines[:-1]).rstrip(), "checkbox": match.group(1).strip(),
+            "sha256": hashlib.sha256(raw).hexdigest(), "text": text}
+
 
 # Shape of a link token as participant_store.enrol writes it (secrets.token_urlsafe): URL-safe base64 characters.
 # Checked before the database is touched so a malformed path cannot become a query.
@@ -103,7 +154,8 @@ def _log_session_start(stage: dict, log_dir) -> None:
     """
     try:
         ilog.append_event({"session": stage["trial_id"], "type": "session_start",
-                           "stimulus": stage["stimulus"], "condition": stage["condition"]}, log_dir)
+                           "stimulus": stage["stimulus"], "condition": stage["condition"]},
+                          log_dir_for(stage["trial_id"], log_dir))
     except (ilog.LogError, OSError, ValueError) as exc:
         sys.stderr.write(f"[flow] session_start not logged for {stage['trial_id']}: {exc}\n")
 
@@ -123,7 +175,11 @@ def _enter(conn: sqlite3.Connection, config: ep.Config, participant: str, payloa
     store.enter_stage(conn, config, participant, payload)
     if first and stage["kind"] == "scenario" and log_dir is not None:
         _log_session_start(stage, log_dir)
-    return descriptor(stage, plan)
+    out = descriptor(stage, plan)
+    if stage["kind"] == "consent":
+        material = load_consent()
+        out["consent"] = {key: material[key] for key in ("markdown", "checkbox", "sha256")}
+    return out
 
 
 def stage_payload(conn: sqlite3.Connection, config: ep.Config, participant: str, payload: dict | None = None,
@@ -156,17 +212,44 @@ def scenario_target(conn: sqlite3.Connection, config: ep.Config, participant: st
     return stage["stimulus"], stage["condition"]
 
 
+def _complete_consent(conn: sqlite3.Connection, config: ep.Config, participant: str, stage_key: str,
+                      payload: dict | None, consent) -> None:
+    """Record the participant's agreement and complete the consent stage, both or neither.
+
+    `consent` is what the browser sent: {"agreed": true, "sha256": <hash of the consent text it showed>}. Raises
+    ConsentError if the box was not ticked, or if the text has changed since the page was loaded — recording an
+    agreement to a text the participant never saw would be worse than asking them to reload.
+    """
+    material = load_consent()
+    if not isinstance(consent, dict) or consent.get("agreed") is not True:
+        raise ConsentError("the consent checkbox was not ticked")
+    if consent.get("sha256") != material["sha256"]:
+        raise ConsentError("the consent text changed after the page was loaded")
+    try:
+        store.record_consent(conn, participant, material["sha256"], material["text"], commit=False)
+        store.complete_stage(conn, config, participant, stage_key, payload)  # commits both
+    except Exception:
+        conn.rollback()  # never a consent without the stage, or the stage without a consent
+        raise
+
+
 def advance(conn: sqlite3.Connection, config: ep.Config, participant: str, stage_key: str,
-            payload: dict | None = None, log_dir=None) -> dict:
+            payload: dict | None = None, log_dir=None, consent=None) -> dict:
     """Complete `stage_key`, enter the next stage, and return it the same shape stage_payload returns it.
 
     The stage key must be the participant's current stage: participant_store.complete_stage ignores a repeated
     submission of a stage already completed (so a double click or a reloaded form cannot record a trial twice)
-    and refuses a later one (so no stage can be skipped). The next stage is entered here because the answer to
-    this call is what the browser draws — it does not ask for the stage again — so this is the participant's
-    arrival at it.
+    and refuses a later one (so no stage can be skipped). Completing the consent stage also needs `consent`
+    (see _complete_consent); a repeated submission of an already completed consent stage does not, and changes
+    nothing. The next stage is entered here because the answer to this call is what the browser draws — it does
+    not ask for the stage again — so this is the participant's arrival at it.
     """
-    store.complete_stage(conn, config, participant, stage_key, payload)
+    plan = store.checked_plan(conn, config, participant, payload)
+    kind = next((s["kind"] for s in plan["stages"] if s["key"] == stage_key), None)
+    if kind == "consent" and stage_key not in store.completed_stages(conn, participant):
+        _complete_consent(conn, config, participant, stage_key, payload, consent)
+    else:
+        store.complete_stage(conn, config, participant, stage_key, payload)
     plan, stage, done = _plan_and_stage(conn, config, participant, payload)
     return {"stage": _enter(conn, config, participant, payload, plan, stage, log_dir) if stage else None,
             "progress": _progress(plan, done)}

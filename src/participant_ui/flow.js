@@ -5,24 +5,29 @@
  *   page keeps no record of where the participant is: every stage comes from /api/stage, so reloading the page
  *   or reopening the link resumes on the same stage, and the stage can only be advanced one step at a time.
  *
- *   The screens for consent, the instructions, the assessment and the questionnaire are placeholders: the study
- *   materials are not written yet, and participant responses are not collected or stored anywhere until the data
- *   collection block. Only the scenario stage is the real thing, drawn by scenario_view.js.
+ *   The consent screen shows the real consent text (src/study_materials/consent.md, sent by the server with the
+ *   stage) and its agreement checkbox; ticking it and continuing is what stores the participant's consent. The
+ *   screens for the instructions, the assessment and the questionnaire are still placeholders: participant
+ *   responses are not collected until the data collection block. The scenario stage is drawn by scenario_view.js;
+ *   on the practice scenario, the guided tour of tutorial.js runs over it before the participant can continue.
  *
  * Inputs:
  *   The link token, read from location.pathname (/p/<token>); it is never written into a query string.
  *   JSON from GET /api/stage?t=<token>: {stage: {key, kind, index, trial_id?, practice?, trial?, trials?} | null,
- *   progress: {completed, total}}. The stage deliberately carries no stimulus folder, scenario name or
- *   transparency condition (participant_flow.py explains why), so this script cannot reveal them.
+ *   progress: {completed, total}}. The consent stage also carries consent: {markdown, checkbox, sha256}. The
+ *   stage deliberately carries no stimulus folder, scenario name or transparency condition (participant_flow.py
+ *   explains why), so this script cannot reveal them.
  *
  * Outputs:
- *   The stage drawn into #stage and its continue button into #advance; POST /api/stage/complete to advance.
+ *   The stage drawn into #stage and its continue button into #advance; POST /api/stage/complete to advance (at
+ *   consent, with {agreed: true, sha256} so the server records the agreement to the exact text shown).
  *   For a trial, the mounted scenario view and its interaction events, logged under that trial's id as the
  *   session (the matching session_start event is written by the server, which knows the condition).
  *
  * Dependencies:
- *   scenario_view.js (ScenarioView), interaction.js (Interaction), and through them markdown.js, previews.js,
- *   workspace.js, skills.js. participant_server.py (/api/stage, /api/stage/complete and the content routes).
+ *   scenario_view.js (ScenarioView), interaction.js (Interaction), tutorial.js (PracticeTour), and through them
+ *   markdown.js, previews.js, workspace.js, skills.js. participant_server.py (/api/stage, /api/stage/complete and
+ *   the content routes).
  */
 (function () {
   "use strict";
@@ -32,6 +37,7 @@
   const progress = document.getElementById("progress");
   const toggle = document.getElementById("ws-toggle");
   let view = null; // the mounted ScenarioView, so it can be unmounted when the stage changes
+  let tour = null; // the running practice tour (tutorial.js), so it can be removed when the stage changes
 
   function el(tag, cls, text) {
     const e = document.createElement(tag);
@@ -62,6 +68,10 @@
   }
 
   function clearStage() {
+    if (tour) {
+      tour.stop();
+      tour = null;
+    }
     if (view) {
       view.unmount();
       view = null;
@@ -87,38 +97,52 @@
   const asJson = (r) => (r.ok ? r.json()
     : r.json().catch(() => ({})).then((b) => Promise.reject({ status: r.status, error: b.error })));
 
-  /** Ask the server to complete `key` and draw whatever stage comes back. */
-  function advance(key) {
+  /** Ask the server to complete `key` and draw whatever stage comes back. `extra` is merged into the request
+   *  body (the consent agreement); everything that decides what is recorded is checked again on the server. */
+  function advance(key, extra) {
     fetch("/api/stage/complete", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: token, stage_key: key }),
+      body: JSON.stringify(Object.assign({ token: token, stage_key: key }, extra || {})),
     }).then(asJson).then(draw, fail);
   }
 
   /** A card screen: heading, optional lead paragraph, a placeholder box, and a continue button. */
-  function card(heading, lead, note, label, key, options) {
+  function card(heading, lead, note, label, key) {
     const box = el("div", "stage-card");
     box.appendChild(el("h1", null, heading));
     if (lead) box.appendChild(el("p", null, lead));
     box.appendChild(placeholder(note));
-    const extra = (options || {}).extra;
-    if (extra) box.appendChild(extra);
     host.appendChild(box);
-    const button = setButton(label, () => advance(key), !(options || {}).holdUntilChecked);
-    return button;
+    setButton(label, () => advance(key));
   }
 
+  /** The information letter and consent form. Continue stays disabled until the box is ticked, and the server
+   *  refuses the consent stage without the agreement anyway, so this check is a convenience, not the guard. */
   function consentScreen(stage) {
+    const consent = stage.consent;
+    if (!consent) return fail();
+    const box = el("article", "stage-card material");
+    box.innerHTML = renderMarkdown(consent.markdown); // renderMarkdown escapes all HTML in the text
     const tick = el("label", "consent-check");
     const check = el("input");
     check.type = "checkbox";
     check.id = "consent-agree";
-    tick.appendChild(check);
-    tick.appendChild(el("span", null, "I have read the information above and agree to take part."));
-    const button = card("Consent", "Please read the information below before you begin.",
-      " The approved consent form goes here, together with the information letter and the contact details of the"
-      + " research team.", "Continue", stage.key, { extra: tick, holdUntilChecked: true });
-    check.onchange = () => { button.disabled = !check.checked; };
+    tick.append(check, el("span", null, consent.checkbox));
+    box.appendChild(tick);
+    host.appendChild(box);
+    const button = setButton("Continue", () => advance(stage.key, { consent: { agreed: true, sha256: consent.sha256 } }), false);
+    // Say why Continue is unavailable, to sighted users under the button and to screen readers through it.
+    const hint = el("p", "advance-hint", "Tick the box above to continue.");
+    hint.id = "consent-hint";
+    button.setAttribute("aria-describedby", hint.id);
+    bar.appendChild(hint);
+    check.onchange = () => {
+      button.disabled = !check.checked;
+      hint.hidden = check.checked; // hidden keeps its line (style.css), so the button does not move when ticked
+      // aria-describedby is read even from a hidden element, so the link goes with the hint.
+      if (check.checked) button.removeAttribute("aria-describedby");
+      else button.setAttribute("aria-describedby", hint.id);
+    };
   }
 
   function instructionsScreen(stage) {
@@ -158,14 +182,27 @@
   }
 
   /** A trial: name the interaction session after the trial and mount the real scenario view. */
+  /** A trial: name the interaction session after the trial and mount the real scenario view. The practice trial
+   *  also runs the guided tour (tutorial.js) over it, and its Continue stays disabled until the tour is finished:
+   *  the tour blocks clicks outside its spotlight, and this also stops a keyboard user tabbing past it. */
   function scenarioScreen(stage) {
     Interaction.setSession(stage.trial_id);
-    view = ScenarioView.mount(host, { query: "t=" + encodeURIComponent(token), toggle: toggle, panel: {} });
+    const mounted = ScenarioView.mount(host, { query: "t=" + encodeURIComponent(token), toggle: toggle, panel: {} });
+    view = mounted;
     // The participant cannot continue until the conversation is actually on the screen.
     const button = setButton(stage.practice ? "Continue to the practice questions" : "Continue", () => advance(stage.key), false);
-    view.ready.then((ok) => {
-      if (ok) button.disabled = false;
-      else fail("This conversation could not be loaded. Please tell the researcher.");
+    mounted.ready.then((ok) => {
+      if (view !== mounted) return; // the stage changed while the conversation was loading
+      if (!ok) return fail("This conversation could not be loaded. Please tell the researcher.");
+      if (!stage.practice) {
+        button.disabled = false;
+        return;
+      }
+      tour = PracticeTour.start({ host: host, toggle: toggle, onFinish: () => {
+        tour = null;
+        button.disabled = false;
+        button.focus();
+      } });
     });
   }
 
