@@ -26,6 +26,10 @@ Inputs:
                                   assignments file (planned, not yet passing, unsafe items),
         trials_per_participant    how many of the assignment's trials to use, counted from the first,
         safe_stimulus_suffix      appended to a scenario id to name its safe stimulus folder,
+        rehearsal                 optional, simulated configurations only: {"unsafe_trials": "safe_substitute",
+                                  "reason": <text>}. Every planned unsafe trial is shown its scenario's safe
+                                  stimulus (version "rehearsal-safe"), so staff can rehearse the complete
+                                  procedure before the unsafe stimuli exist. Never a study configuration,
         practice                  {"stimulus": <folder>, "assessment": <bool>}, optionally with
                                   "omit_steps": [<step number>, ...] and "omit_reason": <text>: action-log
                                   cards of the practice stimulus that are not shown in the practice. The
@@ -47,6 +51,7 @@ Dependencies:
 Usage:
     python3 -B src/scripts/experiment_plan.py --config src/data/experiment_configs/development.json --check
     python3 -B src/scripts/experiment_plan.py --config src/data/experiment_configs/development.json --participant P001
+    python3 -B src/scripts/experiment_plan.py --config src/data/experiment_configs/rehearsal.json --check
     python3 -B src/scripts/experiment_plan.py --check        # the study configuration (needs the stage-2 assignments)
 """
 
@@ -61,6 +66,9 @@ DEVELOPMENT_CONFIG = ROOT / "src" / "data" / "experiment_configs" / "development
 CONFIG_VERSION = "experiment_config_v1"
 REQUIRED_KEYS = ("version", "corpus", "assignments", "database", "simulated", "trials_per_participant",
                  "safe_stimulus_suffix", "practice")
+# A rehearsal configuration shows each planned unsafe trial with its scenario's safe stimulus (see stage_sequence).
+REHEARSAL_SUBSTITUTE = "safe_substitute"
+REHEARSAL_VERSION = "rehearsal-safe"  # the stimulus version recorded for such a trial
 # Participant databases live here (gitignored, never served); a configuration's "database" must name a file in it.
 PARTICIPANT_DATA_DIR = "data/participants"
 CONDITIONS = ("low", "high")
@@ -109,6 +117,14 @@ def load_config(path: Path = CONFIG_PATH, root: Path = ROOT) -> Config:
         raise ConfigError(f"{path}: practice.omit_steps needs an omit_reason saying why those steps are hidden")
     if not isinstance(config["safe_stimulus_suffix"], str) or not config["safe_stimulus_suffix"]:
         raise ConfigError(f"{path}: safe_stimulus_suffix must be a non-empty string")
+    rehearsal = config.get("rehearsal")
+    if rehearsal is not None:
+        if not config["simulated"]:
+            raise ConfigError(f"{path}: rehearsal is for simulated (development) configurations only")
+        if (not isinstance(rehearsal, dict) or rehearsal.get("unsafe_trials") != REHEARSAL_SUBSTITUTE
+                or not (isinstance(rehearsal.get("reason"), str) and rehearsal["reason"].strip())):
+            raise ConfigError(f"{path}: rehearsal must be {{\"unsafe_trials\": \"{REHEARSAL_SUBSTITUTE}\", "
+                              "\"reason\": <text>}")
     database = config["database"]
     if (not isinstance(database, str) or not database.endswith(".sqlite3")
             or Path(database).parent.as_posix() != PARTICIPANT_DATA_DIR):
@@ -203,8 +219,10 @@ def stage_sequence(config: Config, assignment: dict) -> list[dict]:
 
     Each stage is {"index", "key", "kind"}; scenario and assessment stages add "trial_id", "trial", "practice",
     "scenario", "version", "stimulus" and "condition". Stage keys are unique within a participant and are what
-    stored progress refers to. Raises ConfigError if the row asks for more trials than it holds or its condition
-    is not a known one.
+    stored progress refers to. In a rehearsal configuration (key "rehearsal"), an unsafe trial shows its
+    scenario's safe stimulus instead and its version is REHEARSAL_VERSION, so the whole procedure can be run
+    before the unsafe stimuli exist. Raises ConfigError if the row asks for more trials than it holds or its
+    condition is not a known one.
     """
     condition = assignment["condition"]
     if condition not in CONDITIONS:
@@ -232,10 +250,16 @@ def stage_sequence(config: Config, assignment: dict) -> list[dict]:
     practice_cfg = config["practice"]
     stages += trial_stages("practice", trial_id(participant, 0, practice=True), 0, practice_cfg["stimulus"],
                            "practice", practice_cfg.get("assessment", True), True)
+    rehearsal = config.get("rehearsal") is not None
     for trial in trials[:wanted]:
         ordinal = trial["trial"]
-        stages += trial_stages(f"trial_{ordinal:02d}", trial_id(participant, ordinal), ordinal,
-                               stimulus_folder(trial, suffix), trial["version"], True, False)
+        folder, version = stimulus_folder(trial, suffix), trial["version"]
+        if rehearsal and version == "unsafe":
+            # Rehearsal only: the planned unsafe item may not exist yet, so the trial shows its scenario's safe
+            # stimulus and says so in its version; order, trial ids and condition are those of the assignment.
+            folder, version = f"{trial['scenario']}{suffix}", REHEARSAL_VERSION
+        stages += trial_stages(f"trial_{ordinal:02d}", trial_id(participant, ordinal), ordinal, folder, version,
+                               True, False)
     stages += [{"key": "questionnaire", "kind": "questionnaire"}, {"key": "completion", "kind": "completion"}]
     return [dict(stage, index=i) for i, stage in enumerate(stages)]
 

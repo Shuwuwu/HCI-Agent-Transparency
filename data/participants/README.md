@@ -7,6 +7,7 @@ is kept private to its owner (mode 0700) and the databases are readable by their
 | Path | What it is |
 |---|---|
 | `development.sqlite3` | Development and test participants (`src/data/experiment_configs/development.json`). Simulated data only. |
+| `rehearsal.sqlite3` | Simulated participants of the rehearsal (`src/data/experiment_configs/rehearsal.json`): the full procedure with planned unsafe trials shown as their safe scenario. Development environment; never study data. |
 | `study.sqlite3` | Real study participants (`src/data/experiment_configs/study.json`). Created at the first study enrolment. Append-only for recorded data. |
 | `*.sqlite3-wal`, `*.sqlite3-shm` | SQLite's write-ahead log and index while a database is open. Part of the database: never delete them while the server runs, and never copy a database file without them (make a backup instead). |
 | `exports/<environment>/` | CSV files derived from a database for analysis. Rebuilt on every export; the database stays the source of truth. |

@@ -73,6 +73,43 @@ class ConfigTests(unittest.TestCase):
                 ep.load_config(path)
 
 
+class RehearsalTests(unittest.TestCase):
+    """rehearsal.json: the development design with every planned unsafe trial shown as its safe scenario."""
+
+    REHEARSAL = ep.load_config(ROOT / "src" / "data" / "experiment_configs" / "rehearsal.json")
+
+    def test_only_the_unsafe_trials_change_and_they_say_so(self):
+        for row in DEV_PAYLOAD["assignments"]:
+            dev = ep.plan_for(DEV_CONFIG, row["participant"], DEV_PAYLOAD)["stages"]
+            reh = ep.plan_for(self.REHEARSAL, row["participant"], DEV_PAYLOAD)["stages"]
+            self.assertEqual([(s["key"], s.get("trial_id"), s.get("condition"), s.get("scenario")) for s in dev],
+                             [(s["key"], s.get("trial_id"), s.get("condition"), s.get("scenario")) for s in reh])
+            for d, r in zip(dev, reh):
+                if d.get("version") == "unsafe":
+                    self.assertEqual((r["version"], r["stimulus"]),
+                                     (ep.REHEARSAL_VERSION, f"{d['scenario']}{DEV_CONFIG['safe_stimulus_suffix']}"))
+                else:
+                    self.assertEqual(d, r)
+
+    def test_every_rehearsal_stimulus_can_be_served(self):
+        for row in DEV_PAYLOAD["assignments"]:
+            plan = ep.plan_for(self.REHEARSAL, row["participant"], DEV_PAYLOAD)
+            self.assertEqual(ep.unresolved_stimuli(self.REHEARSAL, plan), [], row["participant"])
+
+    def test_it_has_its_own_development_database(self):
+        self.assertEqual(self.REHEARSAL["environment"], "development")
+        self.assertNotIn(self.REHEARSAL["database_path"],
+                         {DEV_CONFIG["database_path"], ep.load_config(ep.CONFIG_PATH)["database_path"]})
+
+    def test_a_study_or_malformed_rehearsal_is_refused(self):
+        good = {"unsafe_trials": ep.REHEARSAL_SUBSTITUTE, "reason": "x"}
+        for overrides in ({"rehearsal": good, "simulated": False},
+                          {"rehearsal": {"unsafe_trials": "skip", "reason": "x"}},
+                          {"rehearsal": {"unsafe_trials": ep.REHEARSAL_SUBSTITUTE}}, {"rehearsal": True}):
+            with self.subTest(overrides=overrides), self.assertRaises(ep.ConfigError):
+                write_config(**overrides)
+
+
 class SimulatedSeparationTests(unittest.TestCase):
     def test_simulated_assignments_need_a_simulated_configuration(self):
         config = write_config(simulated=False)

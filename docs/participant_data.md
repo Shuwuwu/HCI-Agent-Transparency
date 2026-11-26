@@ -10,6 +10,7 @@ All participant data lives in **one SQLite database per environment**, in `data/
 | File | Environment | Configuration |
 |---|---|---|
 | `data/participants/development.sqlite3` | `development`: test participants only | `src/data/experiment_configs/development.json` |
+| `data/participants/rehearsal.sqlite3` | `development`: rehearsal participants (unsafe trials shown as their safe scenario) | `src/data/experiment_configs/rehearsal.json` |
 | `data/participants/study.sqlite3` | `study`: real participants | `src/data/experiment_configs/study.json` |
 
 The database is the single source of truth for everything recorded about a participant:
