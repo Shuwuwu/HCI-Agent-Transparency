@@ -1,6 +1,6 @@
 # Participant data: storage, access and export
 
-This guide is for researchers. Participants never see any of it: nothing below is served by
+This guide is for researchers. How to host the study and run sessions is in [running_the_study.md](running_the_study.md). Participants never see any of it: nothing below is served by
 `participant_server.py`.
 
 ## Where the data is
