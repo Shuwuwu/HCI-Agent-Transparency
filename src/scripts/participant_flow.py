@@ -18,9 +18,18 @@ Purpose:
 Inputs:
     A participant database connection (participant_store.py), an experiment configuration and the assignments
     payload it names (experiment_plan.py), and a link token taken from the request.
+    src/study_materials/assessment.json: the questions asked after each conversation (see load_assessment), read
+    on every request like the consent text.
     src/study_materials/consent.md: the consent text, in Markdown, whose last line is the agreement checkbox
     written as a task-list item ("- [ ] I agree to ..."). It is read on every request, so the text served and the
     text recorded are always the current file.
+
+    Assessment. Every assessment stage, practice and experimental alike, asks the same four questions in the same
+    order: whether the assistant performed the task safely, confidence (1-5, no default), the reasoning, and the
+    information sources that influenced the judgment. The sources offered are those the participant's view
+    actually contains (the assistant's activity only where the action log is shown). The answers are validated
+    here, never trusted from the browser, and stored in the same transaction as the stage completion
+    (participant_store.record_response), against the participant id and the trial id, with the practice flagged.
 
     Practice presentation. The configuration may hide some action-log cards of the practice stimulus
     (practice.omit_steps, with its reason in practice.omit_reason). They are removed, and the rest renumbered, when
@@ -48,6 +57,7 @@ Usage:
 """
 
 import hashlib
+import json
 import re
 import sqlite3
 import sys
@@ -58,6 +68,11 @@ import interaction_log as ilog
 import participant_store as store
 
 CONSENT_PATH = ep.ROOT / "src" / "study_materials" / "consent.md"
+ASSESSMENT_PATH = ep.ROOT / "src" / "study_materials" / "assessment.json"
+QUESTIONS = ("performed_safely", "confidence", "reasoning", "sources")  # the order they are asked in
+# Which conditions show each optional part of the interface; a source marked "shown_with" one of these parts is
+# offered only to participants whose view contains it.
+SHOWN_WITH = {"activity_log": ("high",)}
 PRACTICE_LOG_SUBDIR = "practice"
 
 
@@ -92,6 +107,119 @@ def load_consent(path=CONSENT_PATH) -> dict:
         raise ValueError(f"{path}: the last line must be the agreement checkbox, '- [ ] <statement>'")
     return {"markdown": "\n".join(lines[:-1]).rstrip(), "checkbox": match.group(1).strip(),
             "sha256": hashlib.sha256(raw).hexdigest(), "text": text}
+
+
+class AssessmentError(ValueError):
+    """An assessment was submitted with a missing, malformed or unavailable answer."""
+
+
+def load_assessment(path=ASSESSMENT_PATH) -> dict:
+    """The assessment questions: the parsed file plus its "sha256", which each stored response records.
+
+    Raises ValueError if a question is missing, the confidence scale is not a range of whole numbers with anchors
+    inside it, an option list is empty or repeats an id, or a source names an unknown "shown_with" part, so a
+    broken file stops the server at startup (participant_server.main) instead of at a participant's first trial.
+    """
+    raw = Path(path).read_bytes()
+    spec = json.loads(raw)
+    missing = [q for q in QUESTIONS if q not in spec]
+    if missing:
+        raise ValueError(f"{path}: missing questions {missing}")
+    scale = spec["confidence"]
+    if not (isinstance(scale.get("min"), int) and isinstance(scale.get("max"), int) and scale["min"] < scale["max"]
+            and all(scale["min"] <= int(k) <= scale["max"] for k in scale.get("anchors", {}))):
+        raise ValueError(f"{path}: confidence needs whole-number min < max and anchors inside that range")
+    for question in ("performed_safely", "sources"):
+        ids = [option["id"] for option in spec[question].get("options", [])]
+        if not ids or len(set(ids)) != len(ids):
+            raise ValueError(f"{path}: {question} needs options with distinct ids")
+    unknown = {o["shown_with"] for o in spec["sources"]["options"] if "shown_with" in o} - set(SHOWN_WITH)
+    if unknown:
+        raise ValueError(f"{path}: unknown shown_with {sorted(unknown)}")
+    specify = [o for o in spec["sources"]["options"] if o.get("specify")]
+    if len(specify) > 1 or any(not isinstance(o.get("max_chars"), int) or o["max_chars"] < 1
+                               or not isinstance(o.get("specify_required", True), bool) for o in specify):
+        raise ValueError(f"{path}: at most one source may ask to specify; it needs a positive max_chars and, if "
+                         "given, a true/false specify_required")
+    spec["sha256"] = hashlib.sha256(raw).hexdigest()
+    return spec
+
+
+def offered_sources(spec: dict, condition: str) -> list[dict]:
+    """The information-source options of `spec` a participant in `condition` sees, in the file's order."""
+    return [o for o in spec["sources"]["options"]
+            if "shown_with" not in o or condition in SHOWN_WITH[o["shown_with"]]]
+
+
+def assessment_for(stage: dict, spec: dict | None = None) -> dict:
+    """The assessment as sent to the browser for one assessment stage: the questions in order, with only the
+    sources this stage's participant can see, and the hash the submission must echo. Carries no condition."""
+    spec = spec or load_assessment()
+    sources = {**spec["sources"], "options": [
+        {"id": o["id"], "label": o["label"],
+         **({"specify": True, "specify_required": o.get("specify_required", True), "max_chars": o["max_chars"]}
+            if o.get("specify") else {})}
+        for o in offered_sources(spec, stage["condition"])]}
+    return {"intro": spec["intro"], "sha256": spec["sha256"],
+            "questions": [{"id": q, **(sources if q == "sources" else spec[q])} for q in QUESTIONS]}
+
+
+def validate_answers(answers, spec: dict, condition: str) -> dict:
+    """The submitted answers, checked and normalised, or AssessmentError.
+
+    `answers` is what the browser sent: {"performed_safely", "confidence", "reasoning", "sources", "sources_other",
+    "sha256"}.
+    performed_safely must be one of the options; confidence a whole number on the scale (a bool, a string or a
+    missing value is refused, so nothing is ever recorded by default); reasoning text no longer than max_chars
+    (surrounding whitespace removed); sources distinct ids from the sources offered in `condition`, returned in
+    the order offered; sources_other the description of the source marked "specify" ("Other"): required when
+    that source is chosen only if it is marked "specify_required" (the default; the shipped questions set it to
+    false, so "Other" is saved with or without a description), and refused when the source is not chosen, so a
+    stored description always belongs to a chosen "Other". A required question left unanswered is refused. The hash must match the current questions,
+    so an answer is never stored against wording the participant did not see.
+    """
+    if not isinstance(answers, dict):
+        raise AssessmentError("answers must be an object")
+    if answers.get("sha256") != spec["sha256"]:
+        raise AssessmentError("the questions changed after the page was loaded")
+    safely = answers.get("performed_safely")
+    if safely is None and not spec["performed_safely"]["required"]:
+        safely = ""
+    elif safely not in {o["id"] for o in spec["performed_safely"]["options"]}:
+        raise AssessmentError("performed_safely must be one of the options")
+    scale, confidence = spec["confidence"], answers.get("confidence")
+    if not (isinstance(confidence, int) and not isinstance(confidence, bool)
+            and scale["min"] <= confidence <= scale["max"]):
+        raise AssessmentError(f"confidence must be a whole number from {scale['min']} to {scale['max']}")
+    reasoning = answers.get("reasoning", "")
+    if not isinstance(reasoning, str):
+        raise AssessmentError("reasoning must be text")
+    reasoning = reasoning.strip()
+    if spec["reasoning"]["required"] and not reasoning:
+        raise AssessmentError("reasoning is required")
+    if len(reasoning) > spec["reasoning"]["max_chars"]:
+        raise AssessmentError("reasoning is too long")
+    chosen = answers.get("sources", [])
+    offered = [o["id"] for o in offered_sources(spec, condition)]
+    if (not isinstance(chosen, list) or len(set(map(str, chosen))) != len(chosen)
+            or not set(chosen) <= set(offered)):
+        raise AssessmentError("sources must be distinct ids from the sources offered")
+    if spec["sources"]["required"] and not chosen:
+        raise AssessmentError("at least one source is required")
+    other = answers.get("sources_other", "")
+    if not isinstance(other, str):
+        raise AssessmentError("sources_other must be text")
+    other = other.strip()
+    specify = next((o for o in offered_sources(spec, condition) if o.get("specify")), None)
+    if specify and specify["id"] in chosen:
+        if not other and specify.get("specify_required", True):
+            raise AssessmentError(f"{specify['id']} needs the other information specified")
+        if len(other) > specify["max_chars"]:
+            raise AssessmentError("the other information is too long")
+    elif other:
+        raise AssessmentError("sources_other is only accepted with the source that asks to specify")
+    return {"performed_safely": safely, "confidence": confidence, "reasoning": reasoning,
+            "sources": [s for s in offered if s in chosen], "sources_other": other, "sources_offered": offered}
 
 
 # Shape of a link token as participant_store.enrol writes it (secrets.token_urlsafe): URL-safe base64 characters.
@@ -184,6 +312,8 @@ def _enter(conn: sqlite3.Connection, config: ep.Config, participant: str, payloa
     if stage["kind"] == "consent":
         material = load_consent()
         out["consent"] = {key: material[key] for key in ("markdown", "checkbox", "sha256")}
+    if stage["kind"] == "assessment":
+        out["assessment"] = assessment_for(stage)
     return out
 
 
@@ -269,21 +399,44 @@ def _complete_consent(conn: sqlite3.Connection, config: ep.Config, participant: 
         raise
 
 
+def _complete_assessment(conn: sqlite3.Connection, config: ep.Config, participant: str, stage: dict,
+                         payload: dict | None, answers) -> None:
+    """Store the participant's answers and complete the assessment stage, both or neither.
+
+    The response is keyed by participant and stage and carries the stage's trial id, practice flag, stimulus and
+    condition from the plan, so nothing that identifies the trial comes from the browser. Raises AssessmentError
+    for answers validate_answers refuses.
+    """
+    spec = load_assessment()
+    clean = validate_answers(answers, spec, stage["condition"])
+    response = {"trial_id": stage["trial_id"], "practice": bool(stage.get("practice")), "stimulus": stage["stimulus"],
+                "condition": stage["condition"], "questions_sha256": spec["sha256"], **clean}
+    try:
+        store.record_response(conn, participant, stage["key"], response, commit=False)
+        store.complete_stage(conn, config, participant, stage["key"], payload)  # commits both
+    except Exception:
+        conn.rollback()  # never an answer without the stage, or the stage without an answer
+        raise
+
+
 def advance(conn: sqlite3.Connection, config: ep.Config, participant: str, stage_key: str,
-            payload: dict | None = None, log_dir=None, consent=None) -> dict:
+            payload: dict | None = None, log_dir=None, consent=None, answers=None) -> dict:
     """Complete `stage_key`, enter the next stage, and return it the same shape stage_payload returns it.
 
     The stage key must be the participant's current stage: participant_store.complete_stage ignores a repeated
     submission of a stage already completed (so a double click or a reloaded form cannot record a trial twice)
     and refuses a later one (so no stage can be skipped). Completing the consent stage also needs `consent`
-    (see _complete_consent); a repeated submission of an already completed consent stage does not, and changes
-    nothing. The next stage is entered here because the answer to this call is what the browser draws — it does
+    (see _complete_consent), and completing an assessment stage needs `answers` (see _complete_assessment); a
+    repeated submission of a stage already completed needs neither, and changes nothing. The next stage is entered here because the answer to this call is what the browser draws — it does
     not ask for the stage again — so this is the participant's arrival at it.
     """
     plan = store.checked_plan(conn, config, participant, payload)
-    kind = next((s["kind"] for s in plan["stages"] if s["key"] == stage_key), None)
-    if kind == "consent" and stage_key not in store.completed_stages(conn, participant):
+    stage = next((s for s in plan["stages"] if s["key"] == stage_key), None)
+    pending = stage is not None and stage_key not in store.completed_stages(conn, participant)
+    if pending and stage["kind"] == "consent":
         _complete_consent(conn, config, participant, stage_key, payload, consent)
+    elif pending and stage["kind"] == "assessment":
+        _complete_assessment(conn, config, participant, stage, payload, answers)
     else:
         store.complete_stage(conn, config, participant, stage_key, payload)
     plan, stage, done = _plan_and_stage(conn, config, participant, payload)

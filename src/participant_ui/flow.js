@@ -7,24 +7,27 @@
  *
  *   The consent screen shows the real consent text (src/study_materials/consent.md, sent by the server with the
  *   stage) and its agreement checkbox; ticking it and continuing is what stores the participant's consent. The
- *   screens for the assessment and the questionnaire are still placeholders: participant
- *   responses are not collected until the data collection block. The scenario stage is drawn by scenario_view.js;
+ *   assessment after each conversation is the shared form of assessment.js, the same for the practice and every
+ *   trial; the questionnaire is still a placeholder. The scenario stage is drawn by scenario_view.js;
  *   on the practice scenario, the guided tour of tutorial.js runs over it before the participant can continue.
  *
  * Inputs:
  *   The link token, read from location.pathname (/p/<token>); it is never written into a query string.
  *   JSON from GET /api/stage?t=<token>: {stage: {key, kind, index, trial_id?, practice?, trial?, trials?} | null,
- *   progress: {completed, total}}. The consent stage also carries consent: {markdown, checkbox, sha256}. The
+ *   progress: {completed, total}}. The consent stage also carries consent: {markdown, checkbox, sha256}, and an
+ *   assessment stage carries assessment (see assessment.js). The
  *   stage identifies a trial by its trial id only; the server decides what that trial shows.
  *
  * Outputs:
  *   The stage drawn into #stage and its continue button into #advance; POST /api/stage/complete to advance (at
- *   consent, with {agreed: true, sha256} so the server records the agreement to the exact text shown).
+ *   consent, with {agreed: true, sha256} so the server records the agreement to the exact text shown; at an
+ *   assessment, with the answers, which the server stores against the trial).
  *   For a trial, the mounted scenario view and its interaction events, logged under that trial's id as the
  *   session (the matching session_start event is written by the server).
  *
  * Dependencies:
- *   scenario_view.js (ScenarioView), interaction.js (Interaction), tutorial.js (PracticeTour), and through them
+ *   scenario_view.js (ScenarioView), interaction.js (Interaction), tutorial.js (PracticeTour), assessment.js
+ *   (AssessmentForm), and through them
  *   markdown.js, previews.js, workspace.js, skills.js. participant_server.py (/api/stage, /api/stage/complete and
  *   the content routes).
  */
@@ -105,6 +108,15 @@
     }).then(asJson).then(draw, fail);
   }
 
+  /** Like advance(), for a stage whose answers the participant should not lose: if the server refuses the
+   *  submission (400), `onRefused` is called and the page stays as it is; any other failure is shown as usual. */
+  function submit(key, extra, onRefused) {
+    fetch("/api/stage/complete", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(Object.assign({ token: token, stage_key: key }, extra)),
+    }).then(asJson).then(draw, (err) => (err && err.status === 400 ? onRefused() : fail(err)));
+  }
+
   /** A card screen: heading, optional lead paragraph, a placeholder box, and a continue button. */
   function card(heading, lead, note, label, key) {
     const box = el("div", "stage-card");
@@ -144,13 +156,25 @@
     };
   }
 
+  /** The questions after a conversation: the shared form of assessment.js, the same for the practice and every
+   *  trial. Continue checks the answers first (and says what is missing); the server checks them again, stores
+   *  them with the trial, and only then moves the participant on. A refusal keeps the form and its answers. */
   function assessmentScreen(stage) {
-    const what = stage.practice
-      ? " The practice assessment items go here, so the participant answers one set before the trials begin."
-      : " The scenario assessment items go here. Responses are not collected yet: the questionnaire storage and"
-        + " the response records are built in the data collection block.";
-    card(stage.practice ? "Practice questions" : "Your assessment",
-      "Please answer these questions about the conversation you have just read.", what, "Continue", stage.key);
+    if (!stage.assessment) return fail();
+    const form = AssessmentForm.render(host, stage.assessment, stage.practice ? "Practice questions" : "Your assessment");
+    const button = setButton("Continue", () => {
+      const result = form.collect();
+      form.showMessage("");
+      if (result.errors.length) {
+        form.showErrors(result.errors);
+        button.disabled = false;
+        return;
+      }
+      submit(stage.key, { answers: result.answers }, () => {
+        form.showMessage("Your answers could not be saved. Please check them and try again, or tell the researcher.");
+        button.disabled = false;
+      });
+    });
   }
 
   function questionnaireScreen(stage) {

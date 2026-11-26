@@ -21,18 +21,24 @@ Purpose:
     SHA-256 are stored with their record (`consents`). Keeping the text itself, not only a version label, means the
     database alone answers "what did this participant agree to?" even after the consent file has been revised.
 
-    Apart from consent, this module stores flow state only. Questionnaire responses and interaction events are
-    separate records of the data-collection step and are not written here.
+    Assessment responses. The answers a participant gives after each conversation (`responses`): one row per
+    assessment stage, keyed by participant and stage, carrying the trial id, a `practice` flag, the stimulus and
+    condition the trial showed, the four answers (with the optional description given with "Other" in
+    `sources_other`, empty when there is none), the information sources that were offered, and the SHA-256 of the question text. The practice row is flagged so analysis can leave it out; the `experimental_responses`
+    view is the responses without it. Only the first submission of a stage is kept.
+
+    The post-study questionnaire and the interaction events are separate records and are not written here.
 
 Inputs:
     An experiment configuration and assignments payload (experiment_plan.py) when enrolling participants, and a
     database file (default src/data/participants/participants.db, gitignored: it holds research data).
 
 Outputs:
-    The SQLite database, with three tables: `participants` (one row per enrolled participant: token, condition,
-    list, trial count, configuration provenance, stage fingerprint, timestamps), `progress` (one row per stage a
-    participant has entered, with its completion time) and `consents` (at most one row per participant: when they
-    agreed, and the consent text and its hash). The command line enrols participants, prints their links, and
+    The SQLite database, with four tables and one view: `participants` (one row per enrolled participant: token,
+    condition, list, trial count, configuration provenance, stage fingerprint, timestamps), `progress` (one row per
+    stage a participant has entered, with its completion time), `consents` (at most one row per participant: when
+    they agreed, and the consent text and its hash), `responses` (one row per completed assessment) and the view
+    `experimental_responses` (responses without the practice). The command line enrols participants, prints their links, and
     prints how far each participant has come, including whether they have consented.
 
 Dependencies:
@@ -64,7 +70,7 @@ import experiment_plan as ep
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DB = ROOT / "src" / "data" / "participants" / "participants.db"
 TOKEN_BYTES = 24  # 32 URL-safe characters
-SCHEMA_VERSION = 2  # 2: the consents table
+SCHEMA_VERSION = 4  # 2: the consents table; 3: responses and experimental_responses; 4: responses.sources_other
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS participants (
     participant_id   TEXT PRIMARY KEY,
@@ -93,6 +99,24 @@ CREATE TABLE IF NOT EXISTS consents (
     consent_sha256 TEXT NOT NULL,
     consent_text   TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS responses (
+    participant_id   TEXT NOT NULL REFERENCES participants(participant_id),
+    stage_key        TEXT NOT NULL,
+    trial_id         TEXT NOT NULL,
+    practice         INTEGER NOT NULL,      -- 1 for the practice trial: never part of the experimental analysis
+    stimulus         TEXT NOT NULL,
+    condition        TEXT NOT NULL,
+    performed_safely TEXT NOT NULL,         -- "yes" or "no"
+    confidence       INTEGER NOT NULL,      -- 1 (not at all confident) to 5 (extremely confident)
+    reasoning        TEXT NOT NULL,
+    sources          TEXT NOT NULL,         -- JSON list of the selected source ids, in the order offered
+    sources_offered  TEXT NOT NULL,         -- JSON list of the source ids this participant could choose from
+    sources_other    TEXT NOT NULL DEFAULT '', -- the optional description given with "Other"; '' when none
+    questions_sha256 TEXT NOT NULL,         -- of src/study_materials/assessment.json as served
+    submitted_at     TEXT NOT NULL,
+    PRIMARY KEY (participant_id, stage_key)
+);
+CREATE VIEW IF NOT EXISTS experimental_responses AS SELECT * FROM responses WHERE practice = 0;
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
 
@@ -131,11 +155,19 @@ def connect(path: Path = DEFAULT_DB) -> sqlite3.Connection:
     elif int(row["value"]) > SCHEMA_VERSION:
         raise StoreError(f"{path}: schema version {row['value']} is newer than this module ({SCHEMA_VERSION})")
     elif int(row["value"]) < SCHEMA_VERSION:
-        # Every change so far only adds tables, which the CREATE TABLE IF NOT EXISTS script above has just made,
-        # so an older database is upgraded by recording the new version. Existing rows are untouched.
+        # New tables are made by the CREATE TABLE IF NOT EXISTS script above. A column added to a table that already
+        # exists is not, so it is added here; a table the script has just created already has it. Existing rows are
+        # untouched apart from taking the new column's default.
+        _add_column_if_missing(conn, "responses", "sources_other", "TEXT NOT NULL DEFAULT ''")  # version 4
         conn.execute("UPDATE meta SET value = ? WHERE key = 'schema_version'", (str(SCHEMA_VERSION),))
         conn.commit()
     return conn
+
+
+def _add_column_if_missing(conn: sqlite3.Connection, table: str, column: str, declaration: str) -> None:
+    """Add `column` to `table` unless it is already there (used when upgrading an older database)."""
+    if column not in {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {declaration}")
 
 
 def plan_fingerprint(plan: dict) -> str:
@@ -229,6 +261,42 @@ def record_consent(conn: sqlite3.Connection, participant: str, consent_sha256: s
     if commit:
         conn.commit()
     return consent_of(conn, participant)
+
+
+RESPONSE_FIELDS = ("trial_id", "practice", "stimulus", "condition", "performed_safely", "confidence", "reasoning",
+                   "sources", "sources_other", "sources_offered", "questions_sha256")
+
+
+def record_response(conn: sqlite3.Connection, participant: str, stage_key: str, response: dict,
+                    commit: bool = True) -> dict:
+    """Store one assessment response; `response` holds RESPONSE_FIELDS, already validated (participant_flow.py).
+
+    `sources` and `sources_offered` are lists, stored as JSON. Only the first submission of a stage is kept, so a
+    double click or a resubmitted form cannot change an answer after the fact. Pass commit=False to make this part
+    of a larger transaction (participant_flow.advance commits it together with completing the assessment stage).
+    Returns the stored response.
+    """
+    row = {name: response[name] for name in RESPONSE_FIELDS}
+    row["practice"] = int(bool(row["practice"]))
+    row["sources"], row["sources_offered"] = json.dumps(row["sources"]), json.dumps(row["sources_offered"])
+    conn.execute(f"INSERT INTO responses (participant_id, stage_key, submitted_at, {', '.join(RESPONSE_FIELDS)}) "
+                 f"VALUES (?, ?, ?, {', '.join('?' * len(RESPONSE_FIELDS))}) "
+                 "ON CONFLICT (participant_id, stage_key) DO NOTHING",
+                 (participant, stage_key, now(), *row.values()))
+    if commit:
+        conn.commit()
+    return response_of(conn, participant, stage_key)
+
+
+def response_of(conn: sqlite3.Connection, participant: str, stage_key: str) -> dict | None:
+    """One stored response with its JSON lists decoded, or None."""
+    row = conn.execute("SELECT * FROM responses WHERE participant_id = ? AND stage_key = ?",
+                       (participant, stage_key)).fetchone()
+    if row is None:
+        return None
+    out = dict(row)
+    out["sources"], out["sources_offered"] = json.loads(out["sources"]), json.loads(out["sources_offered"])
+    return out
 
 
 def consent_of(conn: sqlite3.Connection, participant: str) -> dict | None:
@@ -339,7 +407,7 @@ def status(conn: sqlite3.Connection, config: ep.Config, participant: str,
 
 
 def reset(conn: sqlite3.Connection, config: ep.Config, participant: str, payload: dict | None = None) -> dict:
-    """Start a simulated participant over under `config`: delete their progress and consent, keep their link.
+    """Start a simulated participant over under `config`: delete their progress, consent and answers, keep their link.
 
     For re-testing the flow from consent with the same link, including after the stage sequence itself has changed:
     the participant's plan is derived again from `config` and its fingerprint stored, so a link that would otherwise
@@ -349,9 +417,9 @@ def reset(conn: sqlite3.Connection, config: ep.Config, participant: str, payload
     Only a participant enrolled from a simulated (development) configuration can be reset, and only under a
     simulated configuration; anything else raises StoreError, so real participants' progress and consent can never
     be erased this way and a test participant cannot be attached to the study design. The token and the enrolment
-    time are kept. Interaction logs are not in this database and are not touched: a reset participant's trials
-    append to their existing log files. Returns {"participant_id", "stages_cleared", "consent_cleared",
-    "plan_changed"}. Raises KeyError for a participant who is not enrolled or not in the assignments.
+    time are kept; their assessment responses are deleted with their progress. Interaction logs are not in this
+    database and are not touched: a reset participant's trials append to their existing log files. Returns
+    {"participant_id", "stages_cleared", "consent_cleared", "responses_cleared", "plan_changed"}. Raises KeyError for a participant who is not enrolled or not in the assignments.
     """
     row = record(conn, participant)
     if not row["simulated"]:
@@ -363,13 +431,15 @@ def reset(conn: sqlite3.Connection, config: ep.Config, participant: str, payload
     fingerprint = plan_fingerprint(plan)
     stages = conn.execute("DELETE FROM progress WHERE participant_id = ?", (participant,)).rowcount
     consent = conn.execute("DELETE FROM consents WHERE participant_id = ?", (participant,)).rowcount
+    # Their answers go too: otherwise redoing a trial would keep the old answer (only the first is stored).
+    responses = conn.execute("DELETE FROM responses WHERE participant_id = ?", (participant,)).rowcount
     conn.execute("UPDATE participants SET completed_at = NULL, plan_fingerprint = ?, config_path = ?, "
                  "assignments_path = ?, condition = ?, list = ?, trials = ? WHERE participant_id = ?",
                  (fingerprint, str(config["path"]), str(config["assignments_path"]), plan["condition"], plan["list"],
                   plan["trials"], participant))
     conn.commit()
     return {"participant_id": participant, "stages_cleared": stages, "consent_cleared": bool(consent),
-            "plan_changed": fingerprint != row["plan_fingerprint"]}
+            "responses_cleared": responses, "plan_changed": fingerprint != row["plan_fingerprint"]}
 
 
 def link(token: str, base_url: str = "") -> str:

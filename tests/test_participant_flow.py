@@ -107,6 +107,22 @@ class FlowServer:
         return self.complete(participant, stage["key"],
                              consent={"agreed": True, "sha256": stage["consent"]["sha256"]})
 
+    @staticmethod
+    def answers_for(stage, **overrides):
+        """A complete, valid set of answers for an assessment stage, as the form would send them."""
+        questions = {q["id"]: q for q in stage["assessment"]["questions"]}
+        answers = {"performed_safely": questions["performed_safely"]["options"][0]["id"], "confidence": 3,
+                   "reasoning": "A test answer.", "sources": [questions["sources"]["options"][0]["id"]],
+                   "sha256": stage["assessment"]["sha256"]}
+        answers.update(overrides)
+        return answers
+
+    def answer(self, participant, **overrides):
+        """Answer the participant's current assessment stage the way the form does."""
+        stage = self.stage(participant)["stage"]
+        assert stage["kind"] == "assessment", stage
+        return self.complete(participant, stage["key"], answers=self.answers_for(stage, **overrides))
+
     def walk(self, participant, until=None):
         """Advance the way the browser does, stopping when `until` is the current stage (or the sequence ends).
 
@@ -119,6 +135,8 @@ class FlowServer:
         while stage is not None and stage["key"] != until:
             if stage["kind"] == "consent":
                 answer = self.agree(participant)
+            elif stage["kind"] == "assessment":
+                answer = self.complete(participant, stage["key"], answers=self.answers_for(stage))
             else:
                 answer = self.complete(participant, stage["key"])
             assert answer[0] == 200, answer
@@ -167,7 +185,8 @@ class ExposureTests(FlowTestCase):
             self.assertNotIn("stimulus", stage)
             self.assertNotIn("scenario", stage)
             answer = (self.srv.agree(participant) if stage["kind"] == "consent"
-                      else self.srv.complete(participant, stage["key"]))
+                      else self.srv.complete(participant, stage["key"], answers=self.srv.answers_for(stage))
+                      if stage["kind"] == "assessment" else self.srv.complete(participant, stage["key"]))
             self.assertEqual(answer[0], 200)
         for text in seen:
             for secret in secrets:
@@ -383,6 +402,117 @@ class IntegrityTests(FlowTestCase):
             self.assertEqual(srv.complete(participant, "trial_01_scenario")[0], 409)
         finally:
             srv.close()
+
+
+class AssessmentTests(unittest.TestCase):
+    """The answers after each conversation: stored against the right trial, practice kept apart, nothing
+    recorded that the participant did not actively give."""
+
+    def setUp(self):
+        self.srv = FlowServer()
+
+    def tearDown(self):
+        self.srv.close()
+
+    def rows(self, participant):
+        conn = store.connect(self.srv.handler.db_path)
+        try:
+            return {r["stage_key"]: store.response_of(conn, participant, r["stage_key"])
+                    for r in conn.execute("SELECT stage_key FROM responses WHERE participant_id = ?", (participant,))}
+        finally:
+            conn.close()
+
+    def experimental_view(self, participant):
+        conn = store.connect(self.srv.handler.db_path)
+        try:
+            return [r["stage_key"] for r in conn.execute(
+                "SELECT stage_key FROM experimental_responses WHERE participant_id = ?", (participant,))]
+        finally:
+            conn.close()
+
+    def test_responses_are_stored_against_the_trial_and_the_practice_is_kept_out_of_analysis(self):
+        participant = participant_with("high")
+        plan = {s["key"]: s for s in ep.plan_for(CONFIG, participant, PAYLOAD)["stages"]}
+        self.srv.walk(participant, until="practice_assessment")
+        self.assertEqual(self.srv.answer(participant, performed_safely="no", confidence=2, reasoning="  why  ",
+                                         sources=["activity", "request"])[0], 200)
+        self.srv.walk(participant, until="trial_01_assessment")
+        self.assertEqual(self.srv.answer(participant, confidence=5)[0], 200)
+        rows = self.rows(participant)
+        practice, trial = rows["practice_assessment"], rows["trial_01_assessment"]
+        for key, row in (("practice_assessment", practice), ("trial_01_assessment", trial)):
+            self.assertEqual(row["trial_id"], plan[key]["trial_id"])
+            self.assertEqual(row["stimulus"], plan[key]["stimulus"])
+            self.assertEqual(row["condition"], plan[key]["condition"])
+            self.assertEqual(row["questions_sha256"], flow.load_assessment()["sha256"])
+        self.assertEqual((practice["practice"], trial["practice"]), (1, 0))
+        self.assertEqual((practice["performed_safely"], practice["confidence"], practice["reasoning"]), ("no", 2, "why"))
+        self.assertEqual(practice["sources"], ["request", "activity"])  # stored in the order offered
+        self.assertEqual(practice["sources_offered"], ["request", "activity", "response", "workspace", "skills", "other"])
+        self.assertEqual(practice["sources_other"], "")
+        self.assertEqual(trial["confidence"], 5)
+        self.assertEqual(self.experimental_view(participant), ["trial_01_assessment"])
+
+    def test_an_incomplete_or_malformed_answer_is_refused_and_nothing_is_stored(self):
+        participant = participant_with("low")
+        self.srv.walk(participant, until="practice_assessment")
+        for bad in ({"confidence": None}, {"confidence": 0}, {"confidence": 6}, {"confidence": "3"},
+                    {"confidence": True}, {"confidence": 2.5}, {"performed_safely": None},
+                    {"performed_safely": "maybe"}, {"reasoning": "   "}, {"reasoning": "x" * 4001},
+                    {"sources": []}, {"sources": ["request", "request"]}, {"sources": ["nonsense"]},
+                    {"sha256": "0" * 64}):
+            with self.subTest(bad=bad):
+                self.assertEqual(self.srv.answer(participant, **bad)[0], 400)
+        self.assertEqual(self.srv.complete(participant, "practice_assessment")[0], 400)  # no answers at all
+        self.assertEqual(self.srv.stage(participant)["stage"]["key"], "practice_assessment")
+        self.assertEqual(self.rows(participant), {})
+
+    def test_only_the_sources_in_the_participants_own_view_are_offered_or_accepted(self):
+        offered = {}
+        for condition in ("low", "high"):
+            participant = participant_with(condition)
+            self.srv.walk(participant, until="practice_assessment")
+            stage = self.srv.stage(participant)["stage"]
+            question = next(q for q in stage["assessment"]["questions"] if q["id"] == "sources")
+            offered[condition] = [o["id"] for o in question["options"]]
+        self.assertNotIn("activity", offered["low"])
+        self.assertIn("activity", offered["high"])
+        low = participant_with("low")
+        self.assertEqual(self.srv.answer(low, sources=["activity"])[0], 400)
+        self.assertEqual(self.rows(low), {})
+
+    def test_other_is_offered_last_and_saved_with_or_without_a_description(self):
+        for condition in ("low", "high"):
+            participant = participant_with(condition)
+            self.srv.walk(participant, until="practice_assessment")
+            stage = self.srv.stage(participant)["stage"]
+            options = next(q for q in stage["assessment"]["questions"] if q["id"] == "sources")["options"]
+            self.assertEqual((options[-1]["id"], options[-1]["label"]), ("other", "Other (optional description)"))
+        low, high = participant_with("low"), participant_with("high")
+        # A description is never stored without "Other", and it keeps its length limit.
+        for bad in ({"sources": ["request"], "sources_other": "text without Other"},
+                    {"sources": ["other"], "sources_other": "x" * 501}, {"sources": ["other"], "sources_other": 5}):
+            with self.subTest(bad=bad):
+                self.assertEqual(self.srv.answer(low, **bad)[0], 400)
+        self.assertEqual(self.rows(low), {})
+        # "Other" alone (an empty or blank description) is a complete answer and is saved.
+        self.assertEqual(self.srv.answer(low, sources=["other"], sources_other="   ")[0], 200)
+        row = self.rows(low)["practice_assessment"]
+        self.assertEqual((row["sources"], row["sources_other"]), (["other"], ""))
+        # A description, when given, is saved with it.
+        self.assertEqual(self.srv.answer(high, sources=["other", "skills"], sources_other="  a news article  ")[0], 200)
+        row = self.rows(high)["practice_assessment"]
+        self.assertEqual((row["sources"], row["sources_other"]), (["skills", "other"], "a news article"))
+        self.assertEqual(row["sources_offered"][-1], "other")
+
+    def test_submitting_an_assessment_again_keeps_the_first_answers(self):
+        participant = participant_with("low")
+        self.srv.walk(participant, until="practice_assessment")
+        stage = self.srv.stage(participant)["stage"]
+        self.assertEqual(self.srv.answer(participant, confidence=1)[0], 200)
+        again = self.srv.complete(participant, stage["key"], answers=FlowServer.answers_for(stage, confidence=5))
+        self.assertEqual(again[0], 200)
+        self.assertEqual(self.rows(participant)["practice_assessment"]["confidence"], 1)
 
 
 class ConsentTests(unittest.TestCase):

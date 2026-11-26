@@ -43,6 +43,43 @@ class ConnectTests(unittest.TestCase):
         self.assertEqual(again.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()["value"],
                          str(store.SCHEMA_VERSION))
 
+    def test_an_older_database_gains_the_responses_table_and_keeps_its_data(self):
+        path = temp_db()
+        conn = store.connect(path)
+        row = store.enrol(conn, CONFIG, FIRST, PAYLOAD)
+        conn.executescript("DROP VIEW experimental_responses; DROP TABLE responses;")
+        conn.execute("UPDATE meta SET value = '2' WHERE key = 'schema_version'")
+        conn.commit()
+        conn.close()
+        conn = store.connect(path)
+        self.assertEqual(conn.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()["value"],
+                         str(store.SCHEMA_VERSION))
+        self.assertEqual(conn.execute("SELECT COUNT(*) FROM experimental_responses").fetchone()[0], 0)
+        self.assertEqual(store.by_token(conn, row["token"])["participant_id"], FIRST)
+
+    def test_a_version_3_database_gains_the_other_source_column_and_keeps_its_responses(self):
+        """Databases already upgraded to version 3 (responses without sources_other) must not lose answers."""
+        path = temp_db()
+        conn = store.connect(path)
+        store.enrol(conn, CONFIG, FIRST, PAYLOAD)
+        conn.executescript("""
+            DROP VIEW experimental_responses; DROP TABLE responses;
+            CREATE TABLE responses (participant_id TEXT NOT NULL, stage_key TEXT NOT NULL, trial_id TEXT NOT NULL,
+                practice INTEGER NOT NULL, stimulus TEXT NOT NULL, condition TEXT NOT NULL,
+                performed_safely TEXT NOT NULL, confidence INTEGER NOT NULL, reasoning TEXT NOT NULL,
+                sources TEXT NOT NULL, sources_offered TEXT NOT NULL, questions_sha256 TEXT NOT NULL,
+                submitted_at TEXT NOT NULL, PRIMARY KEY (participant_id, stage_key));
+            CREATE VIEW experimental_responses AS SELECT * FROM responses WHERE practice = 0;""")
+        conn.execute("INSERT INTO responses VALUES (?, 'trial_01_assessment', 't', 0, 's', 'low', 'no', 4, 'r', "
+                     "'[\"request\"]', '[\"request\"]', 'h', 'now')", (FIRST,))
+        conn.execute("UPDATE meta SET value = '3' WHERE key = 'schema_version'")
+        conn.commit()
+        conn.close()
+        conn = store.connect(path)
+        kept = store.response_of(conn, FIRST, "trial_01_assessment")
+        self.assertEqual((kept["confidence"], kept["sources_other"]), (4, ""))
+        self.assertEqual(conn.execute("SELECT sources_other FROM experimental_responses").fetchone()[0], "")
+
     def test_a_newer_schema_version_is_refused(self):
         path = temp_db()
         conn = store.connect(path)
@@ -198,8 +235,13 @@ class ResetTests(unittest.TestCase):
         store.record_consent(self.conn, FIRST, "0" * 64, "consent text")
 
     def test_a_simulated_participant_restarts_at_consent_with_the_same_link(self):
+        store.record_response(self.conn, FIRST, "practice_assessment", {
+            "trial_id": "x", "practice": True, "stimulus": "s", "condition": "low", "performed_safely": "yes",
+            "confidence": 3, "reasoning": "r", "sources": ["request"], "sources_other": "", "sources_offered": ["request"],
+            "questions_sha256": "0" * 64})
         cleared = store.reset(self.conn, CONFIG, FIRST, PAYLOAD)
         self.assertEqual(cleared["stages_cleared"], 3)
+        self.assertEqual(cleared["responses_cleared"], 1)  # redoing the trial must not keep the old answer
         self.assertTrue(cleared["consent_cleared"])
         self.assertEqual(store.current_stage(self.conn, CONFIG, FIRST, PAYLOAD)["key"], "consent")
         self.assertIsNone(store.consent_of(self.conn, FIRST))
