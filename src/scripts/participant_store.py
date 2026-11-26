@@ -58,8 +58,12 @@ Outputs:
     stage), `progress` (one row per stage a participant has entered, with its completion time), `consents` (at
     most one row per participant: when they agreed, and the consent text and its hash), `responses` (one row per
     completed assessment), `events` (interaction events), `questionnaire_responses` (the post-study questionnaire,
-    one row per item) and the view `experimental_responses` (responses without the practice). CHECK constraints refuse out-of-range answers, unknown event types and conditions. The command line enrols participants, prints their links, and
-    prints how far each participant has come, including whether they have consented.
+    one row per item) and the view `experimental_responses` (responses without the practice). CHECK constraints
+    refuse out-of-range answers, unknown event types and conditions. Researcher views (no link tokens):
+    `participant_overview` (one row per participant: condition, consent, how far they are, counts), `trial_summary`
+    (one row per trial: what it showed, viewing and response times, the answers) and `experimental_events` (events
+    without the practice). The command line enrols participants, prints their links, and prints how far each
+    participant has come, including whether they have consented.
 
 Dependencies:
     experiment_plan.py (configuration, assignments and the derived stage sequence). Python standard library only.
@@ -95,8 +99,9 @@ SIDECARS = ("-wal", "-shm", "-journal")  # files SQLite keeps beside a database;
 TOKEN_BYTES = 24  # 32 URL-safe characters
 # 2: the consents table; 3: responses and experimental_responses; 4: responses.sources_other;
 # 5: plan_stages (the stage sequence each participant was enrolled under), events (interaction events, which
-#    replace the JSON-lines log files) and CHECK constraints on responses; 6: questionnaire_responses.
-SCHEMA_VERSION = 6
+#    replace the JSON-lines log files) and CHECK constraints on responses; 6: questionnaire_responses;
+# 7: the researcher views participant_overview, trial_summary and experimental_events (VIEWS).
+SCHEMA_VERSION = 7
 STAGE_KINDS = ("consent", "scenario", "assessment", "questionnaire", "completion")  # as experiment_plan.STAGE_KINDS
 CONDITIONS = ("low", "high")
 # Every interaction event type the database accepts. interaction_log.EVENT_FIELDS validates the fields of each
@@ -211,6 +216,54 @@ CREATE TABLE IF NOT EXISTS questionnaire_responses (
 );
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
+
+# Read-only views for researchers (DB Browser for SQLite, participant_data.py). They hold no data of their own and
+# never show a link token. Times are seconds between the stored ISO timestamps.
+VIEWS = """
+CREATE VIEW IF NOT EXISTS participant_overview AS
+SELECT p.participant_id, p.condition, p.list, p.trials, p.simulated, p.enrolled_at,
+       c.agreed_at AS consented_at, c.consent_sha256,
+       (SELECT COUNT(*) FROM plan_stages s WHERE s.participant_id = p.participant_id) AS stages_total,
+       (SELECT COUNT(*) FROM progress g WHERE g.participant_id = p.participant_id
+                                          AND g.completed_at IS NOT NULL) AS stages_completed,
+       (SELECT s.stage_key FROM plan_stages s WHERE s.participant_id = p.participant_id AND NOT EXISTS (
+            SELECT 1 FROM progress g WHERE g.participant_id = s.participant_id AND g.stage_key = s.stage_key
+                                       AND g.completed_at IS NOT NULL)
+        ORDER BY s.stage_index LIMIT 1) AS current_stage,
+       p.completed_at,
+       (SELECT COUNT(*) FROM responses r WHERE r.participant_id = p.participant_id AND r.practice = 0)
+           AS experimental_responses,
+       (SELECT COUNT(*) FROM events e WHERE e.participant_id = p.participant_id) AS events,
+       (SELECT COUNT(*) FROM questionnaire_responses q WHERE q.participant_id = p.participant_id)
+           AS questionnaire_items,
+       p.config_path, p.plan_fingerprint
+FROM participants p LEFT JOIN consents c ON c.participant_id = p.participant_id;
+
+CREATE VIEW IF NOT EXISTS trial_summary AS
+SELECT s.participant_id, s.trial_id, s.trial_ordinal,
+       CASE s.practice WHEN 1 THEN 'practice' ELSE 'experimental' END AS trial_type,
+       s.scenario, s.stimulus_version, s.stimulus, s.condition,
+       sp.entered_at AS scenario_entered_at, sp.completed_at AS scenario_completed_at,
+       ROUND((julianday(sp.completed_at) - julianday(sp.entered_at)) * 86400, 3) AS scenario_s,
+       (SELECT SUM(e.duration_ms) FROM events e WHERE e.participant_id = s.participant_id
+            AND e.trial_id = s.trial_id AND e.type = 'scenario_visible') AS scenario_visible_ms,
+       ap.entered_at AS assessment_entered_at, ap.completed_at AS assessment_completed_at,
+       ROUND((julianday(ap.completed_at) - julianday(ap.entered_at)) * 86400, 3) AS assessment_s,
+       r.performed_safely, r.confidence, r.reasoning, r.sources, r.sources_other, r.sources_offered,
+       r.questions_sha256, r.submitted_at,
+       (SELECT COUNT(*) FROM events e WHERE e.participant_id = s.participant_id AND e.trial_id = s.trial_id
+            AND e.type = 'stage_load') AS stage_loads,
+       (SELECT COUNT(*) FROM events e WHERE e.participant_id = s.participant_id AND e.trial_id = s.trial_id)
+           AS events
+FROM plan_stages s
+LEFT JOIN progress sp ON sp.participant_id = s.participant_id AND sp.stage_key = s.stage_key
+LEFT JOIN plan_stages a ON a.participant_id = s.participant_id AND a.trial_id = s.trial_id AND a.kind = 'assessment'
+LEFT JOIN progress ap ON ap.participant_id = a.participant_id AND ap.stage_key = a.stage_key
+LEFT JOIN responses r ON r.participant_id = s.participant_id AND r.stage_key = a.stage_key
+WHERE s.kind = 'scenario';
+
+CREATE VIEW IF NOT EXISTS experimental_events AS SELECT * FROM events WHERE practice = 0;
+"""
 def _study_triggers() -> str:
     """Triggers that make a study database's records append-only (see connect).
 
@@ -288,7 +341,7 @@ def connect(path: Path, environment: str | None = None) -> sqlite3.Connection:
     conn.execute("PRAGMA journal_mode = WAL")
     conn.execute("PRAGMA busy_timeout = 5000")
     conn.execute("PRAGMA synchronous = FULL")
-    conn.executescript(SCHEMA)
+    conn.executescript(SCHEMA + VIEWS)
     row = conn.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()
     if row is None:
         conn.execute("INSERT INTO meta (key, value) VALUES ('schema_version', ?)", (str(SCHEMA_VERSION),))

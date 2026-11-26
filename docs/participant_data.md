@@ -1,0 +1,173 @@
+# Participant data: storage, access and export
+
+This guide is for researchers. Participants never see any of it: nothing below is served by
+`participant_server.py`.
+
+## Where the data is
+
+All participant data lives in **one SQLite database per environment**, in `data/participants/`:
+
+| File | Environment | Configuration |
+|---|---|---|
+| `data/participants/development.sqlite3` | `development`: test participants only | `src/data/experiment_configs/development.json` |
+| `data/participants/study.sqlite3` | `study`: real participants | `src/data/experiment_configs/study.json` |
+
+The database is the single source of truth for everything recorded about a participant:
+
+- their enrolment;
+- their condition and counterbalancing list;
+- their stage sequence, which records the scenario order;
+- consent;
+- progress and timestamps;
+- assessment answers;
+- interaction events;
+- the post-study questionnaire.
+
+Exports and backups are derived from it and never edited. A database is stamped with its environment the first
+time it is opened and refuses the other one. A study database is **append-only** for recorded data: SQLite
+triggers refuse changing or deleting answers, consents, events and questionnaire answers, and deleting
+participants or progress.
+
+`data/participants/` is gitignored except its `README.md`, and nothing in it is ever served. The folder is private
+to its owner (0700) and the files are readable by their owner only (0600). Never copy this folder to a shared or
+synced location (OneDrive, email, Git). Store backups only where the ethics approval allows.
+
+Every command below takes `--config`. Without it, commands use the study configuration.
+
+## Quick commands
+
+```bash
+python3 -B src/scripts/participant_store.py --config src/data/experiment_configs/development.json --status
+```
+
+```bash
+python3 -B src/scripts/participant_data.py --config src/data/experiment_configs/development.json show P001
+```
+
+```bash
+python3 -B src/scripts/participant_data.py --config src/data/experiment_configs/development.json export
+```
+
+```bash
+python3 -B src/scripts/participant_data.py --config src/data/experiment_configs/development.json export --participant P001
+```
+
+```bash
+python3 -B src/scripts/participant_data.py --config src/data/experiment_configs/development.json check
+```
+
+What each command does:
+
+- `--status` shows how far each participant has come.
+- `show ID` prints everything stored about one participant as JSON. It omits their link token. It includes the
+  consent text only with `--consent-text`.
+- `export` writes the CSV files to `data/participants/exports/<environment>/`. With `--participant ID` they go
+  to `<...>/<ID>/` instead. Use `--out DIR` for another folder.
+- `check` reports inconsistent records and exits with status 1 if it finds any.
+
+## Inspecting the database with DB Browser for SQLite
+
+[DB Browser for SQLite](https://sqlitebrowser.org/) is a free desktop viewer. On macOS, install it from that site
+or with `brew install --cask db-browser-for-sqlite`.
+
+1. **Open it read-only.** Choose *File → Open Database Read Only…* (⇧⌘O) and pick
+   `data/participants/<environment>.sqlite3`. Read-only mode makes accidental edits impossible. It is safe while
+   the participant server is running: SQLite's write-ahead log lets readers and the server work at the same time.
+   Close DB Browser when you are done, so it does not hold the file open.
+2. **Start with the views.** On the *Browse Data* tab, choose a table or view from the drop-down:
+   - `participant_overview`: one row per participant, with condition, list, consent time, stages completed and
+     total, current stage, completion time, and counts of answers, events and questionnaire items.
+   - `trial_summary`: one row per trial (practice included, marked by `trial_type`). It holds the scenario,
+     stimulus version (`practice`, `safe` or `unsafe`), stimulus folder and condition. It also has when the
+     scenario and its assessment were entered and completed, plus `scenario_s`, `assessment_s` and
+     `scenario_visible_ms`. Then come the four answers and the number of page loads and events.
+   - `experimental_responses` and `experimental_events`: answers and events without the practice trial.
+3. **Filter by participant.** Type the participant ID (for example `P001`) in the filter box above the
+   `participant_id` column.
+4. **Run queries.** On the *Execute SQL* tab, paste one of the queries below and press ⌘↩.
+
+Everything about one participant, table by table:
+
+```sql
+SELECT * FROM participant_overview WHERE participant_id = 'P001';
+SELECT * FROM plan_stages        WHERE participant_id = 'P001' ORDER BY stage_index;  -- what they were shown, in order
+SELECT * FROM progress           WHERE participant_id = 'P001' ORDER BY stage_index;  -- when each stage was entered/completed
+SELECT participant_id, agreed_at, consent_sha256 FROM consents WHERE participant_id = 'P001';
+SELECT * FROM responses          WHERE participant_id = 'P001';
+SELECT * FROM questionnaire_responses WHERE participant_id = 'P001';
+SELECT * FROM events             WHERE participant_id = 'P001' ORDER BY trial_id, seq;
+```
+
+How each experimental trial went, for all participants:
+
+```sql
+SELECT participant_id, trial_ordinal, stimulus_version, condition, performed_safely, confidence,
+       scenario_s, scenario_visible_ms, assessment_s
+FROM trial_summary WHERE trial_type = 'experimental' ORDER BY participant_id, trial_ordinal;
+```
+
+Which skill documents were opened, and for how long:
+
+```sql
+SELECT participant_id, trial_id, skill_id, SUM(duration_ms) AS viewed_ms
+FROM experimental_events WHERE type = 'skill_doc_view'
+GROUP BY participant_id, trial_id, skill_id;
+```
+
+Do not edit data in DB Browser. In a study database, the triggers refuse edits anyway.
+
+## What is stored
+
+| Table | One row per | Main columns |
+|---|---|---|
+| `participants` | enrolled participant | `participant_id` (pseudonymous), `token` (the link; never exported), `condition`, `list`, `trials`, `simulated`, configuration and stage fingerprint, `enrolled_at`, `completed_at` |
+| `plan_stages` | stage of a participant's sequence | `stage_index`, `stage_key`, `kind`, `trial_id`, `trial_ordinal`, `practice`, `scenario`, `stimulus_version`, `stimulus`, `condition` |
+| `progress` | stage a participant has entered | `entered_at` (first arrival), `completed_at` |
+| `consents` | participant who agreed | `agreed_at`, `consent_sha256`, `consent_text` (the exact text agreed to) |
+| `responses` | completed assessment (practice included, `practice` = 1) | `performed_safely`, `confidence` (1–5), `reasoning`, `sources` and `sources_offered` (JSON lists), `sources_other`, `questions_sha256`, `submitted_at` |
+| `events` | interaction event | `trial_id`, `stage_key`, `practice`, `seq` (order of arrival within the trial), `type`, `origin` (`browser`, `server`, or `legacy` for events imported from the retired files), `tab`, `item_id`, `skill_id`, `card_id`, `duration_ms`, `client_ms` (browser clock), `server_time` |
+| `questionnaire_responses` | participant and questionnaire item | `item_id`, `answer` (`''` for an optional item left blank), `questionnaire_sha256`, `submitted_at` |
+| `meta` | setting | `schema_version`, `environment`, `legacy_import` |
+
+Event types:
+
+- **Server events.** `session_start` is written the first time a trial's conversation is shown. `stage_load` is
+  written every time the page asks for the current stage, so reloads and resumed sessions show up.
+- **Viewing time.** `scenario_visible` is the visible time before Continue, summed over reloads.
+- **Workspace.** `workspace_panel_open` and `workspace_panel_close` (with its duration), `workspace_tab_open` and
+  `workspace_tab_view`, and `workspace_item_open`.
+- **Skills.** `skills_tab_open` and `skills_tab_view`, and `skill_doc_open` and `skill_doc_view`.
+- **Activity cards (high condition).** `trace_card_expand`, `trace_card_collapse` and `trace_card_view`.
+
+Durations are measured in the browser and count only while the page is visible. Events that are sent at nearly the
+same moment can arrive in a different order than they were produced; `client_ms` keeps the browser's order.
+
+## CSV exports
+
+`export` writes one consistent snapshot of the database. Every file has a header row, and the folder also gets
+`export_manifest.json`, which records the source database, its environment, schema version, export time, and each
+file's row count and SHA-256. Exports never contain link tokens or the consent text. They are rebuilt from scratch
+on every run, so never edit them; change nothing but the database, and only through the application.
+
+| File | One row per | Notes |
+|---|---|---|
+| `participants.csv` | participant | `participant_overview` |
+| `trials.csv` | trial | `trial_summary`, plus the measures of `interaction_log.summarize`: Skills tab and skill-document use, workspace panel time, tabs and items, activity cards expanded and viewed. Dict-valued measures are JSON. `trial_type` is `practice` or `experimental`. |
+| `progress.csv` | stage entered | stage kind, trial and `trial_type` |
+| `events.csv` | event | with `trial_type` |
+| `questionnaire.csv` | participant and item | long format |
+
+For analysis, filter `trial_type == "experimental"`. The practice trial is never part of the experimental analysis.
+
+Free-text answers are exported exactly as participants typed them. A spreadsheet program may treat a cell that
+starts with `=`, `+`, `-` or `@` as a formula, so load the files with an analysis tool (R, pandas) instead.
+
+## Persistence
+
+- Every answer and stage change is written in one transaction with the stage it completes and committed before
+  the server replies. SQLite is in write-ahead-log mode with `synchronous = FULL`, so an acknowledged write
+  survives a crash or power loss.
+- The browser keeps no state. Reloading the page, closing the tab, or restarting the server resumes the
+  participant at their first unfinished stage, and no stage can be completed twice.
+- While a database is open, SQLite keeps `-wal` and `-shm` files beside it. They are part of the database: never
+  delete them, and never copy the `.sqlite3` file on its own. Use a backup instead.
