@@ -27,7 +27,9 @@ Inputs:
     questionnaire.js, scenario_view.js, style.css, markdown.js, previews.js, workspace.js, skills.js, interaction.js).
 
 Outputs:
-    A local HTTP server (default http://127.0.0.1:8765).
+    A local HTTP server (default http://127.0.0.1:8765). It listens on this computer only unless --allow-network
+    is given with another --host, and refuses --researcher-preview on any address but this computer's. Every
+    response carries SECURITY_HEADERS (no caching, no referrer, no framing, only this server's own files).
 
     Participant routes. A participant is given one link, /p/<token>, and every request after it identifies them
     by that token alone: which scenario and which transparency condition they are shown is resolved from their
@@ -70,6 +72,7 @@ Dependencies:
 Usage:
     python3 -B src/scripts/participant_server.py [--port 8765] [--host 127.0.0.1]
         [--experiment-config PATH] [--db PATH] [--corpus PATH] [--researcher-preview] [--no-backup]
+        [--allow-network]
     --experiment-config selects the experiment the flow is served under (default the development configuration;
     src/data/experiment_configs/study.json is the real study) and, unless --corpus overrides it, which corpus of
     stimuli is served, and which participant database is used (its "database" key; --db overrides it). The
@@ -320,7 +323,7 @@ def landing_page():
         f'<li><code>{i}</code> — <a href="/chat?s={i}&amp;c=low">low</a> · '
         f'<a href="/chat?s={i}&amp;c=high">high</a></li>' for i in list_stimulus_ids())
     return ("<!doctype html><meta charset=utf-8><title>Prototype</title>"
-            "<body style='font:16px system-ui;max-width:640px;margin:2rem auto'>"
+            "<body>"
             f"<h1>Participant prototype</h1><ul>{rows}</ul></body>")
 
 
@@ -350,6 +353,22 @@ def check_practice_presentation(config) -> None:
             flow.omit_trace_steps(participant_view(config["practice"]["stimulus"], "high"), omit)
         except (ValueError, FileNotFoundError) as exc:
             raise ValueError(f"{config['path']}: practice.omit_steps {omit}: {exc}") from exc
+
+
+# Sent with every response. The participant link carries its token in the path (/p/<token>), so no page may pass
+# its address on (Referrer-Policy) or be framed by another site; every script and stylesheet is a whitelisted file
+# of this server, so nothing else may load (Content-Security-Policy). Responses are never cached (Cache-Control in
+# _send), so a shared computer's browser keeps no copy of a participant's pages or answers.
+SECURITY_HEADERS = {
+    "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; "
+                               "connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; "
+                               "frame-ancestors 'none'",
+    "Referrer-Policy": "no-referrer",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Cross-Origin-Opener-Policy": "same-origin",
+}
+LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1")
 
 
 class BodyTooLarge(ValueError):
@@ -390,6 +409,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", f"{ctype}; charset=utf-8")
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
+        for name, value in SECURITY_HEADERS.items():
+            self.send_header(name, value)
         self.end_headers()
         self.wfile.write(data)
 
@@ -604,9 +625,16 @@ def main():
     parser.add_argument("--researcher-preview", action="store_true", dest="researcher_preview",
                         help="also serve the researcher routes (/ and /chat, and the s= form of the content "
                              "routes). Never use this for a server participants can reach")
+    parser.add_argument("--allow-network", action="store_true", dest="allow_network",
+                        help="allow --host to be an address other machines can reach (default: this computer only)")
     parser.add_argument("--no-backup", action="store_false", dest="backup",
                         help="do not back the database up when the server starts and stops (development only)")
     args = parser.parse_args()
+    if args.host not in LOOPBACK_HOSTS and not args.allow_network:
+        parser.error(f"--host {args.host} would let other machines reach the server; the study runs on this "
+                     "computer (127.0.0.1). Add --allow-network only for an approved, access-controlled network")
+    if args.researcher_preview and args.host not in LOOPBACK_HOSTS:
+        parser.error("--researcher-preview exposes every stimulus and condition; it is for 127.0.0.1 only")
 
     # Loading the configuration and the assignments here means a mistyped path or a mismatched simulated flag
     # stops the server at startup, rather than failing on a participant's first request.

@@ -2,6 +2,7 @@
 
 import json
 import shutil
+import subprocess
 import sys
 import tempfile
 import threading
@@ -168,6 +169,59 @@ class HttpTest(unittest.TestCase):
         req = urllib.request.Request(self.base + "/api/stimulus", data=b"{}", method="POST")
         with self.assertRaises(urllib.error.HTTPError):
             urllib.request.urlopen(req)
+
+
+class HardeningTest(unittest.TestCase):
+    """Hosting preparation: every response limits what the browser may do with it, and the server will not
+    listen beyond this computer, or expose the researcher routes there, without being told to."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.srv = ThreadingHTTPServer(("127.0.0.1", 0), preview_handler())
+        cls.base = f"http://127.0.0.1:{cls.srv.server_address[1]}"
+        threading.Thread(target=cls.srv.serve_forever, daemon=True).start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.srv.shutdown()
+        cls.srv.server_close()
+
+    def headers(self, path):
+        try:
+            with urllib.request.urlopen(self.base + path) as r:
+                return r.headers
+        except urllib.error.HTTPError as e:
+            return e.headers
+
+    def test_every_kind_of_response_carries_the_security_headers(self):
+        for path in ("/static/flow.js", "/static/style.css", f"/api/stimulus?s={SID}&c=high", "/chat", "/",
+                     "/p/" + "x" * 32, "/nothing-here", "/api/stage?t=bad"):
+            headers = self.headers(path)
+            for name, value in ps.SECURITY_HEADERS.items():
+                self.assertEqual(headers[name], value, (path, name))
+            self.assertEqual(headers["Cache-Control"], "no-store", path)
+        self.assertIn("frame-ancestors 'none'", ps.SECURITY_HEADERS["Content-Security-Policy"])
+        self.assertNotIn("unsafe", ps.SECURITY_HEADERS["Content-Security-Policy"])
+
+    def test_served_pages_need_nothing_the_policy_forbids(self):
+        """No inline script or style and nothing from another origin, or the policy would break the page."""
+        for name in sorted(set(ps.STATIC_FILES) | {"flow.html", "index.html"}):
+            text = (ps.UI_DIR / name).read_text(encoding="utf-8")
+            for pattern in ("<script>", "style=\"", "<style", "http://", "https://", "javascript:"):
+                self.assertNotIn(pattern, text, (name, pattern))
+        self.assertNotIn("style=", ps.landing_page())
+
+    def run_server(self, *args):
+        return subprocess.run([sys.executable, "-B", str(ps.ROOT / "src" / "scripts" / "participant_server.py"),
+                               *args], capture_output=True, text=True, timeout=30)
+
+    def test_the_server_refuses_to_listen_beyond_this_computer_unless_allowed(self):
+        refused = self.run_server("--host", "0.0.0.0")
+        self.assertEqual(refused.returncode, 2)
+        self.assertIn("--allow-network", refused.stderr)
+        preview = self.run_server("--host", "0.0.0.0", "--allow-network", "--researcher-preview")
+        self.assertEqual(preview.returncode, 2)
+        self.assertIn("127.0.0.1 only", preview.stderr)
 
 
 if __name__ == "__main__":
