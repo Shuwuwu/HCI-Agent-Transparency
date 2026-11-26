@@ -22,8 +22,9 @@
  *   The stage drawn into #stage and its continue button into #advance; POST /api/stage/complete to advance (at
  *   consent, with {agreed: true, sha256} so the server records the agreement to the exact text shown; at an
  *   assessment, with the answers, which the server stores against the trial).
- *   For a trial, the mounted scenario view and its interaction events, logged under that trial's id as the
- *   session (the matching session_start event is written by the server).
+ *   For a trial, the mounted scenario view and its interaction events, logged with the link token under that
+ *   trial's id (the server records when the trial started), including scenario_visible: how long the
+ *   conversation was on screen while the page was visible.
  *
  * Dependencies:
  *   scenario_view.js (ScenarioView), interaction.js (Interaction), tutorial.js (PracticeTour), assessment.js
@@ -40,6 +41,8 @@
   const toggle = document.getElementById("ws-toggle");
   let view = null; // the mounted ScenarioView, so it can be unmounted when the stage changes
   let tour = null; // the running practice tour (tutorial.js), so it can be removed when the stage changes
+  let visible = null; // ends the conversation's visible-time measure (scenario stages only); see trackVisible
+  Interaction.setLink(token);
 
   function el(tag, cls, text) {
     const e = document.createElement(tag);
@@ -69,7 +72,33 @@
     return button;
   }
 
+  /** Measure how long the conversation is on screen while the page is visible, and send it as scenario_visible
+   *  when the participant continues. A page that is hidden or closed (a reload, a closed tab) sends the time so
+   *  far and starts counting again, so a reloaded conversation adds to its total instead of losing it. Returns
+   *  the function that sends the last part and stops measuring. */
+  function trackVisible() {
+    Interaction.startTimer("conversation");
+    const send = () => Interaction.log("scenario_visible", { duration_ms: Interaction.stopTimer("conversation") });
+    const onHide = () => {
+      send();
+      Interaction.startTimer("conversation");
+    };
+    window.addEventListener("pagehide", onHide);
+    return () => {
+      window.removeEventListener("pagehide", onHide);
+      send();
+    };
+  }
+
+  function endVisible() {
+    if (visible) {
+      visible();
+      visible = null;
+    }
+  }
+
   function clearStage() {
+    endVisible();
     if (tour) {
       tour.stop();
       tour = null;
@@ -198,19 +227,22 @@
     }).catch(() => {});
   }
 
-  /** A trial: name the interaction session after the trial and mount the real scenario view. */
-  /** A trial: name the interaction session after the trial and mount the real scenario view. The practice trial
+  /** A trial: name the trial events are logged under and mount the real scenario view. The practice trial
    *  also runs the guided tour (tutorial.js) over it, and its Continue stays disabled until the tour is finished:
    *  the tour blocks clicks outside its spotlight, and this also stops a keyboard user tabbing past it. */
   function scenarioScreen(stage) {
-    Interaction.setSession(stage.trial_id);
+    Interaction.setTrial(stage.trial_id);
     const mounted = ScenarioView.mount(host, { query: "t=" + encodeURIComponent(token), toggle: toggle, panel: {} });
     view = mounted;
     // The participant cannot continue until the conversation is actually on the screen.
-    const button = setButton(stage.practice ? "Continue to the practice questions" : "Continue", () => advance(stage.key), false);
+    const button = setButton(stage.practice ? "Continue to the practice questions" : "Continue", () => {
+      endVisible(); // the viewing time ends when they continue, not when the next screen arrives
+      advance(stage.key);
+    }, false);
     mounted.ready.then((ok) => {
       if (view !== mounted) return; // the stage changed while the conversation was loading
       if (!ok) return fail("This conversation could not be loaded. Please tell the researcher.");
+      visible = trackVisible();
       if (!stage.practice) {
         button.disabled = false;
         return;

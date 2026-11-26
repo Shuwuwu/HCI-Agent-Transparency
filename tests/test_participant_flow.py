@@ -24,7 +24,6 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src" / "scripts"))
 
 import experiment_plan as ep  # noqa: E402
-import interaction_log as ilog  # noqa: E402
 import participant_flow as flow  # noqa: E402
 import participant_server as ps  # noqa: E402
 import participant_store as store  # noqa: E402
@@ -48,14 +47,12 @@ class FlowServer:
 
     def __init__(self, config=CONFIG, researcher_preview=False):
         self.folder = Path(tempfile.mkdtemp())
-        self.logs = self.folder / "logs"
         conn = store.connect(self.folder / "participants.db")
         self.tokens = {row["participant_id"]: row["token"] for row in store.enrol_all(conn, CONFIG, PAYLOAD)}
         conn.close()
 
         class Handler(ps.Handler):
             db_path = self.folder / "participants.db"
-            log_dir = self.logs
 
             def log_message(self, fmt, *args):
                 pass  # the access log and the flow reasons would bury the test output
@@ -331,25 +328,27 @@ class IntegrityTests(FlowTestCase):
         finally:
             srv.close()
 
-    def test_each_trial_is_logged_under_its_own_trial_id_with_the_true_stimulus_and_condition(self):
-        """The browser is never told the stimulus or the condition, so the server stamps them: without this the
-        interaction events of a trial could not be tied to what was actually shown."""
+    def events(self, srv, participant):
+        conn = store.connect(srv.handler.db_path)
+        try:
+            return [dict(r) for r in conn.execute("SELECT * FROM events WHERE participant_id = ? ORDER BY event_id",
+                                                  (participant,))]
+        finally:
+            conn.close()
+
+    def test_each_trial_starts_with_one_server_event_under_its_own_trial_id(self):
+        """The browser is never told the stimulus or the condition; the server records when each trial started,
+        against the trial id whose plan_stages row says what it showed."""
         srv = FlowServer()
         try:
             participant = participant_with("high")
             plan = ep.plan_for(CONFIG, participant, PAYLOAD)
             scenarios = ep.scenario_stages(plan, practice=True)
             srv.walk(participant)
-            for stage in scenarios:
-                # Practice is kept apart from the experimental trials: it lives in its own subfolder.
-                folder = srv.logs / flow.PRACTICE_LOG_SUBDIR if stage["practice"] else srv.logs
-                path = folder / f"{stage['trial_id']}.jsonl"
-                self.assertTrue(path.is_file(), stage["trial_id"])
-                events = ilog.read_session(path)
-                self.assertEqual([e["type"] for e in events], ["session_start"])
-                self.assertEqual(events[0]["stimulus"], stage["stimulus"])
-                self.assertEqual(events[0]["condition"], stage["condition"])
-            self.assertEqual(len({s["trial_id"] for s in scenarios}), len(scenarios))
+            starts = [e for e in self.events(srv, participant) if e["type"] == "session_start"]
+            self.assertEqual([e["trial_id"] for e in starts], [s["trial_id"] for s in scenarios])
+            self.assertEqual([e["practice"] for e in starts], [int(s["practice"]) for s in scenarios])
+            self.assertTrue(all(e["origin"] == "server" and e["stage_key"].endswith("_scenario") for e in starts))
 
             # Every stage must also carry an arrival time: the trial's reading and response times are measured
             # from it, and a stage reached by continuing is the one the participant actually arrived at.
@@ -366,21 +365,68 @@ class IntegrityTests(FlowTestCase):
         finally:
             srv.close()
 
-    def test_practice_interactions_never_land_beside_the_experimental_trial_logs(self):
-        """Everything clicked during the practice tour is practice data. A reader of the trial logs takes the
-        top-level *.jsonl files, so no practice file may be there, and the browser's practice events must follow
-        the server's session_start into the practice folder."""
+    def test_every_stage_request_is_recorded_so_reloads_are_visible(self):
+        srv = FlowServer()
+        try:
+            participant = participant_with("low")
+            srv.walk(participant, until="trial_01_scenario")
+            for _ in range(3):
+                srv.stage(participant)  # the page was reloaded three times mid-trial
+            loads = [e for e in self.events(srv, participant) if e["type"] == "stage_load"]
+            self.assertEqual(loads[0]["stage_key"], "consent")
+            self.assertIsNone(loads[0]["trial_id"])
+            self.assertEqual(sum(e["trial_id"] == f"{participant}-t01" for e in loads), 3)
+            starts = [e for e in self.events(srv, participant)
+                      if e["type"] == "session_start" and e["trial_id"] == f"{participant}-t01"]
+            self.assertEqual(len(starts), 1)  # reloading does not start the trial again
+        finally:
+            srv.close()
+
+    def test_browser_events_are_stored_against_the_current_trial_with_the_practice_flagged(self):
         srv = FlowServer()
         try:
             participant = participant_with("high")
+            token = srv.tokens[participant]
             srv.walk(participant, until="practice_assessment")
-            practice_id = ep.scenario_stages(ep.plan_for(CONFIG, participant, PAYLOAD), practice=True)[0]["trial_id"]
-            for event in ({"type": "workspace_panel_open"}, {"type": "skills_tab_open"}):
-                answer = srv.post("/api/log", {"session": practice_id, "client_ms": 1, **event})
-                self.assertEqual(answer[0], 204, answer)
-            practice = ilog.read_session(srv.logs / flow.PRACTICE_LOG_SUBDIR / f"{practice_id}.jsonl")
-            self.assertEqual([e["type"] for e in practice], ["session_start", "workspace_panel_open", "skills_tab_open"])
-            self.assertEqual([p.name for p in srv.logs.glob("*.jsonl")], [])
+            practice_id = f"{participant}-p00"
+            for event in ({"type": "workspace_panel_open"}, {"type": "skills_tab_open"},
+                          {"type": "trace_card_expand", "card_id": "step-2"},
+                          {"type": "trace_card_view", "card_id": "step-2", "duration_ms": 900},
+                          {"type": "scenario_visible", "duration_ms": 12000}):
+                answer = srv.post("/api/log", {"token": token, "trial_id": practice_id, "client_ms": 1, **event})
+                self.assertEqual(answer[0], 204, answer)  # sent while the assessment loads: still accepted
+            stored = [e for e in self.events(srv, participant) if e["origin"] == "browser"]
+            self.assertEqual([e["type"] for e in stored], ["workspace_panel_open", "skills_tab_open",
+                                                           "trace_card_expand", "trace_card_view", "scenario_visible"])
+            self.assertTrue(all(e["practice"] == 1 and e["trial_id"] == practice_id for e in stored))
+            self.assertEqual(stored[3]["card_id"], "step-2")
+            self.assertEqual(stored[3]["duration_ms"], 900)
+            seqs = [e["seq"] for e in self.events(srv, participant) if e["trial_id"] == practice_id]
+            self.assertEqual(seqs, list(range(len(seqs))))
+        finally:
+            srv.close()
+
+    def test_events_for_another_trial_or_another_participant_are_refused(self):
+        srv = FlowServer()
+        try:
+            first, second = participant_with("low"), participant_with("high")
+            srv.walk(first, until="trial_01_scenario")
+            srv.walk(second, until="trial_01_scenario")
+            before = len(self.events(srv, first)) + len(self.events(srv, second))
+            refused = [
+                ({"token": srv.tokens[first], "trial_id": f"{second}-t01"}, 409),   # someone else's trial
+                ({"token": srv.tokens[first], "trial_id": f"{first}-t02"}, 409),    # a later trial
+                ({"token": srv.tokens[first], "trial_id": f"{first}-p00"}, 409),    # an earlier trial
+                ({"token": "x" * 32, "trial_id": f"{first}-t01"}, 404),             # nobody's token
+                ({"trial_id": f"{first}-t01"}, 400),                                 # no token at all
+                ({"token": srv.tokens[first], "trial_id": f"{first}-t01", "type": "session_start"}, 400),
+                ({"token": srv.tokens[first], "trial_id": f"{first}-t01", "type": "bogus"}, 400),
+            ]
+            for body, status in refused:
+                body = {"type": "workspace_panel_open", **body}
+                self.assertEqual(srv.post("/api/log", body)[0], status, body)
+            self.assertEqual(len(self.events(srv, first)) + len(self.events(srv, second)), before)
+            self.assertEqual(srv.post("/api/log", "garbage")[0], 400)
         finally:
             srv.close()
 

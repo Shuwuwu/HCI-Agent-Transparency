@@ -1,43 +1,45 @@
 /*
  * Purpose:
- *   Records participant interactions (skill documentation opened and for how long, workspace panels used) by
- *   posting small events to /api/log, where the server stores them apart from all participant-facing content.
- *   Also provides visibility-aware timers: time while the browser tab is hidden does not count as viewing time.
+ *   Records what a participant does on the page besides reading the conversation (the workspace panel and its
+ *   tabs, items and documents opened and for how long, activity cards opened and for how long) by posting small
+ *   events to /api/log. Also provides visibility-aware timers: time while the browser tab is hidden does not
+ *   count as viewing time.
  *
  * Inputs:
- *   Calls from app.js, flow.js, workspace.js and skills.js: Interaction.log(type, fields),
- *   Interaction.startTimer(key), Interaction.stopTimer(key), Interaction.setSession(id). URL parameters: pid
- *   (optional participant id), preview=1 (log nothing; for researchers inspecting the interface).
+ *   Calls from flow.js, scenario_view.js, workspace.js and skills.js: Interaction.log(type, fields),
+ *   Interaction.startTimer(key), Interaction.stopTimer(key), Interaction.setLink(token), Interaction.setTrial(id).
  *
  * Outputs:
- *   POST /api/log with {session, type, client_ms, ...fields}; the allowed types and fields are those of
- *   interaction_log.py. Nothing is shown to the participant and no response is read.
+ *   POST /api/log with {token, trial_id, type, client_ms, ...fields}; the allowed types and fields are those of
+ *   interaction_log.py. Nothing is sent until flow.js has given the link token and the trial id, so a page opened
+ *   outside a participant link records nothing. Nothing is shown to the participant and no response is read.
  *
  * Dependencies:
- *   participant_server.py (POST /api/log), interaction_log.py (validation on the server).
+ *   participant_server.py (POST /api/log), interaction_log.py and participant_flow.py (checks on the server).
  */
 (function (root) {
   "use strict";
-  const params = new URLSearchParams(location.search);
-  const enabled = params.get("preview") !== "1";
-  // One session id per page by default. In the experiment flow each trial is its own session, so flow.js
-  // replaces it with that trial's id (P001-t03) before the scenario is mounted; the server stamps the same id on
-  // the session_start event it writes itself, which is what ties the events of a trial together.
-  let session = (crypto.randomUUID && crypto.randomUUID()) ||
-    ("s-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 10));
+  let token = null; // the participant's link token (flow.js)
+  let trial = null; // the trial the page is showing; the server accepts events only for the current one
 
-  /** Name the session after the trial being shown. Ignored for anything that is not a non-empty string. */
-  function setSession(id) {
-    if (typeof id === "string" && id) session = id;
+  /** Give the link token of the participant this page belongs to. Ignored unless a non-empty string. */
+  function setLink(value) {
+    if (typeof value === "string" && value) token = value;
+  }
+
+  /** Name the trial being shown. Events sent while the next stage loads still carry the trial they belong to. */
+  function setTrial(id) {
+    if (typeof id === "string" && id) trial = id;
   }
 
   /** Send one event; failures are ignored so logging can never disturb the participant. */
   function log(type, fields) {
-    if (!enabled) return;
+    if (!token || !trial) return;
     try {
       fetch("/api/log", {
         method: "POST", keepalive: true, headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(Object.assign({ session, type, client_ms: Date.now() }, fields || {})),
+        body: JSON.stringify(Object.assign({ token: token, trial_id: trial, type: type, client_ms: Date.now() },
+          fields || {})),
       }).catch(() => {});
     } catch (e) { /* ignore */ }
   }
@@ -60,7 +62,6 @@
     });
   });
 
-  root.Interaction = { log, startTimer, stopTimer, setSession, enabled,
-                       get session() { return session; },
-                       participantId: params.get("pid") };
+  root.Interaction = { log, startTimer, stopTimer, setLink, setTrial,
+                       get trial() { return trial; } };
 })(window);

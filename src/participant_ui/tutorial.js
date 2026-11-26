@@ -25,7 +25,7 @@
  *   An overlay appended to <body> while the tour runs; it is removed by stop() or when the tour finishes. The tour
  *   logs nothing itself. Interface events triggered by clicking the real interface during the tour (opening the
  *   panel, a tab, an item) are logged as usual by interaction.js, under the practice trial's id, and the server
- *   files them apart from the experimental trials (participant_flow.log_dir_for).
+ *   marks them as practice (participant_flow.log_event).
  *
  * Dependencies:
  *   None at load time. Expects the DOM of scenario_view.js, workspace.js and skills.js (the selectors in STEPS).

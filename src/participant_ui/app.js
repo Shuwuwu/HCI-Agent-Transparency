@@ -6,12 +6,12 @@
  *   identifies the scenario by their link token instead.
  *
  * Inputs:
- *   Query params ?s=<stimulus folder>&c=low|high (and optional pid=<participant id>). Researcher-preview
- *   parameters: w=<tab>[&i=<id>] opens the panel on that tab (and keeps the URL in sync with it), preview=1 turns
- *   interaction logging off (interaction.js).
+ *   Query params ?s=<stimulus folder>&c=low|high. w=<tab>[&i=<id>] opens the panel on that tab (and keeps the URL
+ *   in sync with it).
  *
  * Outputs:
- *   The mounted scenario view inside #scenario; a session_start interaction event.
+ *   The mounted scenario view inside #scenario. Nothing is logged: interaction.js sends events only for a
+ *   participant link (flow.js), so a researcher preview leaves no record.
  *
  * Dependencies:
  *   scenario_view.js (ScenarioView), interaction.js (Interaction), and through them markdown.js, previews.js,
@@ -24,8 +24,6 @@
   const condition = p.get("c") || "";
   const tab = p.get("w");
 
-  Interaction.log("session_start", Object.assign({ stimulus, condition },
-    Interaction.participantId ? { pid: Interaction.participantId } : {}));
   ScenarioView.mount(document.getElementById("scenario"), {
     query: "s=" + encodeURIComponent(stimulus) + "&c=" + encodeURIComponent(condition),
     toggle: document.getElementById("ws-toggle"),

@@ -23,15 +23,13 @@
  * Outputs:
  *   DOM inside `container`. Text is inserted with textContent; only the final response and agent messages go
  *   through renderMarkdown (which escapes HTML). Interaction events for the panel (workspace_panel_open/close).
- *   Activity-card events, prepared for behavioural logging but not yet sent anywhere: each is dispatched on
- *   `container` as a "trace-card" DOM event whose `detail` is {type, card_id, client_ms[, duration_ms]}:
+ *   Activity-card events, each logged with Interaction.log and also dispatched on `container` as a "trace-card"
+ *   DOM event whose `detail` is {type, card_id, client_ms[, duration_ms]}:
  *     trace_card_expand    a card was opened;
  *     trace_card_collapse  a card was closed;
  *     trace_card_view      how long a card was open (duration_ms, counted only while the page is visible), sent
  *                          when it is closed and, for a card still open, when the conversation is left.
- *   card_id is "step-<n>", the card's displayed step number, so with the trial id of the session it identifies
- *   the card. Storing these events (adding them to interaction_log.py and forwarding them with
- *   Interaction.log) belongs to the behavioural data collection step.
+ *   card_id is "step-<n>", the card's displayed step number, so with the trial id it identifies the card.
  *   mount() returns {ready, unmount}: `ready` is a Promise that resolves to true once the conversation is drawn
  *   (false if it could not be loaded); unmount() closes the panel, removes listeners and clears the container.
  *
@@ -109,8 +107,11 @@
    */
   function traceCards(chat, container) {
     const open = new Set();
-    const emit = (type, cardId, extra) => container.dispatchEvent(new CustomEvent("trace-card", {
-      bubbles: true, detail: Object.assign({ type: type, card_id: cardId, client_ms: Date.now() }, extra || {}) }));
+    const emit = (type, cardId, extra) => {
+      I.log(type, Object.assign({ card_id: cardId }, extra || {}));
+      container.dispatchEvent(new CustomEvent("trace-card", {
+        bubbles: true, detail: Object.assign({ type: type, card_id: cardId, client_ms: Date.now() }, extra || {}) }));
+    };
     const viewed = (cardId) => {
       open.delete(cardId);
       emit("trace_card_view", cardId, { duration_ms: I.stopTimer("card:" + cardId) });

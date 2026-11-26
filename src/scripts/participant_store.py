@@ -32,8 +32,10 @@ Purpose:
     what each participant was shown and in what order. The flow itself still derives the sequence from the
     configuration and checks it against the fingerprint; the snapshot is the record.
 
-    Interaction events (`events`): one row per event, with the participant, trial and stage it belongs to. The
-    allowed types are EVENT_TYPES; interaction_log.py validates their fields.
+    Interaction events (`events`, record_event): one row per event, with the participant, trial and stage it
+    belongs to, its order of arrival within the trial (`seq`), the server's time and the browser's clock, and
+    whether the browser or the server produced it. The allowed types are EVENT_TYPES; interaction_log.py validates
+    their fields and participant_flow.log_event checks the trial is the participant's current one.
 
     The post-study questionnaire is not written here yet.
 
@@ -431,6 +433,48 @@ def response_of(conn: sqlite3.Connection, participant: str, stage_key: str) -> d
     return out
 
 
+EVENT_COLUMNS = ("tab", "item_id", "skill_id", "card_id", "duration_ms", "client_ms")
+
+
+def record_event(conn: sqlite3.Connection, participant: str, stage_key: str, trial_id: str | None, practice: bool,
+                 event: dict, origin: str, server_time: str | None = None, limit: int | None = None) -> dict:
+    """Store one interaction event and commit; returns the stored row.
+
+    `event` is {"type", ...} already validated (interaction_log.validate_event) with any of EVENT_COLUMNS. The
+    event's position `seq` is the next number within (participant, trial), taken under an immediate write lock so
+    two requests arriving together cannot get the same number. `server_time` defaults to now (the legacy import
+    passes the original time). With `limit`, a trial that already holds that many events refuses the next with
+    StoreError, so a misbehaving page cannot fill the database.
+    """
+    started = not conn.in_transaction
+    if started:
+        conn.execute("BEGIN IMMEDIATE")
+    try:
+        count = conn.execute("SELECT COUNT(*), COALESCE(MAX(seq) + 1, 0) FROM events WHERE participant_id = ? "
+                             "AND trial_id IS ?", (participant, trial_id)).fetchone()
+        if limit is not None and count[0] >= limit:
+            raise StoreError(f"{participant}: trial {trial_id} already holds {limit} events")
+        values = {name: event.get(name) for name in EVENT_COLUMNS}
+        cursor = conn.execute(
+            "INSERT INTO events (participant_id, trial_id, stage_key, practice, seq, type, origin, tab, item_id, "
+            "skill_id, card_id, duration_ms, client_ms, server_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (participant, trial_id, stage_key, int(bool(practice)), count[1], event["type"], origin,
+             *values.values(), server_time or now()))
+        if started:
+            conn.commit()
+    except Exception:
+        if started:
+            conn.rollback()
+        raise
+    return dict(conn.execute("SELECT * FROM events WHERE event_id = ?", (cursor.lastrowid,)).fetchone())
+
+
+def trial_events(conn: sqlite3.Connection, participant: str, trial_id: str | None) -> list[dict]:
+    """The events of one trial of one participant in arrival order (trial_id None: events outside any trial)."""
+    return [dict(row) for row in conn.execute(
+        "SELECT * FROM events WHERE participant_id = ? AND trial_id IS ? ORDER BY seq", (participant, trial_id))]
+
+
 def consent_of(conn: sqlite3.Connection, participant: str) -> dict | None:
     """The participant's stored consent ({participant_id, agreed_at, consent_sha256, consent_text}), or None."""
     row = conn.execute("SELECT * FROM consents WHERE participant_id = ?", (participant,)).fetchone()
@@ -549,9 +593,8 @@ def reset(conn: sqlite3.Connection, config: ep.Config, participant: str, payload
     Only a participant enrolled from a simulated (development) configuration can be reset, and only under a
     simulated configuration; anything else raises StoreError, so real participants' progress and consent can never
     be erased this way and a test participant cannot be attached to the study design. The token and the enrolment
-    time are kept; their assessment responses are deleted with their progress. Interaction logs are not in this
-    database and are not touched: a reset participant's trials append to their existing log files. Returns
-    {"participant_id", "stages_cleared", "consent_cleared", "responses_cleared", "plan_changed"}. Raises KeyError for a participant who is not enrolled or not in the assignments.
+    time are kept; their assessment responses and interaction events are deleted with their progress. Returns
+    {"participant_id", "stages_cleared", "consent_cleared", "responses_cleared", "events_cleared", "plan_changed"}. Raises KeyError for a participant who is not enrolled or not in the assignments.
     """
     row = record(conn, participant)
     if not row["simulated"]:
@@ -565,6 +608,8 @@ def reset(conn: sqlite3.Connection, config: ep.Config, participant: str, payload
     consent = conn.execute("DELETE FROM consents WHERE participant_id = ?", (participant,)).rowcount
     # Their answers go too: otherwise redoing a trial would keep the old answer (only the first is stored).
     responses = conn.execute("DELETE FROM responses WHERE participant_id = ?", (participant,)).rowcount
+    # And their interaction events, so a redone trial's measures are not mixed with the earlier attempt's.
+    events = conn.execute("DELETE FROM events WHERE participant_id = ?", (participant,)).rowcount
     conn.execute("UPDATE participants SET completed_at = NULL, plan_fingerprint = ?, config_path = ?, "
                  "assignments_path = ?, condition = ?, list = ?, trials = ? WHERE participant_id = ?",
                  (fingerprint, str(config["path"]), str(config["assignments_path"]), plan["condition"], plan["list"],
@@ -572,7 +617,8 @@ def reset(conn: sqlite3.Connection, config: ep.Config, participant: str, payload
     snapshot_plan(conn, participant, plan)
     conn.commit()
     return {"participant_id": participant, "stages_cleared": stages, "consent_cleared": bool(consent),
-            "responses_cleared": responses, "plan_changed": fingerprint != row["plan_fingerprint"]}
+            "responses_cleared": responses, "events_cleared": events,
+            "plan_changed": fingerprint != row["plan_fingerprint"]}
 
 
 def link(token: str, base_url: str = "") -> str:

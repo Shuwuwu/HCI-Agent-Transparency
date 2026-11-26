@@ -8,7 +8,7 @@ Purpose:
     its own throwaway subclass. Not a test module.
 
 Inputs:
-    Nothing. Callers pass any Handler class attributes they want set (log_dir, db_path, config, payload).
+    Nothing. Callers pass any Handler class attributes they want set (db_path, config, payload).
 
 Outputs:
     Python classes only.
@@ -19,7 +19,6 @@ Dependencies:
 Usage:
     from participant_http import preview_handler            (tests add tests/ to sys.path)
     srv = ThreadingHTTPServer(("127.0.0.1", 0), preview_handler())
-    srv = ThreadingHTTPServer(("127.0.0.1", 0), preview_handler(log_dir=folder))
 """
 
 import sys
@@ -35,6 +34,6 @@ def preview_handler(**attrs):
     """A participant_server.Handler subclass with the researcher routes served, plus `attrs` as class attributes.
 
     Each call returns a new class, so no two test modules can affect one another through it. Any Handler class
-    attribute may be passed, most usefully log_dir.
+    attribute may be passed.
     """
     return type("PreviewHandler", (ps.Handler,), {"researcher_preview": True, **attrs})

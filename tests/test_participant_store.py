@@ -158,6 +158,17 @@ class SchemaV5Tests(unittest.TestCase):
         with self.assertRaises(sqlite3.IntegrityError):  # an event must belong to an enrolled participant
             self.conn.execute(insert, ("nobody", "workspace_panel_open", "browser"))
 
+    def test_events_are_numbered_per_trial_and_capped(self):
+        add = lambda trial, kind="workspace_panel_open": store.record_event(
+            self.conn, FIRST, "trial_01_scenario", trial, False, {"type": kind}, "browser", limit=3)
+        self.assertEqual([add("P001-t01")["seq"] for _ in range(3)], [0, 1, 2])
+        self.assertEqual(add("P001-t02")["seq"], 0)  # each trial counts on its own
+        with self.assertRaises(store.StoreError):
+            add("P001-t01")
+        self.assertEqual(len(store.trial_events(self.conn, FIRST, "P001-t01")), 3)
+        outside = store.record_event(self.conn, FIRST, "consent", None, False, {"type": "stage_load"}, "server")
+        self.assertEqual((outside["seq"], outside["trial_id"]), (0, None))
+
     def test_a_version_4_database_is_upgraded_with_its_answers_kept(self):
         self.conn.executescript("""
             DROP VIEW experimental_responses; DROP TABLE responses;
@@ -357,6 +368,12 @@ class ResetTests(unittest.TestCase):
         self.assertEqual(store.current_stage(self.conn, CONFIG, FIRST, PAYLOAD)["key"], "consent")
         self.assertIsNone(store.consent_of(self.conn, FIRST))
         self.assertEqual(store.by_token(self.conn, self.row["token"])["participant_id"], FIRST)
+
+    def test_reset_also_clears_the_participants_interaction_events(self):
+        store.record_event(self.conn, FIRST, "practice_scenario", f"{FIRST}-p00", True,
+                           {"type": "workspace_panel_open"}, "browser")
+        self.assertEqual(store.reset(self.conn, CONFIG, FIRST, PAYLOAD)["events_cleared"], 1)
+        self.assertEqual(store.trial_events(self.conn, FIRST, f"{FIRST}-p00"), [])
 
     def test_a_study_participant_cannot_be_reset(self):
         self.conn.execute("UPDATE participants SET simulated = 0 WHERE participant_id = ?", (FIRST,))

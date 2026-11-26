@@ -45,9 +45,9 @@ Outputs:
                                         consent stage also needs "consent": {"agreed": true, "sha256": <hash of
                                         the consent text shown>}, and stores that agreement; an assessment stage
                                         needs "answers" and stores them (participant_flow.py)
-        POST /api/log                   one interaction event (see interaction_log.py); written to the separate
-                                        log folder (practice-trial events to its practice/ subfolder), never
-                                        read back by any route
+        POST /api/log                   {"token", "trial_id", "type", ...}: one interaction event (see
+                                        interaction_log.py), stored in the participant database only for the
+                                        trial that token's participant is on now; never read back by any route
         /static/<file>                  whitelisted front-end files (STATIC_FILES); they are sent as they are,
                                         comments included, so they must not describe the study design
     The four content routes answer 404 unless the participant's current stage is a scenario stage, so no stage
@@ -62,12 +62,12 @@ Outputs:
 
 Dependencies:
     Python standard library only. Reads the files produced by build_stimuli.py. interaction_log.py (event
-    validation and storage), corpus.py (corpus configuration and eligibility rules), participant_flow.py (token
+    validation), corpus.py (corpus configuration and eligibility rules), participant_flow.py (token
     to stage resolution), participant_store.py (participant records and progress), experiment_plan.py (the stage
     sequence, through participant_flow).
 
 Usage:
-    python3 -B src/scripts/participant_server.py [--port 8765] [--host 127.0.0.1] [--log-dir PATH]
+    python3 -B src/scripts/participant_server.py [--port 8765] [--host 127.0.0.1]
         [--experiment-config PATH] [--db PATH] [--corpus PATH] [--researcher-preview]
     --experiment-config selects the experiment the flow is served under (default the development configuration;
     src/data/experiment_configs/study.json is the real study) and, unless --corpus overrides it, which corpus of
@@ -75,7 +75,8 @@ Usage:
     Enrol participants and print their links first:
         python3 -B src/scripts/participant_store.py --config src/data/experiment_configs/development.json \
             --enrol-all --links --base-url http://127.0.0.1:8765
-    Then open one of the printed links. For a scenario on its own, without a participant record:
+    Then open one of the printed links. For a scenario on its own, without a participant record (nothing is
+    logged there: interaction events are stored only for a participant link):
         python3 -B src/scripts/participant_server.py --researcher-preview
         http://127.0.0.1:8765/chat?s=user_task_1__no_injection&c=high
 """
@@ -360,14 +361,12 @@ class Handler(BaseHTTPRequestHandler):
 
     The class attributes are the server's configuration; main() sets them from the command line, and a test sets
     them directly:
-        log_dir             folder the interaction events are written to.
         db_path             participant database. None leaves every flow route answering 404.
         config, payload     the experiment configuration and the assignments payload the flow runs under.
         researcher_preview  True also serves the researcher routes (/ and /chat, and the s= form of the content
                             routes). False, the default, is the participant-facing server.
     """
 
-    log_dir = ilog.DEFAULT_LOG_DIR
     db_path = None
     config = None
     payload = None
@@ -457,7 +456,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             with self._conn() as conn:
                 participant = flow.participant_for(conn, token)["participant_id"]
-                body = flow.stage_payload(conn, self.config, participant, self.payload, self.log_dir)
+                body = flow.stage_payload(conn, self.config, participant, self.payload)
         except (ValueError, FileNotFoundError) as exc:
             return self._flow_error(exc)
         return self._json(200, body)
@@ -519,15 +518,33 @@ class Handler(BaseHTTPRequestHandler):
         return json.loads(self.rfile.read(length) or b"null")
 
     def _post_log(self):
+        """Store one interaction event: {"token", "trial_id", "type", ...}.
+
+        The token decides whose record the event joins, and participant_flow.log_event accepts it only for the trial
+        that participant is on now. 400 for an event that is not an allowed record, 404 for an unknown token (and
+        whenever no participant database is configured, as in a researcher preview), 409 for an event of another
+        trial or over the per-trial limit. Nothing is sent back on success: the log is write-only for the browser.
+        """
+        if not self._flow_ready():
+            return self._json(404, {"error": "not found"})
         try:
             event = self._body(ilog.MAX_EVENT_BYTES)
-            session = event.get("session") if isinstance(event, dict) else None
-            ilog.append_event(event, flow.log_dir_for(session, self.log_dir))
+            if not isinstance(event, dict):
+                raise ilog.LogError("event must be an object")
+            token = event.pop("token", "")
+            with self._conn() as conn:
+                participant = flow.participant_for(conn, token)["participant_id"]
+                flow.log_event(conn, self.config, participant, event, self.payload)
         except BodyTooLarge as exc:
             return self._json(413, {"error": str(exc)})
-        except ValueError as exc:  # LogError is a ValueError, as is a malformed body
+        except (flow.EventRefused, store.StoreError) as exc:
+            self.log_message("log 409: %s", exc)
+            return self._json(409, {"error": "not accepted"})
+        except FileNotFoundError:
+            return self._json(404, {"error": "not found"})
+        except ValueError as exc:  # LogError is a ValueError, as are a malformed body and a malformed token
             return self._json(400, {"error": str(exc)})
-        self.send_response(204)  # nothing is sent back: the log is write-only for the browser
+        self.send_response(204)
         self.send_header("Content-Length", "0")
         self.end_headers()
 
@@ -549,7 +566,7 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError("stage_key is required")
             with self._conn() as conn:
                 participant = flow.participant_for(conn, body.get("token", ""))["participant_id"]
-                result = flow.advance(conn, self.config, participant, stage_key, self.payload, self.log_dir,
+                result = flow.advance(conn, self.config, participant, stage_key, self.payload,
                                       consent=body.get("consent"), answers=body.get("answers"))
         except (ValueError, FileNotFoundError) as exc:
             return self._flow_error(exc)
@@ -566,7 +583,6 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
-    parser.add_argument("--log-dir", type=Path, default=ilog.DEFAULT_LOG_DIR)
     parser.add_argument("--experiment-config", type=Path, default=ep.DEVELOPMENT_CONFIG, dest="experiment_config",
                         help="experiment configuration the flow is served under (src/data/experiment_configs/*."
                              "json); study.json is the real study, the default is the development one")
@@ -588,7 +604,6 @@ def main():
     flow.load_assessment()  # likewise the assessment questions
     use_corpus(args.corpus if args.corpus is not None else config["corpus_path"])
     check_practice_presentation(config)
-    Handler.log_dir = args.log_dir
     Handler.db_path = args.db
     Handler.config = config
     Handler.payload = payload

@@ -36,19 +36,24 @@ Inputs:
     the practice stage is served (scenario_target, omit_trace_steps); the stimulus files and the execution record
     are unchanged, and experimental trials are always served exactly as built.
 
-    Practice. The practice trial's interaction events, including everything a participant clicks during the
-    practice tour, are written to a `practice/` subfolder of the log folder rather than beside the experimental
-    trials' logs (log_dir_for), so a reader of the trial logs cannot include practice by accident.
+    Interaction events. The browser posts each event with the participant's link token and the trial id it
+    belongs to; log_event accepts it only for the trial the participant is on now (its scenario or, for events
+    sent while the page moves on, its assessment), so no page can write into another participant's or another
+    trial's record. The server adds two events itself: `session_start` the first time a trial's scenario is
+    shown, and `stage_load` every time the page asks for the current stage, which makes reloads and resumed
+    sessions visible. Every event row carries the practice flag of its stage, so practice events (including
+    everything clicked during the practice tour) are told apart from experimental ones by a column, not a folder.
 
 Outputs:
     Stage descriptors and progress counts for the browser (no stimulus identity; the consent stage also carries
     the consent text, its checkbox statement and its hash); the (stimulus folder, condition) pair the scenario
-    endpoints resolve on the server; a stored consent when the consent stage is completed; and a `session_start`
-    interaction event, stamped with the true stimulus and condition, the first time a scenario stage is entered.
+    endpoints resolve on the server; a stored consent when the consent stage is completed; and interaction events
+    in the participant database (the trial's stimulus and condition are in its plan_stages rows, not repeated in
+    the events).
 
 Dependencies:
     participant_store.py (participant records and stage progress), experiment_plan.py (the derived stage
-    sequence), interaction_log.py (the session_start event). Used by participant_server.py.
+    sequence), interaction_log.py (event validation). Used by participant_server.py.
 
 Usage:
     Imported; it has no command line of its own. The flow is served by:
@@ -60,7 +65,6 @@ import hashlib
 import json
 import re
 import sqlite3
-import sys
 from pathlib import Path
 
 import experiment_plan as ep
@@ -73,17 +77,6 @@ QUESTIONS = ("performed_safely", "confidence", "reasoning", "sources")  # the or
 # Which conditions show each optional part of the interface; a source marked "shown_with" one of these parts is
 # offered only to participants whose view contains it.
 SHOWN_WITH = {"activity_log": ("high",)}
-PRACTICE_LOG_SUBDIR = "practice"
-
-
-def log_dir_for(session, log_dir) -> Path:
-    """The folder an interaction event of `session` is written to: `<log_dir>/practice` for the practice trial,
-    `log_dir` itself for everything else (experimental trials and researcher-preview sessions).
-
-    `session` is the trial id the event is logged under, which may come from the browser; anything that is not a
-    practice trial id goes to the main folder, where interaction_log.py validates it as before.
-    """
-    return Path(log_dir) / PRACTICE_LOG_SUBDIR if ep.is_practice_trial_id(session) else Path(log_dir)
 CHECKBOX_RE = re.compile(r"^- \[ \] (\S.*)$")  # the agreement line that ends the consent file
 
 
@@ -278,36 +271,31 @@ def _progress(plan: dict, done: list[str]) -> dict:
     return {"completed": len(done), "total": len(plan["stages"])}
 
 
-def _log_session_start(stage: dict, log_dir) -> None:
-    """Record the trial's true stimulus and condition against its trial id, server side.
+def _server_event(conn: sqlite3.Connection, participant: str, stage: dict, kind: str) -> None:
+    """Store an event the server produces itself (session_start, stage_load) against `stage`.
 
-    The browser is never told either value, so it cannot report them; stamping the event here keeps the
-    interaction log authoritative while the page stays free of the trial's identity. A logging failure must never
-    stop a participant mid-study, so it is reported to stderr and the stage is still served.
+    Validation needs a trial id; a stage outside any trial (consent, the questionnaire) is stored with NULL.
     """
-    try:
-        ilog.append_event({"session": stage["trial_id"], "type": "session_start",
-                           "stimulus": stage["stimulus"], "condition": stage["condition"]},
-                          log_dir_for(stage["trial_id"], log_dir))
-    except (ilog.LogError, OSError, ValueError) as exc:
-        sys.stderr.write(f"[flow] session_start not logged for {stage['trial_id']}: {exc}\n")
+    store.record_event(conn, participant, stage["key"], stage.get("trial_id"), bool(stage.get("practice")),
+                       ilog.validate_event({"trial_id": stage.get("trial_id") or "none", "type": kind}, "server"),
+                       "server")
 
 
 def _enter(conn: sqlite3.Connection, config: ep.Config, participant: str, payload: dict | None,
-           plan: dict, stage: dict, log_dir) -> dict:
-    """Record the participant's arrival at `stage`, stamp a trial's session_start, and return its descriptor.
+           plan: dict, stage: dict) -> dict:
+    """Record the participant's arrival at `stage`, record a trial's session_start, and return its descriptor.
 
     Both ways a participant can reach a stage go through here. A participant reaches almost every stage by
     continuing from the previous one rather than by reopening their link, so recording the arrival only on a
     page load would lose the arrival time of nearly every trial — and with it the reading and response times
-    measured from it — and would leave those trials with no session_start to tie their interaction events to.
+    measured from it — and would leave those trials with no session_start.
     """
     # Whether this is the first arrival must be read before enter_stage inserts the row.
     first = conn.execute("SELECT 1 FROM progress WHERE participant_id = ? AND stage_key = ?",
                          (participant, stage["key"])).fetchone() is None
     store.enter_stage(conn, config, participant, payload)
-    if first and stage["kind"] == "scenario" and log_dir is not None:
-        _log_session_start(stage, log_dir)
+    if first and stage["kind"] == "scenario":
+        _server_event(conn, participant, stage, "session_start")
     out = descriptor(stage, plan)
     if stage["kind"] == "consent":
         material = load_consent()
@@ -317,9 +305,9 @@ def _enter(conn: sqlite3.Connection, config: ep.Config, participant: str, payloa
     return out
 
 
-def stage_payload(conn: sqlite3.Connection, config: ep.Config, participant: str, payload: dict | None = None,
-                  log_dir=None) -> dict:
-    """Enter and describe the stage this participant is to be shown now.
+def stage_payload(conn: sqlite3.Connection, config: ep.Config, participant: str,
+                  payload: dict | None = None) -> dict:
+    """Enter and describe the stage this participant is to be shown now, recording a `stage_load` event.
 
     Returns {"stage": descriptor or None, "progress": {...}}; the stage is None once every stage has been
     completed. Called on every page load of the flow, so it is also the resume path: it always returns the same
@@ -328,8 +316,31 @@ def stage_payload(conn: sqlite3.Connection, config: ep.Config, participant: str,
     plan, stage, done = _plan_and_stage(conn, config, participant, payload)
     if stage is None:
         return {"stage": None, "progress": _progress(plan, done)}
-    return {"stage": _enter(conn, config, participant, payload, plan, stage, log_dir),
-            "progress": _progress(plan, done)}
+    out = _enter(conn, config, participant, payload, plan, stage)
+    _server_event(conn, participant, stage, "stage_load")
+    return {"stage": out, "progress": _progress(plan, done)}
+
+
+class EventRefused(ValueError):
+    """An interaction event for a trial the participant is not on now."""
+
+
+def log_event(conn: sqlite3.Connection, config: ep.Config, participant: str, event,
+              payload: dict | None = None) -> dict:
+    """Validate and store one interaction event the browser posted for `participant`; returns the stored row.
+
+    `event` is the posted body without the token: {"trial_id", "type", "client_ms"?, ...}. Raises
+    interaction_log.LogError for an event that is not an allowed record, EventRefused when its trial is not the
+    one the participant is on now (the scenario stage or the assessment that follows it: the page sends the last
+    viewing times as it moves on), and participant_store.StoreError when the trial already holds
+    MAX_EVENTS_PER_TRIAL events. The stage, trial and practice flag stored with the event come from the plan.
+    """
+    clean = ilog.validate_event(event)
+    _, stage, _ = _plan_and_stage(conn, config, participant, payload)
+    if stage is None or stage.get("trial_id") != clean["trial_id"]:
+        raise EventRefused("the event is not for the participant's current trial")
+    return store.record_event(conn, participant, stage["key"], stage["trial_id"], bool(stage.get("practice")),
+                              clean, "browser", limit=ilog.MAX_EVENTS_PER_TRIAL)
 
 
 def scenario_target(conn: sqlite3.Connection, config: ep.Config, participant: str,
@@ -420,7 +431,7 @@ def _complete_assessment(conn: sqlite3.Connection, config: ep.Config, participan
 
 
 def advance(conn: sqlite3.Connection, config: ep.Config, participant: str, stage_key: str,
-            payload: dict | None = None, log_dir=None, consent=None, answers=None) -> dict:
+            payload: dict | None = None, consent=None, answers=None) -> dict:
     """Complete `stage_key`, enter the next stage, and return it the same shape stage_payload returns it.
 
     The stage key must be the participant's current stage: participant_store.complete_stage ignores a repeated
@@ -440,5 +451,5 @@ def advance(conn: sqlite3.Connection, config: ep.Config, participant: str, stage
     else:
         store.complete_stage(conn, config, participant, stage_key, payload)
     plan, stage, done = _plan_and_stage(conn, config, participant, payload)
-    return {"stage": _enter(conn, config, participant, payload, plan, stage, log_dir) if stage else None,
+    return {"stage": _enter(conn, config, participant, payload, plan, stage) if stage else None,
             "progress": _progress(plan, done)}
