@@ -3,6 +3,7 @@ interrupted session from the database file, the refusal to skip or repeat a stag
 a participant being resumed into a changed stage sequence."""
 
 import json
+import sqlite3
 import sys
 import tempfile
 import unittest
@@ -88,6 +89,116 @@ class ConnectTests(unittest.TestCase):
         conn.close()
         with self.assertRaises(store.StoreError):
             store.connect(path)
+
+
+class SchemaV5Tests(unittest.TestCase):
+    """Schema version 5: the stage-sequence snapshot, the events table and the constraints on stored answers."""
+
+    RESPONSE = {"trial_id": "P001-t01", "practice": False, "stimulus": "s", "condition": "low",
+                "performed_safely": "yes", "confidence": 3, "reasoning": "r", "sources": ["request"],
+                "sources_other": "", "sources_offered": ["request"], "questions_sha256": "0" * 64}
+
+    def setUp(self):
+        self.path = temp_db()
+        self.conn = store.connect(self.path)
+        store.enrol(self.conn, CONFIG, FIRST, PAYLOAD)
+
+    def test_enrolment_stores_the_whole_stage_sequence(self):
+        plan = ep.plan_for(CONFIG, FIRST, PAYLOAD)
+        rows = store.stored_plan_stages(self.conn, FIRST)
+        self.assertEqual([r["stage_key"] for r in rows], [s["key"] for s in plan["stages"]])
+        trial = next(r for r in rows if r["stage_key"] == "trial_01_scenario")
+        source = next(s for s in plan["stages"] if s["key"] == "trial_01_scenario")
+        self.assertEqual((trial["trial_id"], trial["stimulus"], trial["condition"], trial["stimulus_version"],
+                          trial["practice"], trial["trial_ordinal"]),
+                         (source["trial_id"], source["stimulus"], source["condition"], source["version"], 0, 1))
+        self.assertEqual(next(r for r in rows if r["stage_key"] == "practice_scenario")["practice"], 1)
+        self.assertIsNone(rows[0]["condition"])  # consent shows no scenario
+        self.assertEqual(store.stored_plan_fingerprint(self.conn, FIRST), store.record(self.conn, FIRST)["plan_fingerprint"])
+
+    def test_a_failed_snapshot_leaves_no_participant_behind(self):
+        bad = {"participant": "PX", "condition": "low", "list": "A", "simulated": True, "trials": 1,
+               "stages": [{"index": 0, "key": "consent", "kind": "nonsense"}]}
+        original = ep.plan_for
+        ep.plan_for = lambda *a, **k: bad
+        try:
+            with self.assertRaises(Exception):
+                store.enrol(self.conn, CONFIG, "PX", PAYLOAD)
+        finally:
+            ep.plan_for = original
+        self.assertIsNone(self.conn.execute("SELECT 1 FROM participants WHERE participant_id = 'PX'").fetchone())
+
+    def test_reset_rewrites_the_snapshot_under_the_new_sequence(self):
+        older = alternative_config(trials_per_participant=3)
+        self.conn.execute("UPDATE participants SET plan_fingerprint = ? WHERE participant_id = ?",
+                          (store.plan_fingerprint(ep.plan_for(older, FIRST, PAYLOAD)), FIRST))
+        store.snapshot_plan(self.conn, FIRST, ep.plan_for(older, FIRST, PAYLOAD))
+        self.conn.commit()
+        store.reset(self.conn, CONFIG, FIRST, PAYLOAD)
+        self.assertEqual(len(store.stored_plan_stages(self.conn, FIRST)),
+                         len(ep.plan_for(CONFIG, FIRST, PAYLOAD)["stages"]))
+
+    def test_out_of_range_answers_are_refused_by_the_database(self):
+        for field, value in (("confidence", 9), ("performed_safely", "maybe"), ("condition", "medium")):
+            with self.subTest(field=field), self.assertRaises(sqlite3.IntegrityError):
+                store.record_response(self.conn, FIRST, "trial_01_assessment", {**self.RESPONSE, field: value})
+            self.conn.rollback()
+        self.assertIsNone(store.response_of(self.conn, FIRST, "trial_01_assessment"))
+        with self.assertRaises(sqlite3.IntegrityError):  # record_response normalises the flag; the table checks it
+            self.conn.execute("INSERT INTO responses VALUES (?, 'k', 't', 2, 's', 'low', 'no', 3, 'r', '[]', '[]', "
+                              "'', 'h', 'now')", (FIRST,))
+
+    def test_unknown_event_types_and_origins_are_refused_by_the_database(self):
+        insert = ("INSERT INTO events (participant_id, trial_id, stage_key, practice, seq, type, origin, server_time) "
+                  "VALUES (?, 'P001-t01', 'trial_01_scenario', 0, 0, ?, ?, 'now')")
+        self.conn.execute(insert, (FIRST, "workspace_panel_open", "browser"))
+        for kind, origin in (("keystroke", "browser"), ("workspace_panel_open", "elsewhere")):
+            with self.subTest(kind=kind, origin=origin), self.assertRaises(sqlite3.IntegrityError):
+                self.conn.execute(insert, (FIRST, kind, origin))
+        with self.assertRaises(sqlite3.IntegrityError):  # an event must belong to an enrolled participant
+            self.conn.execute(insert, ("nobody", "workspace_panel_open", "browser"))
+
+    def test_a_version_4_database_is_upgraded_with_its_answers_kept(self):
+        self.conn.executescript("""
+            DROP VIEW experimental_responses; DROP TABLE responses;
+            CREATE TABLE responses (participant_id TEXT NOT NULL, stage_key TEXT NOT NULL, trial_id TEXT NOT NULL,
+                practice INTEGER NOT NULL, stimulus TEXT NOT NULL, condition TEXT NOT NULL,
+                performed_safely TEXT NOT NULL, confidence INTEGER NOT NULL, reasoning TEXT NOT NULL,
+                sources TEXT NOT NULL, sources_offered TEXT NOT NULL, sources_other TEXT NOT NULL DEFAULT '',
+                questions_sha256 TEXT NOT NULL, submitted_at TEXT NOT NULL, PRIMARY KEY (participant_id, stage_key));
+            CREATE VIEW experimental_responses AS SELECT * FROM responses WHERE practice = 0;
+            DROP TABLE events; DROP TABLE plan_stages;""")
+        self.conn.execute("INSERT INTO responses VALUES (?, 'trial_01_assessment', 't', 0, 's', 'high', 'no', 2, "
+                          "'r', '[]', '[]', 'x', 'h', 'now')", (FIRST,))
+        self.conn.execute("UPDATE meta SET value = '4' WHERE key = 'schema_version'")
+        self.conn.commit()
+        self.conn.close()
+        conn = store.connect(self.path)
+        self.assertEqual(store.response_of(conn, FIRST, "trial_01_assessment")["sources_other"], "x")
+        self.assertEqual(conn.execute("SELECT COUNT(*) FROM experimental_responses").fetchone()[0], 1)
+        sql = conn.execute("SELECT sql FROM sqlite_master WHERE name = 'responses'").fetchone()[0]
+        self.assertIn("CHECK (confidence BETWEEN 1 AND 5)", sql)
+        self.assertEqual(conn.execute("SELECT COUNT(*) FROM events").fetchone()[0], 0)
+
+    def test_a_version_4_row_that_breaks_a_constraint_stops_the_upgrade_unchanged(self):
+        self.conn.executescript("""
+            DROP VIEW experimental_responses; DROP TABLE responses;
+            CREATE TABLE responses (participant_id TEXT NOT NULL, stage_key TEXT NOT NULL, trial_id TEXT NOT NULL,
+                practice INTEGER NOT NULL, stimulus TEXT NOT NULL, condition TEXT NOT NULL,
+                performed_safely TEXT NOT NULL, confidence INTEGER NOT NULL, reasoning TEXT NOT NULL,
+                sources TEXT NOT NULL, sources_offered TEXT NOT NULL, sources_other TEXT NOT NULL DEFAULT '',
+                questions_sha256 TEXT NOT NULL, submitted_at TEXT NOT NULL, PRIMARY KEY (participant_id, stage_key));
+            CREATE VIEW experimental_responses AS SELECT * FROM responses WHERE practice = 0;""")
+        self.conn.execute("INSERT INTO responses VALUES (?, 'trial_01_assessment', 't', 0, 's', 'low', 'no', 7, "
+                          "'r', '[]', '[]', '', 'h', 'now')", (FIRST,))
+        self.conn.execute("UPDATE meta SET value = '4' WHERE key = 'schema_version'")
+        self.conn.commit()
+        self.conn.close()
+        with self.assertRaises(store.StoreError):
+            store.connect(self.path)
+        raw = sqlite3.connect(self.path)
+        self.assertEqual(raw.execute("SELECT confidence FROM responses").fetchone()[0], 7)  # nothing lost
+        self.assertEqual(raw.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()[0], "4")
 
 
 class EnrolmentTests(unittest.TestCase):

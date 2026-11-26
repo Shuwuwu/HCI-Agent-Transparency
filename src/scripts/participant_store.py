@@ -27,18 +27,27 @@ Purpose:
     `sources_other`, empty when there is none), the information sources that were offered, and the SHA-256 of the question text. The practice row is flagged so analysis can leave it out; the `experimental_responses`
     view is the responses without it. Only the first submission of a stage is kept.
 
-    The post-study questionnaire and the interaction events are separate records and are not written here.
+    Stage sequence. At enrolment the participant's whole stage sequence is copied into `plan_stages` (scenario,
+    stimulus, stimulus version, condition, practice flag and trial ids, in order), so the database alone says
+    what each participant was shown and in what order. The flow itself still derives the sequence from the
+    configuration and checks it against the fingerprint; the snapshot is the record.
+
+    Interaction events (`events`): one row per event, with the participant, trial and stage it belongs to. The
+    allowed types are EVENT_TYPES; interaction_log.py validates their fields.
+
+    The post-study questionnaire is not written here yet.
 
 Inputs:
     An experiment configuration and assignments payload (experiment_plan.py) when enrolling participants, and a
     database file (default src/data/participants/participants.db, gitignored: it holds research data).
 
 Outputs:
-    The SQLite database, with four tables and one view: `participants` (one row per enrolled participant: token,
-    condition, list, trial count, configuration provenance, stage fingerprint, timestamps), `progress` (one row per
-    stage a participant has entered, with its completion time), `consents` (at most one row per participant: when
-    they agreed, and the consent text and its hash), `responses` (one row per completed assessment) and the view
-    `experimental_responses` (responses without the practice). The command line enrols participants, prints their links, and
+    The SQLite database: `participants` (one row per enrolled participant: token, condition, list, trial count,
+    configuration provenance, stage fingerprint, timestamps), `plan_stages` (their stage sequence, one row per
+    stage), `progress` (one row per stage a participant has entered, with its completion time), `consents` (at
+    most one row per participant: when they agreed, and the consent text and its hash), `responses` (one row per
+    completed assessment), `events` (interaction events) and the view `experimental_responses` (responses
+    without the practice). CHECK constraints refuse out-of-range answers, unknown event types and conditions. The command line enrols participants, prints their links, and
     prints how far each participant has come, including whether they have consented.
 
 Dependencies:
@@ -70,8 +79,52 @@ import experiment_plan as ep
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DB = ROOT / "src" / "data" / "participants" / "participants.db"
 TOKEN_BYTES = 24  # 32 URL-safe characters
-SCHEMA_VERSION = 4  # 2: the consents table; 3: responses and experimental_responses; 4: responses.sources_other
-SCHEMA = """
+# 2: the consents table; 3: responses and experimental_responses; 4: responses.sources_other;
+# 5: plan_stages (the stage sequence each participant was enrolled under), events (interaction events, which
+#    replace the JSON-lines log files) and CHECK constraints on responses.
+SCHEMA_VERSION = 5
+STAGE_KINDS = ("consent", "scenario", "assessment", "questionnaire", "completion")  # as experiment_plan.STAGE_KINDS
+CONDITIONS = ("low", "high")
+# Every interaction event type the database accepts. interaction_log.EVENT_FIELDS validates the fields of each
+# type and must name exactly these (tests/test_interaction_log.py checks it); session_start and stage_load are
+# written by the server only.
+EVENT_TYPES = (
+    "session_start", "stage_load", "scenario_visible",
+    "workspace_panel_open", "workspace_panel_close", "workspace_tab_open", "workspace_tab_view",
+    "workspace_item_open", "skills_tab_open", "skills_tab_view", "skill_doc_open", "skill_doc_view",
+    "trace_card_expand", "trace_card_collapse", "trace_card_view",
+)
+EVENT_ORIGINS = ("browser", "server", "legacy")  # legacy: imported from the retired JSON-lines files
+
+
+def _in(values) -> str:
+    """An SQL list literal of fixed identifiers, for CHECK constraints (never used with participant input)."""
+    return "(" + ", ".join(f"'{v}'" for v in values) + ")"
+
+
+RESPONSES_TABLE = f"""
+CREATE TABLE IF NOT EXISTS responses (
+    participant_id   TEXT NOT NULL REFERENCES participants(participant_id),
+    stage_key        TEXT NOT NULL,
+    trial_id         TEXT NOT NULL,
+    practice         INTEGER NOT NULL CHECK (practice IN (0, 1)),  -- 1 for the practice trial
+    stimulus         TEXT NOT NULL,
+    condition        TEXT NOT NULL CHECK (condition IN {_in(CONDITIONS)}),
+    performed_safely TEXT NOT NULL CHECK (performed_safely IN ('yes', 'no')),
+    confidence       INTEGER NOT NULL CHECK (confidence BETWEEN 1 AND 5),  -- the scale of assessment.json
+    reasoning        TEXT NOT NULL,
+    sources          TEXT NOT NULL,         -- JSON list of the selected source ids, in the order offered
+    sources_offered  TEXT NOT NULL,         -- JSON list of the source ids this participant could choose from
+    sources_other    TEXT NOT NULL DEFAULT '', -- the optional description given with "Other"; '' when none
+    questions_sha256 TEXT NOT NULL,         -- of src/study_materials/assessment.json as served
+    submitted_at     TEXT NOT NULL,
+    PRIMARY KEY (participant_id, stage_key)
+);"""
+RESPONSE_COLUMNS = ("participant_id", "stage_key", "trial_id", "practice", "stimulus", "condition",
+                    "performed_safely", "confidence", "reasoning", "sources", "sources_offered", "sources_other",
+                    "questions_sha256", "submitted_at")
+
+SCHEMA = f"""
 CREATE TABLE IF NOT EXISTS participants (
     participant_id   TEXT PRIMARY KEY,
     token            TEXT NOT NULL UNIQUE,
@@ -84,6 +137,21 @@ CREATE TABLE IF NOT EXISTS participants (
     plan_fingerprint TEXT NOT NULL,
     enrolled_at      TEXT NOT NULL,
     completed_at     TEXT
+);
+CREATE TABLE IF NOT EXISTS plan_stages (
+    participant_id   TEXT NOT NULL REFERENCES participants(participant_id),
+    stage_index      INTEGER NOT NULL,
+    stage_key        TEXT NOT NULL,
+    kind             TEXT NOT NULL CHECK (kind IN {_in(STAGE_KINDS)}),
+    trial_id         TEXT,                  -- scenario and assessment stages only
+    trial_ordinal    INTEGER,               -- 0 for the practice, 1.. for experimental trials
+    practice         INTEGER NOT NULL CHECK (practice IN (0, 1)),
+    scenario         TEXT,
+    stimulus_version TEXT,                  -- practice, safe or unsafe: researcher-only
+    stimulus         TEXT,
+    condition        TEXT CHECK (condition IS NULL OR condition IN {_in(CONDITIONS)}),
+    PRIMARY KEY (participant_id, stage_key),
+    UNIQUE (participant_id, stage_index)
 );
 CREATE TABLE IF NOT EXISTS progress (
     participant_id TEXT NOT NULL REFERENCES participants(participant_id),
@@ -99,28 +167,28 @@ CREATE TABLE IF NOT EXISTS consents (
     consent_sha256 TEXT NOT NULL,
     consent_text   TEXT NOT NULL
 );
-CREATE TABLE IF NOT EXISTS responses (
-    participant_id   TEXT NOT NULL REFERENCES participants(participant_id),
-    stage_key        TEXT NOT NULL,
-    trial_id         TEXT NOT NULL,
-    practice         INTEGER NOT NULL,      -- 1 for the practice trial: never part of the experimental analysis
-    stimulus         TEXT NOT NULL,
-    condition        TEXT NOT NULL,
-    performed_safely TEXT NOT NULL,         -- "yes" or "no"
-    confidence       INTEGER NOT NULL,      -- 1 (not at all confident) to 5 (extremely confident)
-    reasoning        TEXT NOT NULL,
-    sources          TEXT NOT NULL,         -- JSON list of the selected source ids, in the order offered
-    sources_offered  TEXT NOT NULL,         -- JSON list of the source ids this participant could choose from
-    sources_other    TEXT NOT NULL DEFAULT '', -- the optional description given with "Other"; '' when none
-    questions_sha256 TEXT NOT NULL,         -- of src/study_materials/assessment.json as served
-    submitted_at     TEXT NOT NULL,
-    PRIMARY KEY (participant_id, stage_key)
-);
+{RESPONSES_TABLE}
 CREATE VIEW IF NOT EXISTS experimental_responses AS SELECT * FROM responses WHERE practice = 0;
+CREATE TABLE IF NOT EXISTS events (
+    event_id       INTEGER PRIMARY KEY,
+    participant_id TEXT NOT NULL REFERENCES participants(participant_id),
+    trial_id       TEXT,                    -- NULL for an event outside a trial (a stage_load of consent)
+    stage_key      TEXT NOT NULL,           -- the participant's stage when the event was received
+    practice       INTEGER NOT NULL CHECK (practice IN (0, 1)),
+    seq            INTEGER NOT NULL,        -- order of arrival within (participant, trial)
+    type           TEXT NOT NULL CHECK (type IN {_in(EVENT_TYPES)}),
+    origin         TEXT NOT NULL CHECK (origin IN {_in(EVENT_ORIGINS)}),
+    tab            TEXT,
+    item_id        TEXT,
+    skill_id       TEXT,
+    card_id        TEXT,
+    duration_ms    INTEGER CHECK (duration_ms IS NULL OR duration_ms >= 0),
+    client_ms      INTEGER,                 -- the browser's clock; never used for ordering
+    server_time    TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS events_by_trial ON events (participant_id, trial_id, seq);
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
-
-
 class StoreError(ValueError):
     """The requested flow transition or participant record is not valid."""
 
@@ -159,9 +227,31 @@ def connect(path: Path = DEFAULT_DB) -> sqlite3.Connection:
         # exists is not, so it is added here; a table the script has just created already has it. Existing rows are
         # untouched apart from taking the new column's default.
         _add_column_if_missing(conn, "responses", "sources_other", "TEXT NOT NULL DEFAULT ''")  # version 4
+        conn.commit()
+        if int(row["value"]) < 5:
+            _rebuild_responses(conn, path)
         conn.execute("UPDATE meta SET value = ? WHERE key = 'schema_version'", (str(SCHEMA_VERSION),))
         conn.commit()
     return conn
+
+
+def _rebuild_responses(conn: sqlite3.Connection, path: Path) -> None:
+    """Version 5: re-create `responses` with its CHECK constraints, keeping every row (SQLite cannot add a CHECK
+    to an existing table). All or nothing: a stored row that breaks a constraint raises StoreError and leaves the
+    database as it was, so an upgrade never drops an answer silently."""
+    try:
+        conn.execute("BEGIN")
+        conn.execute("DROP VIEW IF EXISTS experimental_responses")
+        conn.execute("ALTER TABLE responses RENAME TO responses_v4")
+        conn.execute(RESPONSES_TABLE)
+        columns = ", ".join(RESPONSE_COLUMNS)
+        conn.execute(f"INSERT INTO responses ({columns}) SELECT {columns} FROM responses_v4")
+        conn.execute("DROP TABLE responses_v4")
+        conn.execute("CREATE VIEW experimental_responses AS SELECT * FROM responses WHERE practice = 0")
+        conn.commit()
+    except sqlite3.DatabaseError as exc:
+        conn.rollback()
+        raise StoreError(f"{path}: cannot upgrade the responses table to schema version 5: {exc}") from exc
 
 
 def _add_column_if_missing(conn: sqlite3.Connection, table: str, column: str, declaration: str) -> None:
@@ -179,6 +269,43 @@ def plan_fingerprint(plan: dict) -> str:
     """
     material = [[s["key"], s.get("trial_id"), s.get("stimulus"), s.get("condition")] for s in plan["stages"]]
     return hashlib.sha256(json.dumps(material, sort_keys=True).encode("utf-8")).hexdigest()[:32]
+
+
+def snapshot_plan(conn: sqlite3.Connection, participant: str, plan: dict) -> int:
+    """Store `plan`'s stage sequence as the participant's rows of `plan_stages`, replacing any earlier rows.
+
+    The snapshot makes the database self-contained: which scenario, stimulus version and condition each stage
+    showed, and in what order, can be read from it without the configuration or the assignments file it was
+    derived from. It is written in the caller's transaction (no commit), at enrolment and when a simulated
+    participant is reset. Returns the number of rows written.
+    """
+    conn.execute("DELETE FROM plan_stages WHERE participant_id = ?", (participant,))
+    rows = [(participant, s["index"], s["key"], s["kind"], s.get("trial_id"), s.get("trial"),
+             int(bool(s.get("practice"))), s.get("scenario"), s.get("version"), s.get("stimulus"),
+             s.get("condition")) for s in plan["stages"]]
+    conn.executemany("INSERT INTO plan_stages (participant_id, stage_index, stage_key, kind, trial_id, trial_ordinal, "
+                     "practice, scenario, stimulus_version, stimulus, condition) "
+                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows)
+    return len(rows)
+
+
+def stored_plan_stages(conn: sqlite3.Connection, participant: str) -> list[dict]:
+    """The participant's `plan_stages` rows in stage order (empty if no snapshot was stored)."""
+    return [dict(row) for row in conn.execute(
+        "SELECT * FROM plan_stages WHERE participant_id = ? ORDER BY stage_index", (participant,))]
+
+
+def stored_plan_fingerprint(conn: sqlite3.Connection, participant: str) -> str | None:
+    """plan_fingerprint computed from the stored snapshot, or None without one.
+
+    Equal to participants.plan_fingerprint when the snapshot is the sequence the participant was enrolled
+    under; participant_data.py --check compares the two.
+    """
+    rows = stored_plan_stages(conn, participant)
+    if not rows:
+        return None
+    return plan_fingerprint({"stages": [{"key": r["stage_key"], "trial_id": r["trial_id"], "stimulus": r["stimulus"],
+                                         "condition": r["condition"]} for r in rows]})
 
 
 def enrol(conn: sqlite3.Connection, config: ep.Config, participant: str, payload: dict | None = None,
@@ -199,12 +326,17 @@ def enrol(conn: sqlite3.Connection, config: ep.Config, participant: str, payload
            "simulated": int(plan["simulated"]), "config_path": str(config["path"]),
            "assignments_path": str(config["assignments_path"]), "plan_fingerprint": plan_fingerprint(plan),
            "enrolled_at": now(), "completed_at": None}
-    conn.execute(
-        "INSERT INTO participants (participant_id, token, condition, list, trials, simulated, config_path, "
-        "assignments_path, plan_fingerprint, enrolled_at, completed_at) "
-        "VALUES (:participant_id, :token, :condition, :list, :trials, :simulated, :config_path, "
-        ":assignments_path, :plan_fingerprint, :enrolled_at, :completed_at)", row)
-    conn.commit()
+    try:
+        conn.execute(
+            "INSERT INTO participants (participant_id, token, condition, list, trials, simulated, config_path, "
+            "assignments_path, plan_fingerprint, enrolled_at, completed_at) "
+            "VALUES (:participant_id, :token, :condition, :list, :trials, :simulated, :config_path, "
+            ":assignments_path, :plan_fingerprint, :enrolled_at, :completed_at)", row)
+        snapshot_plan(conn, participant, plan)  # same transaction: never a participant without their sequence
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     return row
 
 
@@ -437,6 +569,7 @@ def reset(conn: sqlite3.Connection, config: ep.Config, participant: str, payload
                  "assignments_path = ?, condition = ?, list = ?, trials = ? WHERE participant_id = ?",
                  (fingerprint, str(config["path"]), str(config["assignments_path"]), plan["condition"], plan["list"],
                   plan["trials"], participant))
+    snapshot_plan(conn, participant, plan)
     conn.commit()
     return {"participant_id": participant, "stages_cleared": stages, "consent_cleared": bool(consent),
             "responses_cleared": responses, "plan_changed": fingerprint != row["plan_fingerprint"]}
