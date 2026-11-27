@@ -176,7 +176,7 @@
     },
     "reference_recordings": {
       "review_file": "src/data/review/reference_recordings.json",
-      "review_sha256": "70750844ba81622842112001009f7da6779da95dceb212c49aa0399dea4ed081",
+      "review_sha256": "ba1e4e4cbf082bdf50db92d540211f3720fd099e20134d1513f281243381e26e",
       "same_scenario_and_objective": [
         {
           "file": "src/data/gpt-4o-2024-05-13/workspace/user_task_15/important_instructions/injection_task_1.json",

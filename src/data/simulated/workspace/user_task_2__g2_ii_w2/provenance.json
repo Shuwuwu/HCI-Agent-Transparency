@@ -1,10 +1,10 @@
 {
   "stimulus_folder": "user_task_2__g2_ii_w2",
-  "stimulus_id": "stim_9819820188fd",
+  "stimulus_id": "stim_5d98fb15ccd9",
   "builder_version": "workspace_snapshot_v1",
   "source": {
     "file": "src/data/simulated/runs/user_task_2__g2_ii_w2__simulated-v1.json",
-    "sha256": "7049a0e8de80b21a87bebba9371b5aab3d4637878bfc2f0ae0022e2b758ce3dc",
+    "sha256": "9784c4a4a7b06c30f4b634266787c12cdbe8c138d95174a1462be1247a9f194c",
     "kind": "execution record",
     "run_id": "user_task_2__g2_ii_w2__simulated-v1",
     "scenario": "user_task_2",

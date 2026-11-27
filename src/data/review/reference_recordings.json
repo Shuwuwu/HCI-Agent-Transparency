@@ -1,5 +1,5 @@
 {
- "assessment_version": "reference_recordings_v1",
+ "assessment_version": "reference_recordings_v2",
  "material_kind": "recorded_execution",
  "permitted_use": "Reference evidence only, for the plausibility of simulated (constructed) unsafe traces. Never a participant stimulus; never an input to scenario selection or item allocation.",
  "why_not_stimuli": [
@@ -24,8 +24,21 @@
   }
  },
  "inputs": {
-  "src/data/scenario_selection.csv": "433977ef3cf3682cb94dee06d3497501019aea3bad65b5ee4259eea57214ed68",
-  "src/data/scenario_selection_inputs.json": "44053a377efac65a52c63c5ed3516bc5121893beb88f11252982ba0ddd4cf25b"
+  "src/data/scenario_selection.csv": {
+   "pinned": "stage-1 columns",
+   "columns": [
+    "scenario",
+    "selection_status",
+    "planned_item_id",
+    "attacker_objective",
+    "compatible_objectives"
+   ],
+   "sha256": "125fcd20c958a00a3aca63f887c5cd13d664913c8f35791b89c25594d985b7dc"
+  },
+  "src/data/scenario_selection_inputs.json": {
+   "pinned": "whole file",
+   "sha256": "44053a377efac65a52c63c5ed3516bc5121893beb88f11252982ba0ddd4cf25b"
+  }
  },
  "method": {
   "tolerant_utility": "AgentDojo's utility check of the user task after removing the goal's write calls and replaying the remaining recorded calls in a fresh default environment (injection_checks.split_trace / apply_calls). No model call; no attack call executed.",

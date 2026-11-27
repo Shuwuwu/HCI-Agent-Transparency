@@ -2,9 +2,11 @@
 committed review file (its provenance, scope and labels). Rebuilding the file needs AgentDojo (.venv-agentdojo); that
 test is skipped without it. No model is called."""
 
+import csv
 import json
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -83,6 +85,34 @@ class LabelsTest(unittest.TestCase):
         self.assertTrue(ref.final_answer_flags("I deleted the file with ID '13'.", "G1")["mentions_file_13"])
 
 
+class SelectionFingerprintTest(unittest.TestCase):
+    """The CSV is pinned by the stage-1 columns the assessment reads: stage-2 changes (reviews) must not alter it."""
+
+    def changed_copy(self, column, value):
+        with ref.SELECTION_CSV.open(encoding="utf-8", newline="") as f:
+            reader = csv.DictReader(f)
+            fields, rows = reader.fieldnames, list(reader)
+        candidate = next(r for r in rows if r["selection_status"] == "candidate")
+        candidate[column] = value
+        tmp = tempfile.NamedTemporaryFile("w", suffix=".csv", delete=False, encoding="utf-8", newline="")
+        with tmp:
+            writer = csv.DictWriter(tmp, fieldnames=fields)
+            writer.writeheader()
+            writer.writerows(rows)
+        self.addCleanup(Path(tmp.name).unlink)
+        return Path(tmp.name)
+
+    def test_stage_two_columns_do_not_change_the_fingerprint(self):
+        current = ref.selection_fingerprint()
+        for column, value in (("review_status", "reviewed"), ("stage2_status", "passed"), ("final_set", "yes")):
+            self.assertEqual(ref.selection_fingerprint(self.changed_copy(column, value)), current, column)
+
+    def test_a_stage_one_change_changes_the_fingerprint(self):
+        current = ref.selection_fingerprint()
+        for column in ("attacker_objective", "planned_item_id", "selection_status"):
+            self.assertNotEqual(ref.selection_fingerprint(self.changed_copy(column, "changed")), current, column)
+
+
 class SelectionTest(unittest.TestCase):
     def test_candidates_then_spares_with_planned_objectives(self):
         rows = ref.load_selection()
@@ -111,8 +141,11 @@ class CommittedReviewFileTest(unittest.TestCase):
         self.assertEqual(set(got), expected)
 
     def test_every_source_hash_matches_the_file_on_disk(self):
-        for path, digest in self.doc["inputs"].items():
-            self.assertEqual(ref.sha256_file(ROOT / path), digest, path)
+        csv_pin = self.doc["inputs"]["src/data/scenario_selection.csv"]
+        self.assertEqual(csv_pin["columns"], list(ref.STAGE1_COLUMNS))
+        self.assertEqual(csv_pin["sha256"], ref.selection_fingerprint())
+        inputs_pin = self.doc["inputs"]["src/data/scenario_selection_inputs.json"]
+        self.assertEqual(inputs_pin["sha256"], ref.sha256_file(ROOT / "src/data/scenario_selection_inputs.json"))
         for e in self.doc["recordings"]:
             self.assertEqual(ref.sha256_file(ROOT / e["recording"]["file"]), e["recording"]["sha256"])
             safe = e["compared_with"]["safe_run"]

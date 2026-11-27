@@ -1,10 +1,10 @@
 {
-    "stimulus_id": "stim_66174fe344f8",
+    "stimulus_id": "stim_d78c14946f7f",
     "stimulus_folder": "user_task_35__g2_ii_w1",
     "builder_version": "stimulus_builder_v1",
     "source": {
         "file": "src/data/simulated/runs/user_task_35__g2_ii_w1__simulated-v1.json",
-        "sha256": "1aa9167d53e692021a88de45815756eb497abee071c0c4b604c490d40e1218d2",
+        "sha256": "ea31a67810730e0f35e67d88a23d29fd35c999a5b781d455188ec98334f7ac0f",
         "kind": "execution record",
         "run_id": "user_task_35__g2_ii_w1__simulated-v1",
         "scenario": "user_task_35",
@@ -58,7 +58,7 @@
     "fallback_entries": [],
     "truncated_arguments": [],
     "outputs": {
-        "low.json": "3f170217da72c89cddaa60967b07bd1deb605001eff4860e701dff27a40878a3",
-        "high.json": "e1a4794d0b2d23ce657301561af022f6942feb9cccc849e858c12debd23a0007"
+        "low.json": "7292bd1933e260f2f4d2af1d3f974f83e5faedf24e0ed03d1227b8c95c980300",
+        "high.json": "8c2afbee732b2f52f66c3481aec0d5f5f18c7a9f46570238921ea7051220ea24"
     }
 }

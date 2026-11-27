@@ -31,6 +31,9 @@ Outputs:
     src/data/review/reference_recordings.json: researcher-only. A header (purpose, material kind
     "recorded_execution", permitted use, sources with SHA-256, method notes, summary counts) and one entry per
     recording. Deterministic: no timestamps; the same inputs give the same bytes. Never served to participants.
+    The selection CSV is pinned by a hash of the stage-1 columns this script reads (STAGE1_COLUMNS), not of the
+    whole file: its stage-2 columns change whenever stage 2 or a manual review changes, which does not affect
+    this assessment (and would otherwise invalidate every file that cites this one).
 
 Dependencies:
     agentdojo_runs.py (loading and parsing the recordings), injection_design.py (objectives, default attacker
@@ -61,7 +64,8 @@ ROOT = runs.REPO_ROOT
 SELECTION_CSV = ROOT / "src" / "data" / "scenario_selection.csv"
 SELECTION_INPUTS = ROOT / "src" / "data" / "scenario_selection_inputs.json"
 DEFAULT_OUT = ROOT / "src" / "data" / "review" / "reference_recordings.json"
-ASSESSMENT_VERSION = "reference_recordings_v1"
+ASSESSMENT_VERSION = "reference_recordings_v2"  # v2: the selection CSV is pinned by its stage-1 columns only
+STAGE1_COLUMNS = ("scenario", "selection_status", "planned_item_id", "attacker_objective", "compatible_objectives")
 RECORDED_MODEL = "gpt-4o-2024-05-13"
 SELECTED_STATUSES = ("candidate", "spare")
 OBJECTIVES = ("G1", "G2", "G3", "G4")
@@ -100,6 +104,14 @@ def load_selection(path: Path = SELECTION_CSV) -> list[dict]:
              "planned_objective": r["attacker_objective"] or None,
              "planned_item_id": r["planned_item_id"] or None,
              "compatible_objectives": [o for o in r["compatible_objectives"].split("|") if o]} for r in rows]
+
+
+def selection_fingerprint(path: Path = SELECTION_CSV) -> str:
+    """SHA-256 of the stage-1 columns this assessment depends on (STAGE1_COLUMNS of every row, in file order, as
+    canonical JSON). Unchanged when only the stage-2 columns of the CSV change."""
+    with path.open(encoding="utf-8", newline="") as f:
+        rows = [[r[c] for c in STAGE1_COLUMNS] for r in csv.DictReader(f)]
+    return hashlib.sha256(json.dumps(rows, ensure_ascii=False).encode("utf-8")).hexdigest()
 
 
 def safe_run_calls(scenario: str, inputs: dict) -> tuple[list[dict], dict]:
@@ -269,7 +281,11 @@ def build() -> dict:
         "source": {"agentdojo_commit": runs_commit(), "runs_dir": rel(runs.RUNS_DIR), "model": RECORDED_MODEL,
                    "attacks": list(runs.ATTACKS), "objectives": {g: design.OBJECTIVES[g]["agentdojo_task"]
                                                                  for g in OBJECTIVES}},
-        "inputs": {rel(p): sha256_file(p) for p in (SELECTION_CSV, SELECTION_INPUTS)},
+        "inputs": {
+            rel(SELECTION_CSV): {"pinned": "stage-1 columns", "columns": list(STAGE1_COLUMNS),
+                                 "sha256": selection_fingerprint()},
+            rel(SELECTION_INPUTS): {"pinned": "whole file", "sha256": sha256_file(SELECTION_INPUTS)},
+        },
         "method": {
             "tolerant_utility": ("AgentDojo's utility check of the user task after removing the goal's write calls "
                                  "and replaying the remaining recorded calls in a fresh default environment "
