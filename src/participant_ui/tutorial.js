@@ -276,7 +276,7 @@
         text: "This is what Emma asked the assistant to do.",
         target: () => q(".chat .user-bubble") },
       { title: "Assistant Activity",
-          intro: "These steps show what the assistant did, in chronological order.",
+          intro: "These steps show what the assistant did, in chronological order. The tool used for each step is shown in the top-right corner.",
           action: "Try it now",
           text: "Click the highlighted step to view its details. Click again to close it.",
         target: () => q(".chat .card"),
