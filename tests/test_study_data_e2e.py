@@ -46,10 +46,15 @@ import participant_store as store  # noqa: E402
 from study_data_fixtures import CONFIG, PAYLOAD, PARTICIPANTS, new_database, submission  # noqa: E402
 
 FIRST, SECOND = PARTICIPANTS[0], PARTICIPANTS[1]
+# The first SENT_BEFORE_CONTINUE are sent while the conversation is shown; the rest after Continue, as the page
+# sends them while the next stage loads (the panel, still open on an email, is closed when the view unmounts).
 BROWSER_EVENTS = ({"type": "workspace_panel_open"}, {"type": "workspace_tab_open", "tab": "mail"},
+                  {"type": "workspace_item_open", "tab": "mail", "item_id": "1"},
+                  {"type": "workspace_item_view", "tab": "mail", "item_id": "1", "duration_ms": 900},
                   {"type": "workspace_tab_view", "tab": "mail", "duration_ms": 1200},
                   {"type": "workspace_panel_close", "duration_ms": 2000},
                   {"type": "scenario_visible", "duration_ms": 15000})
+SENT_BEFORE_CONTINUE = 3
 
 
 class Server:
@@ -101,17 +106,17 @@ class Participant:
 
     def walk(self, until=None, stage=None):
         """Continue from the current stage (as the page does: one GET, then each answer carries the next stage)
-        until `until` is current or the sequence ends. Scenario stages get BROWSER_EVENTS; the last two (panel
-        close and visible time) are sent after Continue, as the page sends them while the next stage loads."""
+        until `until` is current or the sequence ends. Scenario stages get BROWSER_EVENTS, those after
+        SENT_BEFORE_CONTINUE once Continue has been answered."""
         stage = stage or self.stage()
         while stage is not None and stage["key"] != until:
             if stage["kind"] == "scenario":
-                for event in BROWSER_EVENTS[:3]:
+                for event in BROWSER_EVENTS[:SENT_BEFORE_CONTINUE]:
                     assert self.log(stage["trial_id"], event) == 204
             status, body = self.complete(stage)
             assert status == 200, (stage["key"], status, body)
             if stage["kind"] == "scenario":
-                for event in BROWSER_EVENTS[3:]:
+                for event in BROWSER_EVENTS[SENT_BEFORE_CONTINUE:]:
                     assert self.log(stage["trial_id"], event) == 204
             stage = json.loads(body)["stage"]
         return stage
@@ -214,8 +219,16 @@ class EndToEndTests(unittest.TestCase):
         self.assertEqual(pdata.find_problems(self.conn), [])
 
     def test_late_events_join_their_own_trial_at_its_assessment(self):
-        late = self.rows("SELECT stage_key FROM events WHERE participant_id = ? AND type = 'scenario_visible'", FIRST)
-        self.assertTrue(late and all(r["stage_key"].endswith("_assessment") for r in late))
+        for kind in ("scenario_visible", "workspace_item_view"):
+            late = self.rows(f"SELECT stage_key FROM events WHERE participant_id = ? AND type = '{kind}'", FIRST)
+            self.assertTrue(late and all(r["stage_key"].endswith("_assessment") for r in late), kind)
+
+    def test_item_viewing_time_reaches_the_trial_export(self):
+        columns, rows = pdata.export_tables(self.conn, FIRST)["trials.csv"]
+        self.assertIn("workspace_items_viewed_ms", columns)
+        done = [r for r in rows if r["scenario_completed_at"]]
+        self.assertTrue(done)
+        self.assertTrue(all(json.loads(r["workspace_items_viewed_ms"]) == {"mail": {"1": 900}} for r in done))
 
     def test_the_export_matches_the_database(self):
         out = self.folder / "export"

@@ -48,6 +48,9 @@ class ValidationTest(unittest.TestCase):
                           "client_ms": 1700000000000})
         self.assertEqual(ilog.validate_event(event("trace_card_view", card_id="step-3", duration_ms=5))["card_id"],
                          "step-3")
+        self.assertEqual(ilog.validate_event(event("workspace_item_view", tab="drive", item_id="26", duration_ms=0)),
+                         {"trial_id": TRIAL, "type": "workspace_item_view", "tab": "drive", "item_id": "26",
+                          "duration_ms": 0})
 
     def test_invalid_events_are_rejected(self):
         bad = [event("unknown_type"), event("skill_doc_open"), event("skill_doc_open", skill_id="../x"),
@@ -56,7 +59,11 @@ class ValidationTest(unittest.TestCase):
                event("trace_card_view", card_id="step-1"), event("scenario_visible"),
                event("workspace_panel_open", extra="field"), {"type": "workspace_panel_open"},
                {"trial_id": "../../etc", "type": "workspace_panel_open"}, "not an object",
-               event("skill_doc_open", skill_id="x" * 3000), event("workspace_panel_open", pid="P001")]
+               event("skill_doc_open", skill_id="x" * 3000), event("workspace_panel_open", pid="P001"),
+               event("workspace_item_view", tab="mail", item_id="3"),  # no duration
+               event("workspace_item_view", tab="skills", item_id="3", duration_ms=1),  # not an item tab
+               event("workspace_item_view", tab="mail", item_id="a/b", duration_ms=1),
+               event("workspace_item_view", item_id="3", duration_ms=1)]
         for e in bad:
             with self.assertRaises(ilog.LogError, msg=str(e)[:60]):
                 ilog.validate_event(e)
@@ -76,6 +83,9 @@ class SummaryTest(unittest.TestCase):
                   row("skill_doc_view", 5, skill_id="email-lookup", duration_ms=1000),
                   row("skills_tab_view", 6, duration_ms=6000), row("workspace_tab_open", 7, tab="mail"),
                   row("workspace_item_open", 8, tab="mail", item_id="33"),
+                  row("workspace_item_view", 8, tab="mail", item_id="33", duration_ms=1200),
+                  row("workspace_item_view", 8, tab="mail", item_id="33", duration_ms=300),
+                  row("workspace_item_view", 8, tab="calendar", item_id="33", duration_ms=50),
                   row("workspace_tab_view", 9, tab="mail", duration_ms=2500),
                   row("workspace_panel_close", 10, duration_ms=9000),
                   row("trace_card_expand", 11, card_id="step-1"), row("trace_card_expand", 12, card_id="step-1"),
@@ -88,6 +98,8 @@ class SummaryTest(unittest.TestCase):
         self.assertEqual((s["skills_tab_opened"], s["skills_tab_ms"]), (True, 6000))
         self.assertEqual((s["workspace_tabs_viewed_ms"], s["workspace_panel_ms"]), ({"mail": 2500}, 9000))
         self.assertEqual(s["workspace_items_opened"], 1)
+        # summed per item, kept apart per tab: an email and a calendar event may share an id
+        self.assertEqual(s["workspace_items_viewed_ms"], {"mail": {"33": 1500}, "calendar": {"33": 50}})
         self.assertEqual((s["trace_cards_expanded"], s["trace_cards_viewed_ms"]), (1, {"step-1": 300}))
         self.assertEqual((s["scenario_visible_ms"], s["stage_loads"]), (25000, 1))
 
@@ -97,6 +109,7 @@ class SummaryTest(unittest.TestCase):
         self.assertFalse(s["skills_tab_opened"])
         self.assertIsNone(s["first_skill_open_s"])
         self.assertFalse(s["workspace_opened"])
+        self.assertEqual(s["workspace_items_viewed_ms"], {})
 
 
 class ServerTest(unittest.TestCase):

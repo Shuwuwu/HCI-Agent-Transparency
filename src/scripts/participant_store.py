@@ -104,8 +104,9 @@ TOKEN_BYTES = 24  # 32 URL-safe characters
 # 5: plan_stages (the stage sequence each participant was enrolled under), events (interaction events, which
 #    replace the JSON-lines log files) and CHECK constraints on responses; 6: questionnaire_responses;
 # 7: the researcher views participant_overview, trial_summary and experimental_events (VIEWS);
-# 8: questionnaire_responses.stage_key (the pre-study questionnaire is stored in the same table).
-SCHEMA_VERSION = 8
+# 8: questionnaire_responses.stage_key (the pre-study questionnaire is stored in the same table);
+# 9: the event type workspace_item_view (the events table is rebuilt, since SQLite cannot change a CHECK).
+SCHEMA_VERSION = 9
 STAGE_KINDS = ("consent", "scenario", "assessment", "questionnaire", "completion")  # as experiment_plan.STAGE_KINDS
 CONDITIONS = ("low", "high")
 # Every interaction event type the database accepts. interaction_log.EVENT_FIELDS validates the fields of each
@@ -114,7 +115,7 @@ CONDITIONS = ("low", "high")
 EVENT_TYPES = (
     "session_start", "stage_load", "scenario_visible",
     "workspace_panel_open", "workspace_panel_close", "workspace_tab_open", "workspace_tab_view",
-    "workspace_item_open", "skills_tab_open", "skills_tab_view", "skill_doc_open", "skill_doc_view",
+    "workspace_item_open", "workspace_item_view", "skills_tab_open", "skills_tab_view", "skill_doc_open", "skill_doc_view",
     "trace_card_expand", "trace_card_collapse", "trace_card_view",
 )
 EVENT_ORIGINS = ("browser", "server", "legacy")  # legacy: imported from the retired JSON-lines files
@@ -146,6 +147,26 @@ CREATE TABLE IF NOT EXISTS responses (
 RESPONSE_COLUMNS = ("participant_id", "stage_key", "trial_id", "practice", "stimulus", "condition",
                     "performed_safely", "confidence", "reasoning", "sources", "sources_offered", "sources_other",
                     "questions_sha256", "submitted_at")
+
+# The events table on its own, so the version 9 upgrade (_rebuild_events) can re-create it.
+EVENTS_TABLE = f"""CREATE TABLE IF NOT EXISTS events (
+    event_id       INTEGER PRIMARY KEY,
+    participant_id TEXT NOT NULL REFERENCES participants(participant_id),
+    trial_id       TEXT,                    -- NULL for an event outside a trial (a stage_load of consent)
+    stage_key      TEXT NOT NULL,           -- the participant's stage when the event was received
+    practice       INTEGER NOT NULL CHECK (practice IN (0, 1)),
+    seq            INTEGER NOT NULL,        -- order of arrival within (participant, trial)
+    type           TEXT NOT NULL CHECK (type IN {_in(EVENT_TYPES)}),
+    origin         TEXT NOT NULL CHECK (origin IN {_in(EVENT_ORIGINS)}),
+    tab            TEXT,
+    item_id        TEXT,
+    skill_id       TEXT,
+    card_id        TEXT,
+    duration_ms    INTEGER CHECK (duration_ms IS NULL OR duration_ms >= 0),
+    client_ms      INTEGER,                 -- the browser's clock; never used for ordering
+    server_time    TEXT NOT NULL
+);"""
+EVENTS_INDEX = "CREATE INDEX IF NOT EXISTS events_by_trial ON events (participant_id, trial_id, seq);"
 
 SCHEMA = f"""
 CREATE TABLE IF NOT EXISTS participants (
@@ -192,24 +213,8 @@ CREATE TABLE IF NOT EXISTS consents (
 );
 {RESPONSES_TABLE}
 CREATE VIEW IF NOT EXISTS experimental_responses AS SELECT * FROM responses WHERE practice = 0;
-CREATE TABLE IF NOT EXISTS events (
-    event_id       INTEGER PRIMARY KEY,
-    participant_id TEXT NOT NULL REFERENCES participants(participant_id),
-    trial_id       TEXT,                    -- NULL for an event outside a trial (a stage_load of consent)
-    stage_key      TEXT NOT NULL,           -- the participant's stage when the event was received
-    practice       INTEGER NOT NULL CHECK (practice IN (0, 1)),
-    seq            INTEGER NOT NULL,        -- order of arrival within (participant, trial)
-    type           TEXT NOT NULL CHECK (type IN {_in(EVENT_TYPES)}),
-    origin         TEXT NOT NULL CHECK (origin IN {_in(EVENT_ORIGINS)}),
-    tab            TEXT,
-    item_id        TEXT,
-    skill_id       TEXT,
-    card_id        TEXT,
-    duration_ms    INTEGER CHECK (duration_ms IS NULL OR duration_ms >= 0),
-    client_ms      INTEGER,                 -- the browser's clock; never used for ordering
-    server_time    TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS events_by_trial ON events (participant_id, trial_id, seq);
+{EVENTS_TABLE}
+{EVENTS_INDEX}
 CREATE TABLE IF NOT EXISTS questionnaire_responses (
     participant_id       TEXT NOT NULL REFERENCES participants(participant_id),
     item_id              TEXT NOT NULL,
@@ -365,6 +370,8 @@ def connect(path: Path, environment: str | None = None) -> sqlite3.Connection:
         conn.commit()
         if int(row["value"]) < 5:
             _rebuild_responses(conn, path)
+        if int(row["value"]) < 9:
+            _rebuild_events(conn, path)
         conn.execute("UPDATE meta SET value = ? WHERE key = 'schema_version'", (str(SCHEMA_VERSION),))
         conn.commit()
     _check_environment(conn, path, environment)
@@ -440,6 +447,36 @@ def _rebuild_responses(conn: sqlite3.Connection, path: Path) -> None:
     except sqlite3.DatabaseError as exc:
         conn.rollback()
         raise StoreError(f"{path}: cannot upgrade the responses table to schema version 5: {exc}") from exc
+
+
+def _rebuild_events(conn: sqlite3.Connection, path: Path) -> None:
+    """Version 9: re-create `events` so its type CHECK accepts every type of EVENT_TYPES (the new one is
+    workspace_item_view), keeping every row with its event_id unchanged (SQLite cannot change a CHECK in place).
+
+    The views that read `events` are dropped and re-created around the copy, and the old table is renamed aside
+    and dropped only after its rows are in the new one. Its triggers go with it: a study database's append-only
+    triggers are re-created by connect() right after the upgrade, and dropping a table fires no trigger. All or
+    nothing: on any error the database is left as it was and StoreError is raised.
+    """
+    views = [line.split()[5] for line in VIEWS.splitlines() if line.startswith("CREATE VIEW")]
+    columns = ", ".join(row["name"] for row in conn.execute("PRAGMA table_info(events)"))
+    try:
+        conn.execute("BEGIN")
+        for view in views:
+            conn.execute(f"DROP VIEW IF EXISTS {view}")
+        conn.execute("DROP INDEX IF EXISTS events_by_trial")
+        conn.execute("ALTER TABLE events RENAME TO events_v8")
+        conn.execute(EVENTS_TABLE)
+        conn.execute(f"INSERT INTO events ({columns}) SELECT {columns} FROM events_v8")
+        conn.execute("DROP TABLE events_v8")
+        conn.execute(EVENTS_INDEX)
+        for statement in VIEWS.split(";"):  # the view definitions contain no semicolons of their own
+            if statement.strip():
+                conn.execute(statement)
+        conn.commit()
+    except sqlite3.DatabaseError as exc:
+        conn.rollback()
+        raise StoreError(f"{path}: cannot upgrade the events table to schema version 9: {exc}") from exc
 
 
 def _add_column_if_missing(conn: sqlite3.Connection, table: str, column: str, declaration: str) -> None:

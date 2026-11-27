@@ -237,6 +237,64 @@ class SchemaV5Tests(unittest.TestCase):
         self.assertEqual(raw.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()[0], "4")
 
 
+class SchemaV9Tests(unittest.TestCase):
+    """Schema version 9: the events table is rebuilt to accept workspace_item_view, keeping every stored event."""
+
+    def make_version_8(self, environment=None):
+        """A database whose events table has the version 8 CHECK (no workspace_item_view) and holds two events."""
+        path = temp_db()
+        conn = store.connect(path)
+        store.enrol(conn, CONFIG, FIRST, PAYLOAD)
+        for event in ({"type": "stage_load"}, {"type": "workspace_item_open", "tab": "mail", "item_id": "7"}):
+            store.record_event(conn, FIRST, "practice_scenario", f"{FIRST}-p00", True, event, "browser")
+        v8 = store.EVENTS_TABLE.replace("'workspace_item_view', ", "")
+        self.assertNotEqual(v8, store.EVENTS_TABLE)
+        conn.executescript("DROP VIEW participant_overview; DROP VIEW trial_summary; DROP VIEW experimental_events;"
+                           "ALTER TABLE events RENAME TO events_new;" + v8 +
+                           "; INSERT INTO events SELECT * FROM events_new; DROP TABLE events_new;"
+                           + store.EVENTS_INDEX + store.VIEWS)
+        if environment == "study":
+            conn.execute("UPDATE participants SET simulated = 0")
+            conn.execute("INSERT INTO meta (key, value) VALUES ('environment', 'study')")
+            conn.executescript(store.STUDY_TRIGGERS)
+        conn.execute("UPDATE meta SET value = '8' WHERE key = 'schema_version'")
+        conn.commit()
+        with self.assertRaises(sqlite3.IntegrityError):  # the version 8 table refuses the new type
+            conn.execute("INSERT INTO events (participant_id, stage_key, practice, seq, type, origin, server_time) "
+                         "VALUES (?, 'x', 0, 9, 'workspace_item_view', 'browser', 'now')", (FIRST,))
+        before = [dict(r) for r in conn.execute("SELECT * FROM events ORDER BY event_id")]
+        conn.close()
+        return path, before
+
+    def item_view(self, conn):
+        return store.record_event(conn, FIRST, "practice_scenario", f"{FIRST}-p00", True,
+                                  {"type": "workspace_item_view", "tab": "mail", "item_id": "7", "duration_ms": 900},
+                                  "browser")
+
+    def test_a_version_8_database_is_upgraded_with_its_events_kept(self):
+        path, before = self.make_version_8()
+        conn = store.connect(path)
+        self.assertEqual(conn.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()[0], "9")
+        self.assertEqual([dict(r) for r in conn.execute("SELECT * FROM events ORDER BY event_id")], before)
+        self.assertEqual(self.item_view(conn)["seq"], 2)  # numbering continues after the kept events
+        self.assertEqual(conn.execute("SELECT events FROM trial_summary WHERE trial_id = ?",
+                                      (f"{FIRST}-p00",)).fetchone()[0], 3)  # the views read the new table
+        names = {r[0] for r in conn.execute("SELECT name FROM sqlite_master")}
+        self.assertLessEqual({"events_by_trial", "participant_overview", "trial_summary", "experimental_events"},
+                             names)
+        self.assertNotIn("events_v8", names)
+
+    def test_a_version_8_study_database_stays_append_only_after_the_upgrade(self):
+        path, before = self.make_version_8("study")
+        conn = store.connect(path, "study")
+        self.assertEqual([dict(r) for r in conn.execute("SELECT * FROM events ORDER BY event_id")], before)
+        self.item_view(conn)
+        for sql in ("DELETE FROM events", "UPDATE events SET duration_ms = 1"):
+            with self.subTest(sql=sql), self.assertRaises(sqlite3.IntegrityError):
+                conn.execute(sql)
+            conn.rollback()
+
+
 class EnvironmentTests(unittest.TestCase):
     """Development and study data never share a database, and a study database cannot be edited."""
 

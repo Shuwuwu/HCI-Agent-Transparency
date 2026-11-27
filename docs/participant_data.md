@@ -115,6 +115,14 @@ FROM experimental_events WHERE type = 'skill_doc_view'
 GROUP BY participant_id, trial_id, skill_id;
 ```
 
+Which Mail, Calendar and Drive items were opened, and for how long:
+
+```sql
+SELECT participant_id, trial_id, tab, item_id, COUNT(*) AS views, SUM(duration_ms) AS viewed_ms
+FROM experimental_events WHERE type = 'workspace_item_view'
+GROUP BY participant_id, trial_id, tab, item_id;
+```
+
 Do not edit data in DB Browser. In a study database, the triggers refuse edits anyway.
 
 ## What is stored
@@ -136,7 +144,13 @@ Event types:
   written every time the page asks for the current stage, so reloads and resumed sessions show up.
 - **Viewing time.** `scenario_visible` is the visible time before Continue, summed over reloads.
 - **Workspace.** `workspace_panel_open` and `workspace_panel_close` (with its duration), `workspace_tab_open` and
-  `workspace_tab_view`, and `workspace_item_open`.
+  `workspace_tab_view`, and `workspace_item_open` and `workspace_item_view`. A `workspace_item_view` has the
+  `tab` (`mail`, `calendar` or `drive`), the `item_id` and the `duration_ms` of one continuous display of that
+  item. It ends when the participant goes back to the list, switches tab or closes the panel, and when the page
+  is closed or the participant continues to the assessment (the panel is closed for them). Reopening the panel
+  on the same item starts a new view. An item's total viewing time is therefore the sum of its views. Item ids
+  are unique only within their tab, so group by `tab` and `item_id` together. Recorded from schema version 9;
+  earlier trials have `workspace_item_open` only.
 - **Skills.** `skills_tab_open` and `skills_tab_view`, and `skill_doc_open` and `skill_doc_view`.
 - **Activity cards (high condition).** `trace_card_expand`, `trace_card_collapse` and `trace_card_view`.
 
@@ -153,7 +167,7 @@ on every run, so never edit them; change nothing but the database, and only thro
 | File | One row per | Notes |
 |---|---|---|
 | `participants.csv` | participant | `participant_overview` |
-| `trials.csv` | trial | `trial_summary`, plus the measures of `interaction_log.summarize`: Skills tab and skill-document use, workspace panel time, tabs and items, activity cards expanded and viewed. Dict-valued measures are JSON. `trial_type` is `practice` or `experimental`. |
+| `trials.csv` | trial | `trial_summary`, plus the measures of `interaction_log.summarize`: Skills tab and skill-document use, workspace panel time, tabs and items (items opened, and `workspace_items_viewed_ms`, the viewing time per item as `{tab: {item_id: ms}}`), activity cards expanded and viewed. Dict-valued measures are JSON. `trial_type` is `practice` or `experimental`. |
 | `progress.csv` | stage entered | stage kind, trial and `trial_type` |
 | `events.csv` | event | with `trial_type` |
 | `questionnaire.csv` | participant and item asked | long format, both questionnaires, with `stage_key`; `answer` coding below |

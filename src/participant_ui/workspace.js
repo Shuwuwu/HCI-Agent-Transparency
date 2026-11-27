@@ -6,6 +6,12 @@
  *   Mail is the default tab. It reads only the workspace snapshot and the skills, never the conversation itself.
  *   Logs which tabs and items are opened and for how long (interaction.js); the
  *   Skills tab is logged with its own event types, separate from the workspace tabs.
+ *   Item viewing time: while a Mail, Calendar or Drive item is shown in the open panel, a visibility-aware timer
+ *   runs (time with the browser tab hidden does not count). It stops, and workspace_item_view {tab, item_id,
+ *   duration_ms} is logged, when the item is left: back to the list, another tab or mail folder, the panel
+ *   closed, or the panel closed for the participant (scenario_view.js does that when the page is hidden or
+ *   closed and when the conversation is left for the assessment). Reopening the panel on the same item starts a
+ *   new timer, so an item's viewing time is the sum of its workspace_item_view events.
  *
  * Inputs:
  *   JSON from /api/workspace?<query>: {account, state}, or null when no snapshot exists for this
@@ -214,12 +220,16 @@
       set(change) {
         const before = { tab: ui.tab, item: ui.item };
         Object.assign(ui, change);
+        const shownChanged = ui.tab !== before.tab || ui.item !== before.item;
+        if (shownChanged) endItemView(); // the item view ends before the tab view that contains it
         if (ui.tab !== before.tab) { endTabView(before.tab); beginTabView(); }
         if (ui.item && ui.item !== before.item) I.log("workspace_item_open", { tab: ui.tab, item_id: String(ui.item) });
+        if (shownChanged && viewing) beginItemView();
         sync(); render();
       },
     };
-    let viewing = false;
+    let viewing = false; // the panel is open, so the tab (and any item) on it is being viewed
+    let itemShown = null; // {tab, item_id} of the item whose viewing timer runs, or null
     // Skills-tab events are separate from the Mail/Calendar/Drive ones.
     function beginTabView() {
       viewing = true;
@@ -232,6 +242,23 @@
       if (tab === "skills") skillsView.leave();
       const duration_ms = I.stopTimer("tab");
       if (tab === "skills") I.log("skills_tab_view", { duration_ms }); else I.log("workspace_tab_view", { tab, duration_ms });
+    }
+    /** The id (as a string) of the Mail/Calendar/Drive item the panel shows, or null: none is selected, the Skills
+     *  tab is showing, there is no snapshot, or the selected id is not in it (the panel then shows the list). */
+    function shownItemId() {
+      if (!ui.item || !state || !ITEM_KEY[ui.tab]) return null;
+      return state[ITEM_KEY[ui.tab]].some((x) => x.id_ === ui.item) ? String(ui.item) : null;
+    }
+    function beginItemView() {
+      const id = shownItemId();
+      if (id === null) return;
+      itemShown = { tab: ui.tab, item_id: id };
+      I.startTimer("item");
+    }
+    function endItemView() {
+      if (!itemShown) return;
+      I.log("workspace_item_view", Object.assign({}, itemShown, { duration_ms: I.stopTimer("item") }));
+      itemShown = null;
     }
     const today = data ? data.account.current_day : null;
     if (state && ui.tab === "mail" && ui.item) { // open the folder that holds a deep-linked email
@@ -287,8 +314,8 @@
 
     render();
     return {
-      opened() { render(); beginTabView(); },
-      closed() { endTabView(ui.tab); },
+      opened() { render(); beginTabView(); beginItemView(); },
+      closed() { endItemView(); endTabView(ui.tab); },
     };
   }
 

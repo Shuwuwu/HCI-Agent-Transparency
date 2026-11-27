@@ -2,7 +2,7 @@
 Purpose:
     Define, validate and summarise the interaction events of the participant flow: what a participant does in a
     trial besides reading the conversation. That covers opening the workspace panel and for how long, the Mail,
-    Calendar and Drive tabs and the items opened in them, the Skills tab and each skill document opened and for
+    Calendar and Drive tabs, the items opened in them and how long each item stayed on screen, the Skills tab and each skill document opened and for
     how long, the activity cards expanded, collapsed and how long each stayed open (where the view shows them),
     and how long the conversation was visible before the participant continued.
 
@@ -63,6 +63,9 @@ EVENT_FIELDS = {
     "workspace_tab_open": {"tab": _tab},
     "workspace_tab_view": {"tab": _tab, "duration_ms": _ms},
     "workspace_item_open": {"tab": _tab, "item_id": _token},
+    # One continuous display of a Mail/Calendar/Drive item (workspace.js); an item shown again later, or after
+    # the panel is reopened on it, gets another event, so its viewing time is the sum of its events.
+    "workspace_item_view": {"tab": _tab, "item_id": _token, "duration_ms": _ms},
     "skills_tab_open": {},
     "skills_tab_view": {"duration_ms": _ms},
     "skill_doc_open": {"skill_id": _token},
@@ -118,6 +121,8 @@ def summarize(events: list[dict]) -> dict:
     first skill_doc_open (None if either is missing); skills_viewed_ms: {skill id: total ms} from skill_doc_view;
     skills_tab_opened / skills_tab_ms: the Skills tab was selected / total ms on it; workspace_opened;
     workspace_panel_ms; workspace_tabs_viewed_ms: {tab: total ms}; workspace_items_opened: count;
+    workspace_items_viewed_ms: {tab: {item id: total ms}} from workspace_item_view (nested by tab because item ids
+    are only unique within their tab: an email and a calendar event can share an id);
     trace_cards_expanded: distinct cards expanded; trace_cards_viewed_ms: {card id: total ms};
     scenario_visible_ms: total visible time of the conversation (summed over reloads); stage_loads: how often the
     page asked for the stage while in this trial. Durations are measured in the browser while the page is visible.
@@ -131,6 +136,12 @@ def summarize(events: list[dict]) -> dict:
             if e["type"] == kind:
                 out[e[key]] = out.get(e[key], 0) + (e["duration_ms"] or 0)
         return out
+
+    items = {}
+    for e in events:
+        if e["type"] == "workspace_item_view":
+            per_tab = items.setdefault(e["tab"], {})
+            per_tab[e["item_id"]] = per_tab.get(e["item_id"], 0) + (e["duration_ms"] or 0)
 
     start = next((e for e in events if e["type"] == "session_start"), None)
     first_open = next((e for e in events if e["type"] == "skill_doc_open"), None)
@@ -148,6 +159,7 @@ def summarize(events: list[dict]) -> dict:
         "workspace_panel_ms": total("workspace_panel_close"),
         "workspace_tabs_viewed_ms": by("workspace_tab_view", "tab"),
         "workspace_items_opened": sum(e["type"] == "workspace_item_open" for e in events),
+        "workspace_items_viewed_ms": items,
         "trace_cards_expanded": len({e["card_id"] for e in events if e["type"] == "trace_card_expand"}),
         "trace_cards_viewed_ms": by("trace_card_view", "card_id"),
         "scenario_visible_ms": total("scenario_visible"),
