@@ -1,4 +1,5 @@
-// Tests for the item viewing times of src/participant_ui/workspace.js (workspace_item_view), measured with the
+// Tests for the logging of src/participant_ui/workspace.js: nothing for the default view of the always-open panel,
+// tab choices, and the item viewing times (workspace_item_view), measured with the
 // visibility-aware timers of src/participant_ui/interaction.js. Run: node tests/test_workspace_item_view_js.js
 //
 // Both files are loaded unchanged into a minimal fake DOM: just enough elements for workspace.js to draw its
@@ -31,8 +32,8 @@ globalThis.fetch = (url, opts) => {
   if (url === "/api/log") posted.push(JSON.parse(opts.body));
   return Promise.resolve();
 };
-// The Skills tab is not under test; a stand-in keeps workspace.js from fetching skills.
-globalThis.SkillsView = { create: () => ({ render() {}, leave() {} }) };
+// The Skills tab's own documents are not under test; a stand-in keeps workspace.js from fetching skills.
+globalThis.SkillsView = { create: () => ({ render() {}, leave() {}, pause() {}, resume() {} }) };
 require("../src/participant_ui/previews.js");
 require("../src/participant_ui/interaction.js");
 require("../src/participant_ui/workspace.js");
@@ -76,10 +77,20 @@ const data = {
   },
 };
 const container = el("aside");
-const panel = WorkspaceSidebar.init(container, data, "t=x", () => {}, {});
+const panel = WorkspaceSidebar.init(container, data, "t=x", {});
 
-// Nothing is timed until the panel is opened and an item is shown.
-panel.opened();
+// The panel is on screen from the start with the Mail inbox, but nothing is logged or timed for that default view.
+panel.resume();
+clock += 5000;
+panel.pause();
+panel.resume();
+assert.deepStrictEqual(types(), []);
+
+// Clicking the Mail tab while it is still the default chooses it: an open event, then its time runs.
+click(container, "tab", "Mail");
+assert.deepStrictEqual(posted.map((e) => [e.type, e.tab]), [["workspace_tab_open", "mail"]]);
+clock += 300;
+click(container, "tab", "Mail"); // the tab already chosen: nothing new
 assert.deepStrictEqual(types(), ["workspace_tab_open"]);
 reset();
 
@@ -104,38 +115,40 @@ click(container, "tab", "Calendar");
 assert.deepStrictEqual(types(), ["workspace_item_open", "workspace_item_view", "workspace_tab_view",
                                  "workspace_tab_open"]);
 assert.deepStrictEqual(views(), [["mail", "1", 700]]);
+assert.strictEqual(posted[2].duration_ms, 300 + 1000 + 700); // Mail's time from when it was chosen
 reset();
 
-// Closing the panel ends the view; reopening it on the same item starts a new one without a new item_open.
+// A pause (page hidden or closed, conversation left) ends the views; resuming on the same item starts a new one
+// without a new item_open or tab_open.
 click(container, "item-btn", "Team sync");
 clock += 300;
-panel.closed();
-clock += 5000; // closed: not viewing
-panel.opened();
+panel.pause();
+clock += 5000; // paused: not viewing
+panel.resume();
 clock += 400;
-panel.closed();
+panel.pause();
 assert.deepStrictEqual(views(), [["calendar", "1", 300], ["calendar", "1", 400]]);
 assert.strictEqual(types().filter((t) => t === "workspace_item_open").length, 1);
+assert.strictEqual(types().filter((t) => t === "workspace_tab_open").length, 0);
 assert.ok(types().indexOf("workspace_item_view") < types().indexOf("workspace_tab_view")); // item ends first
 reset();
 
-// Drive (the panel reopens on the calendar event, still selected), and the page being hidden for the rest of a
-// view (a closed or reloaded page).
-panel.opened();
+// Drive (resumed on the calendar event, still selected), and the page being hidden for the rest of a view.
+panel.resume();
 clock += 50;
 click(container, "tab", "Drive");
 click(container, "item-btn", "notes.txt");
 clock += 250;
 setHidden(true);
 clock += 9000;
-panel.closed(); // scenario_view.js closes the panel on pagehide
+panel.pause(); // scenario_view.js pauses the panel on pagehide
 assert.deepStrictEqual(views(), [["calendar", "1", 50], ["drive", "1", 250]]);
 setHidden(false);
 reset();
 
 // A sent email (the folder chips show on the list only); switching to Skills ends the view, and the Skills tab
 // never produces an item view.
-panel.opened(); // reopens on the Drive file, still selected
+panel.resume(); // resumes on the Drive file, still selected
 clock += 20;
 click(container, "tab", "Mail");
 click(container, "chip", "Sent");
@@ -143,15 +156,20 @@ click(container, "item-btn", "Sent mail");
 clock += 150;
 click(container, "tab", "Skills");
 clock += 1000;
-panel.closed();
+panel.pause();
 assert.deepStrictEqual(views(), [["drive", "1", 20], ["mail", "2", 150]]);
+assert.ok(types().includes("skills_tab_open"));
+assert.deepStrictEqual(posted.filter((e) => e.type === "skills_tab_view").map((e) => e.duration_ms), [1000]);
 reset();
 
 // A deep-linked item that is not in the snapshot is not timed (the panel shows the list instead).
-const missing = WorkspaceSidebar.init(el("aside"), data, "t=x", () => {}, { tab: "drive", item: "99" });
-missing.opened();
+const missing = WorkspaceSidebar.init(el("aside"), data, "t=x", { tab: "drive", item: "99" });
+missing.resume();
 clock += 100;
-missing.closed();
+missing.pause();
 assert.deepStrictEqual(views(), []);
+
+// The panel has no close button.
+assert.strictEqual(find(container, "ws-close"), null);
 
 console.log("workspace item view tests passed");

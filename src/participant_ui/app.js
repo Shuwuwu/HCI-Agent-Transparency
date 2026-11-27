@@ -6,8 +6,8 @@
  *   identifies the scenario by their link token instead.
  *
  * Inputs:
- *   Query params ?s=<stimulus folder>&c=low|high. w=<tab>[&i=<id>] opens the panel on that tab (and keeps the URL
- *   in sync with it).
+ *   Query params ?s=<stimulus folder>&c=low|high. w=<tab>[&i=<id>] shows that tab (and item) in the workspace
+ *   panel, which is always open, and keeps the URL in sync with it.
  *
  * Outputs:
  *   The mounted scenario view inside #scenario. Nothing is logged: interaction.js sends events only for a
@@ -26,7 +26,6 @@
 
   ScenarioView.mount(document.getElementById("scenario"), {
     query: "s=" + encodeURIComponent(stimulus) + "&c=" + encodeURIComponent(condition),
-    toggle: document.getElementById("ws-toggle"),
     panel: tab ? { tab, item: p.get("i"), syncUrl: true } : {},
   });
 })();

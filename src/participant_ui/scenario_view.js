@@ -1,14 +1,17 @@
 /*
  * Purpose:
  *   Reusable view of ONE conversation: the chat (the user request, then any activity cards, then the final
- *   response) next to the read-only workspace panel (Mail | Calendar | Drive | Skills).
+ *   response) beside the read-only workspace panel (Mail | Calendar | Drive | Skills). The two halves split the
+ *   page width equally and scroll independently (style.css). The panel is always on screen: there is no button to
+ *   open or close it, so its being visible is never logged as something the participant did (workspace.js logs
+ *   only the tabs, items and documents they choose).
  *   It draws what /api/stimulus returns: activity cards appear when the response has a "trace" list, and the chat
  *   goes straight from the request to the final response when it has none. Only "action" entries of the trace are
  *   drawn; any other entry type is skipped, so no assistant message appears between the cards.
  *   Each activity card starts collapsed, showing its header (step number, action sentence, tool, chevron); its
  *   header is a button that expands or collapses that card's details (the arguments and the result) on its own.
- *   Mounted by flow.js for each conversation of the flow and by app.js on the researcher /chat page; unmount()
- *   ends running view timers, so no viewing time is lost.
+ *   Mounted by flow.js for each conversation of the flow (practice and trials) and by app.js on the researcher
+ *   /chat page, always with the same layout; unmount() ends running view timers, so no viewing time is lost.
  *
  * Inputs:
  *   ScenarioView.mount(container, options):
@@ -16,13 +19,12 @@
  *     options    {query: the query string identifying the scenario for the content endpoints — "t=<token>"
  *                 in the participant flow (the server works out the conversation from the participant's
  *                 current stage), or the researcher preview's own query (see app.js),
- *                 toggle: the button that opens/closes the workspace panel (kept hidden until the panel is ready),
  *                 panel: optional {tab, item, syncUrl} for researcher deep links (see workspace.js)}.
  *   JSON from /api/stimulus?<query> ({user_request, final_response, trace?}) and /api/workspace?<query>.
  *
  * Outputs:
  *   DOM inside `container`. Text is inserted with textContent; only the final response goes through
- *   renderMarkdown (which escapes HTML). Interaction events for the panel (workspace_panel_open/close).
+ *   renderMarkdown (which escapes HTML). The panel's interaction events come from workspace.js and skills.js.
  *   Activity-card events, each logged with Interaction.log and also dispatched on `container` as a "trace-card"
  *   DOM event whose `detail` is {type, card_id, client_ms[, duration_ms]}:
  *     trace_card_expand    a card was opened;
@@ -30,8 +32,9 @@
  *     trace_card_view      how long a card was open (duration_ms, counted only while the page is visible), sent
  *                          when it is closed and, for a card still open, when the conversation is left.
  *   card_id is "step-<n>", the card's displayed step number, so with the trial id it identifies the card.
- *   mount() returns {ready, unmount}: `ready` is a Promise that resolves to true once the conversation is drawn
- *   (false if it could not be loaded); unmount() closes the panel, removes listeners and clears the container.
+ *   mount() returns {ready, unmount}: `ready` is a Promise that resolves to true once the conversation and the
+ *   workspace panel are drawn (false if the conversation could not be loaded); unmount() ends the panel's running
+ *   views, removes listeners and clears the container.
  *
  * Dependencies:
  *   markdown.js (renderMarkdown), workspace.js (WorkspaceSidebar; skills.js through it), interaction.js
@@ -162,10 +165,8 @@
 
   function mount(container, options) {
     const query = options.query || "";
-    const toggle = options.toggle;
     let alive = true;      // false after unmount: late responses are then ignored
     let controller = null; // workspace panel, once its data has arrived
-    let isOpen = false;
     let cards = null;      // the activity cards' controller, once the conversation is drawn
 
     container.classList.add("layout");
@@ -184,43 +185,24 @@
     panel.id = "workspace";
     panel.setAttribute("aria-label", "Workspace (read-only)");
     container.replaceChildren(chatCol, panel);
-    toggle.hidden = true;
-    toggle.setAttribute("aria-controls", "workspace");
-    toggle.setAttribute("aria-expanded", "false");
 
-    function setOpen(open) {
-      if (!controller || isOpen === open) return;
-      isOpen = open;
-      container.classList.toggle("workspace-open", open);
-      toggle.setAttribute("aria-expanded", String(open));
-      if (open) {
-        I.log("workspace_panel_open");
-        I.startTimer("panel");
-        controller.opened();
-      } else {
-        controller.closed();
-        I.log("workspace_panel_close", { duration_ms: I.stopTimer("panel") });
-      }
-    }
-    const onToggle = () => setOpen(!isOpen);
-    // A closing page ends the running views, so durations are not lost.
+    // A hidden or closed page ends the running views, so durations are not lost; timing starts again at once, as
+    // for the conversation's visible time (flow.js), so a page shown again keeps counting.
     const onPageHide = () => {
-      setOpen(false);
+      if (controller) { controller.pause(); controller.resume(); }
       if (cards) cards.flush();
     };
-    toggle.addEventListener("click", onToggle);
     window.addEventListener("pagehide", onPageHide);
 
     function startPanel(data) {
       if (!alive) return;
-      controller = root.WorkspaceSidebar.init(panel, data, query, () => setOpen(false), options.panel || {});
-      toggle.hidden = false;
-      if (options.panel && options.panel.tab) setOpen(true); // researcher deep link only; participants open it themselves
+      controller = root.WorkspaceSidebar.init(panel, data, query, options.panel || {});
+      controller.resume();
     }
-    // The snapshot may be missing for a scenario; the panel (with its Skills tab) is offered either way.
-    getJson("/api/workspace?" + query).then(startPanel, () => startPanel(null));
+    // The snapshot may be missing for a scenario; the panel (with its Skills tab) is drawn either way.
+    const panelReady = getJson("/api/workspace?" + query).then(startPanel, () => startPanel(null));
 
-    const ready = getJson("/api/stimulus?" + query)
+    const conversationReady = getJson("/api/stimulus?" + query)
       .then((view) => {
         if (alive) {
           renderConversation(chat, view);
@@ -232,16 +214,16 @@
         if (alive) chat.replaceChildren(el("p", "error-msg", "This conversation could not be loaded."));
         return false;
       });
+    // Ready once both halves are on screen, so the practice tour and the visible-time measure start on the whole view.
+    const ready = Promise.all([conversationReady, panelReady]).then(([ok]) => ok && alive);
 
     function unmount() {
       if (!alive) return;
-      setOpen(false);
+      if (controller) controller.pause();
       if (cards) cards.end();
       alive = false;
-      toggle.removeEventListener("click", onToggle);
       window.removeEventListener("pagehide", onPageHide);
-      toggle.hidden = true;
-      container.classList.remove("workspace-open");
+      container.classList.remove("layout");
       container.replaceChildren();
     }
 

@@ -133,7 +133,7 @@ Do not edit data in DB Browser. In a study database, the triggers refuse edits a
 | `plan_stages` | stage of a participant's sequence | `stage_index`, `stage_key`, `kind`, `trial_id`, `trial_ordinal`, `practice`, `scenario`, `stimulus_version`, `stimulus`, `condition` |
 | `progress` | stage a participant has entered | `entered_at` (first arrival), `completed_at` |
 | `consents` | participant who agreed | `agreed_at`, `consent_sha256`, `consent_text` (the exact text agreed to) |
-| `responses` | completed assessment (practice included, `practice` = 1) | `performed_safely`, `confidence` (1–5), `reasoning`, `sources` and `sources_offered` (JSON lists), `sources_other`, `questions_sha256`, `submitted_at` |
+| `responses` | completed experimental assessment (the practice questions are display-only and store nothing; rows with `practice` = 1 exist only from the earlier interactive practice) | `performed_safely`, `confidence` (1–5), `reasoning`, `sources` and `sources_offered` (JSON lists), `sources_other`, `questions_sha256`, `submitted_at` |
 | `events` | interaction event | `trial_id`, `stage_key`, `practice`, `seq` (order of arrival within the trial), `type`, `origin` (`browser`, `server`, or `legacy` for events imported from the retired files), `tab`, `item_id`, `skill_id`, `card_id`, `duration_ms`, `client_ms` (browser clock), `server_time` |
 | `questionnaire_responses` | participant and questionnaire item asked | `stage_key` (`pre_questionnaire` or `questionnaire`, the post-study one), `item_id`, `answer` (`''` for an optional item left blank), `questionnaire_sha256`, `submitted_at` |
 | `meta` | setting | `schema_version`, `environment`, `legacy_import` |
@@ -143,12 +143,17 @@ Event types:
 - **Server events.** `session_start` is written the first time a trial's conversation is shown. `stage_load` is
   written every time the page asks for the current stage, so reloads and resumed sessions show up.
 - **Viewing time.** `scenario_visible` is the visible time before Continue, summed over reloads.
-- **Workspace.** `workspace_panel_open` and `workspace_panel_close` (with its duration), `workspace_tab_open` and
-  `workspace_tab_view`, and `workspace_item_open` and `workspace_item_view`. A `workspace_item_view` has the
-  `tab` (`mail`, `calendar` or `drive`), the `item_id` and the `duration_ms` of one continuous display of that
-  item. It ends when the participant goes back to the list, switches tab or closes the panel, and when the page
-  is closed or the participant continues to the assessment (the panel is closed for them). Reopening the panel
-  on the same item starts a new view. An item's total viewing time is therefore the sum of its views. Item ids
+- **Workspace.** The workspace panel is always open beside the conversation (half the width) and shows the Mail
+  inbox by default. Being on screen by default is never logged: there is no panel-open event, and the default
+  Mail list is not timed, so every workspace event is something the participant chose to do.
+  `workspace_tab_open` is logged when the participant clicks a tab (including Mail while it is still the default)
+  and `workspace_tab_view` gives the time on that tab until another tab is chosen. `workspace_item_open` and
+  `workspace_item_view`: a `workspace_item_view` has the `tab` (`mail`, `calendar` or `drive`), the `item_id` and
+  the `duration_ms` of one continuous display of that item. It ends when the participant goes back to the list
+  or switches tab, and when the page is hidden or closed or the participant continues to the assessment. An item
+  shown again (or still shown when a hidden page is shown again) starts a new view.
+  `workspace_panel_open` and `workspace_panel_close` come only from the earlier interface, in which a Workspace
+  button opened and closed the panel; the current pages never send them. An item's total viewing time is therefore the sum of its views. Item ids
   are unique only within their tab, so group by `tab` and `item_id` together. Recorded from schema version 9;
   earlier trials have `workspace_item_open` only.
 - **Skills.** `skills_tab_open` and `skills_tab_view`, and `skill_doc_open` and `skill_doc_view`.
@@ -167,7 +172,7 @@ on every run, so never edit them; change nothing but the database, and only thro
 | File | One row per | Notes |
 |---|---|---|
 | `participants.csv` | participant | `participant_overview` |
-| `trials.csv` | trial | `trial_summary`, plus the measures of `interaction_log.summarize`: Skills tab and skill-document use, workspace panel time, tabs and items (items opened, and `workspace_items_viewed_ms`, the viewing time per item as `{tab: {item_id: ms}}`), activity cards expanded and viewed. Dict-valued measures are JSON. `trial_type` is `practice` or `experimental`. |
+| `trials.csv` | trial | `trial_summary`, plus the measures of `interaction_log.summarize`: Skills tab and skill-document use, `workspace_inspected` (the participant chose a tab or opened an item, the Skills tab or a skill document; the panel being open by default never counts), tabs and items (items opened, and `workspace_items_viewed_ms`, the viewing time per item as `{tab: {item_id: ms}}`), activity cards expanded and viewed. Dict-valued measures are JSON. `trial_type` is `practice` or `experimental`. |
 | `progress.csv` | stage entered | stage kind, trial and `trial_type` |
 | `events.csv` | event | with `trial_type` |
 | `questionnaire.csv` | participant and item asked | long format, both questionnaires, with `stage_key`; `answer` coding below |

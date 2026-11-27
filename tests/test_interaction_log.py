@@ -77,7 +77,7 @@ class ValidationTest(unittest.TestCase):
 
 class SummaryTest(unittest.TestCase):
     def test_summary_measures(self):
-        events = [row("session_start", 0, "2026-11-26T10:00:00.000+00:00"), row("workspace_panel_open", 1),
+        events = [row("session_start", 0, "2026-11-26T10:00:00.000+00:00"),
                   row("skills_tab_open", 2), row("skill_doc_open", 3, "2026-11-26T10:00:07.500+00:00", skill_id="email-lookup"),
                   row("skill_doc_view", 4, skill_id="email-lookup", duration_ms=4000),
                   row("skill_doc_view", 5, skill_id="email-lookup", duration_ms=1000),
@@ -87,16 +87,16 @@ class SummaryTest(unittest.TestCase):
                   row("workspace_item_view", 8, tab="mail", item_id="33", duration_ms=300),
                   row("workspace_item_view", 8, tab="calendar", item_id="33", duration_ms=50),
                   row("workspace_tab_view", 9, tab="mail", duration_ms=2500),
-                  row("workspace_panel_close", 10, duration_ms=9000),
                   row("trace_card_expand", 11, card_id="step-1"), row("trace_card_expand", 12, card_id="step-1"),
                   row("trace_card_view", 13, card_id="step-1", duration_ms=300),
                   row("stage_load", 14), row("scenario_visible", 15, duration_ms=20000),
                   row("scenario_visible", 16, duration_ms=5000)]
         s = ilog.summarize(events)
-        self.assertEqual((s["skills_opened"], s["workspace_opened"], s["first_skill_open_s"]), (True, True, 7.5))
+        self.assertEqual((s["skills_opened"], s["workspace_inspected"], s["first_skill_open_s"]), (True, True, 7.5))
         self.assertEqual(s["skills_viewed_ms"], {"email-lookup": 5000})
         self.assertEqual((s["skills_tab_opened"], s["skills_tab_ms"]), (True, 6000))
-        self.assertEqual((s["workspace_tabs_viewed_ms"], s["workspace_panel_ms"]), ({"mail": 2500}, 9000))
+        self.assertEqual(s["workspace_tabs_viewed_ms"], {"mail": 2500})
+        self.assertNotIn("workspace_panel_ms", s)  # the panel is always open: there is no panel time to measure
         self.assertEqual(s["workspace_items_opened"], 1)
         # summed per item, kept apart per tab: an email and a calendar event may share an id
         self.assertEqual(s["workspace_items_viewed_ms"], {"mail": {"33": 1500}, "calendar": {"33": 50}})
@@ -108,8 +108,22 @@ class SummaryTest(unittest.TestCase):
         self.assertFalse(s["skills_opened"])
         self.assertFalse(s["skills_tab_opened"])
         self.assertIsNone(s["first_skill_open_s"])
-        self.assertFalse(s["workspace_opened"])
+        self.assertFalse(s["workspace_inspected"])
         self.assertEqual(s["workspace_items_viewed_ms"], {})
+
+    def test_only_a_deliberate_workspace_action_counts_as_inspection(self):
+        """The panel is on screen by default, so a trial in which the participant only read the conversation (or
+        only used the activity cards) is not an inspection; any tab, item, Skills tab or skill document chosen
+        is. A panel opened with the earlier interface's button also counts, so its records keep their meaning."""
+        passive = [row("session_start", 0), row("stage_load", 1), row("trace_card_expand", 2, card_id="step-1"),
+                   row("trace_card_view", 3, card_id="step-1", duration_ms=100),
+                   row("scenario_visible", 4, duration_ms=60000)]
+        self.assertFalse(ilog.summarize(passive)["workspace_inspected"])
+        for action in (row("workspace_tab_open", 5, tab="mail"),
+                       row("workspace_item_open", 5, tab="mail", item_id="1"), row("skills_tab_open", 5),
+                       row("skill_doc_open", 5, skill_id="email-lookup"), row("workspace_panel_open", 5)):
+            with self.subTest(action=action["type"]):
+                self.assertTrue(ilog.summarize(passive + [action])["workspace_inspected"])
 
 
 class ServerTest(unittest.TestCase):
@@ -172,10 +186,9 @@ class ServerTest(unittest.TestCase):
     def test_participant_pages_are_identical_in_both_conditions(self):
         self.assertEqual(self.request(f"/chat?s={FOLDER}&c=low"), self.request(f"/chat?s={FOLDER}&c=high"))
         page = self.request(f"/chat?s={FOLDER}&c=low")[1]
-        self.assertEqual(page.count("panel-toggle"), 1)  # one Workspace button; skills are a tab inside the panel
-        self.assertNotIn("skills-toggle", page)
-        self.assertNotIn('id="skills"', page)
-        self.assertIn('aria-expanded="false"', page)  # nothing is open by default
+        # No button opens or closes the workspace (it is always on screen); skills are a tab inside the panel.
+        for absent in ("panel-toggle", "ws-toggle", "skills-toggle", 'id="skills"', "aria-expanded"):
+            self.assertNotIn(absent, page)
 
     def test_only_the_trace_differs_between_conditions(self):
         low = json.loads(self.request(f"/api/stimulus?s={FOLDER}&c=low")[1])

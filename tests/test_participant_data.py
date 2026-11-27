@@ -61,7 +61,7 @@ class ResearcherDataTests(unittest.TestCase):
         self.assertNotIn("token", data["participant"])
         self.assertNotIn("consent_text", data["consent"])
         self.assertEqual(len(data["plan_stages"]), self.count("SELECT COUNT(*) FROM plan_stages WHERE participant_id = ?", DONE))
-        self.assertEqual(len(data["responses"]), 9)  # practice + 8 trials
+        self.assertEqual(len(data["responses"]), 8)  # the 8 trials; the practice questions store nothing
         self.assertEqual(len(data["trials"]), 9)
         self.assertEqual(len(data["questionnaire"]), len(store.questionnaire_of(self.conn, DONE)))
         self.assertEqual(len(data["events"]), self.count("SELECT COUNT(*) FROM events WHERE participant_id = ?", DONE))
@@ -84,7 +84,8 @@ class ResearcherDataTests(unittest.TestCase):
         self.assertTrue(all(t["scenario_s"] is not None and t["scenario_s"] >= 0 for t in trials))
         self.assertTrue(all(t["assessment_s"] is not None for t in trials))
         self.assertTrue(all(t["scenario_visible_ms"] == 9000 for t in trials))
-        self.assertTrue(all(t["performed_safely"] == "no" and t["confidence"] == 2 for t in trials))
+        self.assertEqual((trials[0]["performed_safely"], trials[0]["confidence"]), (None, None))  # display-only practice
+        self.assertTrue(all(t["performed_safely"] == "no" and t["confidence"] == 2 for t in trials[1:]))
         self.assertEqual(self.count("SELECT COUNT(*) FROM experimental_events WHERE trial_id LIKE '%-p00'"), 0)
 
     # -- exports -----------------------------------------------------------------------------------------------
@@ -111,7 +112,9 @@ class ResearcherDataTests(unittest.TestCase):
         self.assertEqual({e["trial_type"] for e in events if "-t" in e["trial_id"]}, {"experimental"})
         trials = read_csv(out / "trials.csv")
         done = [t for t in trials if t["participant_id"] == DONE]
-        self.assertTrue(all(t["trace_cards_expanded"] == "1" and t["workspace_panel_ms"] == "1500" for t in done))
+        self.assertTrue(all(t["trace_cards_expanded"] == "1" and t["workspace_inspected"] == "True" for t in done))
+        self.assertTrue(all(json.loads(t["workspace_tabs_viewed_ms"]) == {"calendar": 1500} for t in done))
+        self.assertNotIn("workspace_panel_ms", done[0])
         self.assertEqual(json.loads(done[0]["trace_cards_viewed_ms"]), {"step-1": 700})
 
     def test_a_participant_export_holds_only_that_participant(self):

@@ -8,8 +8,9 @@
  *   The consent screen shows the real consent text (src/study_materials/consent.md, sent by the server with the
  *   stage) and its agreement checkbox; ticking it and continuing is what stores the participant's consent. The
  *   assessment after each conversation is the shared form of assessment.js, the same for the practice and every
- *   trial; the questions at the end are the form of questionnaire.js. The scenario stage is drawn by scenario_view.js;
- *   on the practice scenario, the guided tour of tutorial.js runs over it before the participant can continue.
+ *   trial (the practice shows it display-only, as an example); the questions before the practice and at the end are the form of questionnaire.js. The scenario stage
+ *   is drawn by scenario_view.js; on the practice scenario, the guided tour of tutorial.js runs over it before the
+ *   participant can continue.
  *
  * Inputs:
  *   The link token, read from location.pathname (/p/<token>); it is never written into a query string.
@@ -20,9 +21,9 @@
  *
  * Outputs:
  *   The stage drawn into #stage and its continue button into #advance; POST /api/stage/complete to advance (at
- *   consent, with {agreed: true, sha256} so the server records the agreement to the exact text shown; at an
- *   assessment, with the answers, which the server stores against the trial; at the questionnaire, with its
- *   answers).
+ *   consent, with {agreed: true, sha256} so the server records the agreement to the exact text shown; at a
+ *   trial's assessment, with the answers, which the server stores against the trial; at the practice assessment,
+ *   with nothing; at a questionnaire, with its answers).
  *   For a trial, the mounted scenario view and its interaction events, logged with the link token under that
  *   trial's id (the server records when the trial started), including scenario_visible: how long the
  *   conversation was on screen while the page was visible.
@@ -39,10 +40,11 @@
   const host = document.getElementById("stage");
   const bar = document.getElementById("advance");
   const progress = document.getElementById("progress");
-  const toggle = document.getElementById("ws-toggle");
   let view = null; // the mounted ScenarioView, so it can be unmounted when the stage changes
   let tour = null; // the running practice tour (tutorial.js), so it can be removed when the stage changes
   let visible = null; // ends the conversation's visible-time measure (scenario stages only); see trackVisible
+  const PRACTICE_INTRO = "This page shows an example of the questions you will be asked after each conversation. "
+    + "You do not need to answer them at this stage.";
   Interaction.setLink(token);
 
   function el(tag, cls, text) {
@@ -112,7 +114,6 @@
     host.replaceChildren();
     bar.replaceChildren();
     bar.hidden = true;
-    toggle.hidden = true;
   }
 
   /** Show why the flow stopped. Only the 409 message is the server's own wording: it is the one failure a
@@ -177,11 +178,18 @@
   }
 
   /** The questions after a conversation: the shared form of assessment.js, the same for the practice and every
-   *  trial. Continue checks the answers first (and says what is missing); the server checks them again, stores
-   *  them with the trial, and only then moves the participant on. A refusal keeps the form and its answers. */
+   *  trial. After a trial, Continue checks the answers first (and says what is missing); the server checks them
+   *  again, stores them with the trial, and only then moves the participant on. A refusal keeps the form and its
+   *  answers. The practice shows the same questions as an example only: they cannot be answered, and Continue
+   *  moves on without sending anything. */
   function assessmentScreen(stage) {
     if (!stage.assessment) return fail();
-    const form = AssessmentForm.render(host, stage.assessment, stage.practice ? "Practice questions" : "Your assessment");
+    if (stage.practice) {
+      AssessmentForm.render(host, stage.assessment, "Practice Questions", { displayOnly: true, intro: PRACTICE_INTRO });
+      setButton("Continue", () => advance(stage.key));
+      return;
+    }
+    const form = AssessmentForm.render(host, stage.assessment, "Your Assessment");
     const button = setButton("Continue", () => {
       const result = form.collect();
       form.showMessage("");
@@ -197,12 +205,13 @@
     });
   }
 
-  /** The questions at the end of the session (questionnaire.js). As with the assessment, Continue checks the
-   *  answers first, the server checks and stores them, and a refusal keeps the form and its answers. */
+  /** A questionnaire: the one before the practice, or the one at the end of the session (questionnaire.js). As
+   *  with the assessment, the button checks the answers first, the server checks and stores them, and a refusal
+   *  keeps the form and its answers. Only the last questionnaire's button says Finish. */
   function questionnaireScreen(stage) {
     if (!stage.questionnaire) return fail();
     const form = QuestionnaireForm.render(host, stage.questionnaire);
-    const button = setButton("Finish", () => {
+    const button = setButton(stage.key === "questionnaire" ? "Finish" : "Continue", () => {
       const result = form.collect();
       form.showMessage("");
       form.showErrors(result.errors);
@@ -238,7 +247,7 @@
    *  the tour blocks clicks outside its spotlight, and this also stops a keyboard user tabbing past it. */
   function scenarioScreen(stage) {
     Interaction.setTrial(stage.trial_id);
-    const mounted = ScenarioView.mount(host, { query: "t=" + encodeURIComponent(token), toggle: toggle, panel: {} });
+    const mounted = ScenarioView.mount(host, { query: "t=" + encodeURIComponent(token), panel: {} });
     view = mounted;
     // The participant cannot continue until the conversation is actually on the screen.
     const button = setButton(stage.practice ? "Continue to the practice questions" : "Continue", () => {
@@ -253,7 +262,7 @@
         button.disabled = false;
         return;
       }
-      tour = PracticeTour.start({ host: host, toggle: toggle, onFinish: () => {
+      tour = PracticeTour.start({ host: host, onFinish: () => {
         tour = null;
         button.disabled = false;
         button.focus();

@@ -47,14 +47,13 @@ from study_data_fixtures import CONFIG, PAYLOAD, PARTICIPANTS, new_database, sub
 
 FIRST, SECOND = PARTICIPANTS[0], PARTICIPANTS[1]
 # The first SENT_BEFORE_CONTINUE are sent while the conversation is shown; the rest after Continue, as the page
-# sends them while the next stage loads (the panel, still open on an email, is closed when the view unmounts).
-BROWSER_EVENTS = ({"type": "workspace_panel_open"}, {"type": "workspace_tab_open", "tab": "mail"},
+# sends them while the next stage loads (the panel, still showing an email, is paused when the view unmounts).
+BROWSER_EVENTS = ({"type": "workspace_tab_open", "tab": "mail"},
                   {"type": "workspace_item_open", "tab": "mail", "item_id": "1"},
                   {"type": "workspace_item_view", "tab": "mail", "item_id": "1", "duration_ms": 900},
                   {"type": "workspace_tab_view", "tab": "mail", "duration_ms": 1200},
-                  {"type": "workspace_panel_close", "duration_ms": 2000},
                   {"type": "scenario_visible", "duration_ms": 15000})
-SENT_BEFORE_CONTINUE = 3
+SENT_BEFORE_CONTINUE = 2
 
 
 class Server:
@@ -202,8 +201,10 @@ class EndToEndTests(unittest.TestCase):
                 self.assertIsNotNone(store.consent_of(self.conn, participant))
                 self.assertEqual(store.completed_stages(self.conn, participant), [s["key"] for s in stages])
                 responses = self.rows("SELECT * FROM responses WHERE participant_id = ?", participant)
-                self.assertEqual(sorted(r["stage_key"] for r in responses), sorted(s["key"] for s in assessments))
-                self.assertEqual(sum(r["practice"] for r in responses), 1)
+                # The practice questions are display-only: a response for every trial's assessment, none for it.
+                self.assertEqual(sorted(r["stage_key"] for r in responses),
+                                 sorted(s["key"] for s in assessments if not s["practice"]))
+                self.assertEqual(sum(r["practice"] for r in responses), 0)
                 condition = self.plan[participant]["condition"]
                 for key, spec in flow.load_questionnaires().items():
                     self.assertEqual(list(store.questionnaire_of(self.conn, participant, key)),
@@ -270,7 +271,7 @@ class EndToEndTests(unittest.TestCase):
     def test_events_for_the_other_participant_are_refused(self):
         other_trial = f"{SECOND}-t08"
         before = self.rows("SELECT COUNT(*) n FROM events")[0]["n"]
-        body = {"token": self.tokens[FIRST], "trial_id": other_trial, "type": "workspace_panel_open"}
+        body = {"token": self.tokens[FIRST], "trial_id": other_trial, "type": "skills_tab_open"}
         self.assertEqual(self.server.request("/api/log", body)[0], 409)  # FIRST has finished: no current trial
         self.assertEqual(self.rows("SELECT COUNT(*) n FROM events")[0]["n"], before)
 

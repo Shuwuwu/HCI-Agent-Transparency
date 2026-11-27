@@ -4,14 +4,19 @@
  *   (the agent's skill documentation, see skills.js). Mail, Calendar and Drive show the workspace as it was
  *   BEFORE the agent ran (the server never sends the state after), each with a list and a readable preview.
  *   Mail is the default tab. It reads only the workspace snapshot and the skills, never the conversation itself.
- *   Logs which tabs and items are opened and for how long (interaction.js); the
- *   Skills tab is logged with its own event types, separate from the workspace tabs.
- *   Item viewing time: while a Mail, Calendar or Drive item is shown in the open panel, a visibility-aware timer
- *   runs (time with the browser tab hidden does not count). It stops, and workspace_item_view {tab, item_id,
- *   duration_ms} is logged, when the item is left: back to the list, another tab or mail folder, the panel
- *   closed, or the panel closed for the participant (scenario_view.js does that when the page is hidden or
- *   closed and when the conversation is left for the assessment). Reopening the panel on the same item starts a
- *   new timer, so an item's viewing time is the sum of its workspace_item_view events.
+ *   The panel is always on screen beside the conversation (scenario_view.js) and has no close button.
+ *   Logging (interaction.js) records only what the participant chooses to look at, never what is on screen by
+ *   default: the Mail list shown when the conversation opens is not an event and is not timed.
+ *     Tabs: clicking a tab (including the Mail tab while it is still the default) logs workspace_tab_open, or
+ *     skills_tab_open for Skills, and from then on that tab's viewing time runs until another tab is chosen
+ *     (workspace_tab_view / skills_tab_view {duration_ms}).
+ *     Items: opening a Mail, Calendar or Drive item logs workspace_item_open; while it is shown, a
+ *     visibility-aware timer runs (time with the browser tab hidden does not count). It stops, and
+ *     workspace_item_view {tab, item_id, duration_ms} is logged, when the item is left (back to the list,
+ *     another tab or mail folder) and when the panel is paused (scenario_view.js does that when the page is hidden
+ *     or closed and when the conversation is left for the assessment). A view resumed after a pause starts a new
+ *     timer without a new open event, so an item's viewing time is the sum of its workspace_item_view events.
+ *     Skill documents are logged the same way by skills.js.
  *
  * Inputs:
  *   JSON from /api/workspace?<query>: {account, state}, or null when no snapshot exists for this
@@ -21,7 +26,7 @@
  *   The panel never reads the URL itself, so it can be mounted by any page.
  *
  * Outputs:
- *   DOM inside #workspace. Every value is inserted with textContent, never as HTML.
+ *   DOM inside #workspace. Every value is inserted with textContent, never as HTML. The interaction events above.
  *
  * Dependencies:
  *   previews.js (WorkspacePreviews), skills.js (SkillsView), interaction.js. Started by scenario_view.js through
@@ -207,10 +212,12 @@
   const ITEM_KEY = { mail: "emails", calendar: "events", drive: "files" };
 
   /**
-   * Create the sidebar controller. `options` = {tab, item, syncUrl} (all optional; see the header). Returns
-   * {opened(), closed()}, called by scenario_view.js when the panel opens/closes.
+   * Create the panel controller. `options` = {tab, item, syncUrl} (all optional; see the header). The panel is
+   * drawn at once but starts paused (nothing timed); returns {resume(), pause()}: scenario_view.js calls resume()
+   * once the panel is on screen, and pause() (ending every running view and logging its time) when the page is
+   * hidden or closed and when the conversation is left. A tab or item chosen while paused is timed from resume().
    */
-  function init(container, data, query, onClose, options) {
+  function init(container, data, query, options) {
     const opts = options || {};
     const state = data ? data.state : null;
     const skillsView = root.SkillsView.create(query, () => render());
@@ -219,28 +226,39 @@
       folder: "received", item: opts.item || null,
       set(change) {
         const before = { tab: ui.tab, item: ui.item };
+        // A click on a tab chooses it, even the default Mail tab already on screen; a click on the tab already
+        // chosen changes nothing.
+        const chooseTab = change.tab !== undefined && (change.tab !== before.tab || !tabChosen);
         Object.assign(ui, change);
         const shownChanged = ui.tab !== before.tab || ui.item !== before.item;
         if (shownChanged) endItemView(); // the item view ends before the tab view that contains it
-        if (ui.tab !== before.tab) { endTabView(before.tab); beginTabView(); }
+        if (chooseTab) {
+          // A skill document view ends before the Skills tab view that contains it.
+          if (before.tab === "skills" && ui.tab !== "skills") skillsView.leave();
+          endTabView();
+          tabChosen = true;
+          if (ui.tab === "skills") I.log("skills_tab_open"); else I.log("workspace_tab_open", { tab: ui.tab });
+          beginTabView();
+        }
         if (ui.item && ui.item !== before.item) I.log("workspace_item_open", { tab: ui.tab, item_id: String(ui.item) });
-        if (shownChanged && viewing) beginItemView();
+        if (shownChanged) beginItemView();
         sync(); render();
       },
     };
-    let viewing = false; // the panel is open, so the tab (and any item) on it is being viewed
-    let itemShown = null; // {tab, item_id} of the item whose viewing timer runs, or null
+    let active = false;    // resumed: views of what the panel shows are being timed
+    let tabChosen = false; // the participant has clicked a tab; until then the default tab is shown untimed
+    let tabTimed = null;   // the tab whose viewing timer runs, or null
+    let itemShown = null;  // {tab, item_id} of the item whose viewing timer runs, or null
     // Skills-tab events are separate from the Mail/Calendar/Drive ones.
     function beginTabView() {
-      viewing = true;
-      if (ui.tab === "skills") I.log("skills_tab_open"); else I.log("workspace_tab_open", { tab: ui.tab });
+      if (!active || !tabChosen) return;
+      tabTimed = ui.tab;
       I.startTimer("tab");
     }
-    function endTabView(tab) {
-      if (!viewing) return;
-      viewing = false;
-      if (tab === "skills") skillsView.leave();
-      const duration_ms = I.stopTimer("tab");
+    function endTabView() {
+      if (tabTimed === null) return;
+      const tab = tabTimed, duration_ms = I.stopTimer("tab");
+      tabTimed = null;
       if (tab === "skills") I.log("skills_tab_view", { duration_ms }); else I.log("workspace_tab_view", { tab, duration_ms });
     }
     /** The id (as a string) of the Mail/Calendar/Drive item the panel shows, or null: none is selected, the Skills
@@ -251,7 +269,7 @@
     }
     function beginItemView() {
       const id = shownItemId();
-      if (id === null) return;
+      if (!active || id === null) return;
       itemShown = { tab: ui.tab, item_id: id };
       I.startTimer("item");
     }
@@ -278,10 +296,6 @@
       container.replaceChildren();
       const head = el("div", "ws-head");
       head.appendChild(el("div", "ws-title", data ? "Workspace · " + data.account.email : "Workspace"));
-      const close = el("button", "ws-close", "✕");
-      close.setAttribute("aria-label", "Close workspace");
-      close.onclick = onClose;
-      head.appendChild(close);
       container.appendChild(head);
 
       const tabs = el("div", "tabs");
@@ -314,8 +328,20 @@
 
     render();
     return {
-      opened() { render(); beginTabView(); beginItemView(); },
-      closed() { endItemView(); endTabView(ui.tab); },
+      resume() {
+        if (active) return;
+        active = true;
+        beginTabView();
+        beginItemView();
+        if (ui.tab === "skills") skillsView.resume();
+      },
+      pause() {
+        if (!active) return;
+        endItemView(); // the item view ends before the tab view that contains it
+        if (ui.tab === "skills") skillsView.pause();
+        endTabView();
+        active = false;
+      },
     };
   }
 

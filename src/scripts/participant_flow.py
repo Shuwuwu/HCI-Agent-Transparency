@@ -26,12 +26,14 @@ Inputs:
     written as a task-list item ("- [ ] I agree to ..."). It is read on every request, so the text served and the
     text recorded are always the current file.
 
-    Assessment. Every assessment stage, practice and experimental alike, asks the same four questions in the same
+    Assessment. Every assessment stage, practice and experimental alike, shows the same four questions in the same
     order: whether the assistant performed the task safely, confidence (1-5, no default), the reasoning, and the
     information sources that influenced the judgment. The sources offered are those the participant's view
-    actually contains (the assistant's activity only where the action log is shown). The answers are validated
-    here, never trusted from the browser, and stored in the same transaction as the stage completion
-    (participant_store.record_response), against the participant id and the trial id, with the practice flagged.
+    actually contains (the assistant's activity only where the action log is shown). An experimental
+    assessment's answers are validated here, never trusted from the browser, and stored in the same transaction
+    as the stage completion (participant_store.record_response), against the participant id and the trial id.
+    The practice assessment is an example only: the page shows its questions without letting them be answered,
+    and completing it stores no response (anything submitted with it is ignored).
 
     Questionnaires. Two stages are questionnaires, told apart by their stage key (QUESTIONNAIRES): the pre-study
     questionnaire (src/study_materials/pre_questionnaire.json), after consent and before the practice, and the
@@ -60,7 +62,7 @@ Outputs:
     Stage descriptors and progress counts for the browser (no stimulus identity; the consent stage also carries
     the consent text, its checkbox statement and its hash); the (stimulus folder, condition) pair the scenario
     endpoints resolve on the server; a stored consent when the consent stage is completed; stored answers when an
-    assessment or a questionnaire stage is completed; and interaction events
+    experimental assessment or a questionnaire stage is completed; and interaction events
     in the participant database (the trial's stimulus and condition are in its plan_stages rows, not repeated in
     the events).
 
@@ -601,8 +603,9 @@ def advance(conn: sqlite3.Connection, config: ep.Config, participant: str, stage
     The stage key must be the participant's current stage: participant_store.complete_stage ignores a repeated
     submission of a stage already completed (so a double click or a reloaded form cannot record a trial twice)
     and refuses a later one (so no stage can be skipped). Completing the consent stage also needs `consent`
-    (see _complete_consent), and completing an assessment or a questionnaire stage needs `answers` (see
-    _complete_assessment, _complete_questionnaire); a
+    (see _complete_consent), and completing an experimental assessment or a questionnaire stage needs `answers`
+    (see _complete_assessment, _complete_questionnaire). The practice assessment is display-only: it completes
+    without answers and stores none, and any `answers` sent with it are ignored. A
     repeated submission of a stage already completed needs neither, and changes nothing. The next stage is entered here because the answer to this call is what the browser draws — it does
     not ask for the stage again — so this is the participant's arrival at it.
     """
@@ -615,7 +618,7 @@ def advance(conn: sqlite3.Connection, config: ep.Config, participant: str, stage
     pending = stage is not None and stage["key"] == stage_key
     if pending and stage["kind"] == "consent":
         _complete_consent(conn, config, participant, stage_key, payload, consent)
-    elif pending and stage["kind"] == "assessment":
+    elif pending and stage["kind"] == "assessment" and not stage.get("practice"):
         _complete_assessment(conn, config, participant, stage, payload, answers)
     elif pending and stage["kind"] == "questionnaire":
         _complete_questionnaire(conn, config, participant, stage_key, plan["condition"], payload, answers)

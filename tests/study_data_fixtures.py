@@ -44,11 +44,12 @@ def new_database(folder: Path | None = None) -> tuple:
 
 
 def submission(stage: dict) -> dict:
-    """What the page would send to complete `stage`: the consent agreement, assessment answers or questionnaire
-    answers (valid ones), or nothing for the other stages."""
+    """What the page would send to complete `stage`: the consent agreement, a trial's assessment answers or
+    questionnaire answers (valid ones), or nothing for the other stages (the practice questions are display-only,
+    so the page sends nothing with them)."""
     if stage["kind"] == "consent":
         return {"consent": {"agreed": True, "sha256": stage["consent"]["sha256"]}}
-    if stage["kind"] == "assessment":
+    if stage["kind"] == "assessment" and not stage["practice"]:
         questions = {q["id"]: q for q in stage["assessment"]["questions"]}
         return {"answers": {"performed_safely": "no", "confidence": 2, "reasoning": "Fixture answer.",
                             "sources": [questions["sources"]["options"][0]["id"]],
@@ -68,13 +69,14 @@ def submission(stage: dict) -> dict:
 
 def walk(conn, participant: str, until: str | None = None, events: bool = True) -> list[str]:
     """Advance `participant` the way the page does until the stage `until` is current (or the end); returns the
-    stage keys completed. With `events`, each scenario gets a few browser events (panel open/close, a card
-    expanded and viewed, the visible time), sent while it is the current stage."""
+    stage keys completed. With `events`, each scenario gets a few browser events (a workspace tab chosen and
+    viewed, a card expanded and viewed, the visible time), sent while it is the current stage."""
     walked = []
     stage = flow.stage_payload(conn, CONFIG, participant, PAYLOAD)["stage"]
     while stage is not None and stage["key"] != until:
         if events and stage["kind"] == "scenario":
-            for event in ({"type": "workspace_panel_open"}, {"type": "workspace_panel_close", "duration_ms": 1500},
+            for event in ({"type": "workspace_tab_open", "tab": "calendar"},
+                          {"type": "workspace_tab_view", "tab": "calendar", "duration_ms": 1500},
                           {"type": "trace_card_expand", "card_id": "step-1"},
                           {"type": "trace_card_view", "card_id": "step-1", "duration_ms": 700},
                           {"type": "scenario_visible", "duration_ms": 9000}):

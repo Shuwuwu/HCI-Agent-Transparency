@@ -40,29 +40,20 @@ body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui,-ap
 .composer{position:sticky;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding:12px 16px}
 .composer input{width:100%;max-width:760px;display:block;margin:0 auto;padding:10px 14px;border:1px solid var(--line);border-radius:20px;background:var(--bg);color:var(--muted);font:inherit}
 .error-msg{text-align:center;color:var(--muted)}
-/* ---- workspace sidebar ---- */
+/* ---- conversation + workspace layout ----
+   Every scenario page (the practice, every conversation after it, and the researcher preview) shows the
+   conversation and the workspace panel side by side, each taking half of the width. The page itself does not scroll: it is held to the
+   window height, and each half scrolls on its own (the chat column, and the panel's body under its fixed header and
+   tabs). The top bar and, in the flow, the continue bar stay in view above and below. */
 .topbar{display:flex;align-items:center;justify-content:center;position:relative}
 .topbar-buttons{position:absolute;right:12px;top:8px;display:flex;gap:8px}
-.panel-toggle{border:1px solid var(--line);background:var(--bg);color:var(--text);border-radius:16px;padding:5px 12px;font:inherit;font-size:14px;cursor:pointer}
-.panel-toggle[aria-expanded="true"]{border-color:var(--accent);color:var(--accent)}
+body:has(> .layout){height:100vh;height:100dvh;overflow:hidden}
 .layout{flex:1;display:flex;min-height:0}
-.chat-col{flex:1;min-width:0;display:flex;flex-direction:column}
-.workspace{display:none;width:440px;flex:none;background:var(--surface);border-left:1px solid var(--line);flex-direction:column;height:calc(100vh - 53px);position:sticky;top:53px}
-.layout.workspace-open .workspace{display:flex}
-/* Narrow screens: the open workspace is a fixed layer under the 53px top bar, so the bar is sticky to stay at the
-   window top (with the Workspace button in view) however far the page has scrolled; z-index keeps it above the
-   panel. scroll-padding-top stops scrollIntoView (the practice tour uses it) scrolling an element up under the bar.
-   Desktop keeps a scrolling bar: anything below the layout (such as a page footer) pushes the sticky workspace up at
-   the bottom of the page, and a sticky bar would then cover the workspace header. */
-@media (max-width:959px){
-  html{scroll-padding-top:53px}
-  .topbar{position:sticky;top:0;z-index:20}
-  .workspace{position:fixed;inset:53px 0 0 0;width:auto;height:auto;z-index:10}
-}
+.chat-col{flex:1 1 0;min-width:0;display:flex;flex-direction:column;overflow-y:auto}
+.workspace{flex:1 1 0;min-width:0;display:flex;flex-direction:column;background:var(--surface);border-left:1px solid var(--line);overflow:hidden}
 .ws-head{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid var(--line)}
 .ws-title{font-weight:600;font-size:14px;overflow-wrap:anywhere}
-.ws-close{border:0;background:none;color:var(--muted);font-size:16px;cursor:pointer}
-.tabs{display:flex;gap:4px;padding:10px 14px 0;border-bottom:1px solid var(--line)}
+.tabs{display:flex;flex-wrap:wrap;gap:4px;padding:10px 14px 0;border-bottom:1px solid var(--line)}
 .tab{border:0;background:none;color:var(--muted);padding:6px 12px;font:inherit;cursor:pointer;border-bottom:2px solid transparent}
 .tab.on{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
 .ws-body{flex:1;overflow:auto;padding:10px 14px 24px}
@@ -157,7 +148,7 @@ body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui,-ap
 /* ---- practice tour (tutorial.js) ----
    Four shades around the spotlit element dim the page and block clicks elsewhere; the element itself stays live.
    Everything is positioned in window coordinates by tutorial.js on every frame, so nothing here animates position
-   (a transition would make the spotlight trail its element while scrolling). Above the phone workspace panel. */
+   (a transition would make the spotlight trail its element while scrolling). */
 .tour{position:fixed;inset:0;z-index:1000;pointer-events:none}
 .tour-shade{position:absolute;background:rgba(17,17,24,.55);pointer-events:auto}
 .tour-ring{position:absolute;border:2px solid var(--accent);border-radius:10px;pointer-events:none}
@@ -214,6 +205,11 @@ body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui,-ap
 .q-text-input:focus-visible{outline:3px solid var(--accent);outline-offset:2px;border-color:var(--accent)}
 .assessment .q-error{margin:10px 0 0;color:var(--err);font-size:14px;font-weight:600}
 .q-invalid .q-choice,.q-invalid .q-text-input{border-color:var(--err)}
+/* Display-only (the practice): the questions are shown as an example; nothing reacts to the pointer. */
+.assessment.display-only :is(.q-choice,.scale-stop,input,textarea){cursor:default}
+.assessment.display-only .q-choice:hover{border-color:var(--line)}
+.assessment.display-only .scale-stop:hover .scale-dot{border-color:var(--muted)}
+.assessment.display-only .q-text-input{resize:none}
 .assessment .assessment-message{margin:20px 0 0;padding:12px 14px;border-radius:10px;background:var(--err-bg);color:var(--err);font-size:15px}
 /* The slider: a track behind five evenly spaced stops; the dot of the chosen stop fills with the accent colour. */
 .scale{position:relative;display:grid;grid-template-columns:repeat(5,1fr);padding-top:4px}

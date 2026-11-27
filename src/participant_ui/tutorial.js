@@ -14,25 +14,25 @@
  *     PracticeTour  the practice steps (the STEPS table below) and how they are started from the flow page.
  *
  * Inputs:
- *   PracticeTour.start({host, toggle, onFinish}) once the practice conversation has been drawn:
+ *   PracticeTour.start({host, onFinish}) once the practice conversation and the workspace panel have been drawn:
  *     host      the element the scenario view is mounted in (#stage);
- *     toggle    the Workspace button (#ws-toggle); its aria-expanded says whether the panel is open;
  *     onFinish  called once, when the participant completes the last step.
+ *   The workspace panel is always open beside the conversation, so no step opens or closes it.
  *   The steps are read from the page as it is drawn, never from the server: a step with an include() test, such
  *   as the activity-card step, is part of the tour only when its element is on the page.
  *
  * Outputs:
  *   An overlay appended to <body> while the tour runs; it is removed by stop() or when the tour finishes. The tour
- *   logs nothing itself. Interface events triggered by clicking the real interface during the tour (opening the
- *   panel, a tab, an item) are logged as usual by interaction.js, under the practice trial's id, and the server
- *   marks them as practice (participant_flow.log_event).
+ *   logs nothing itself. Interface events triggered by clicking the real interface during the tour (a tab, an
+ *   item, a skill document, an activity card) are logged as usual by interaction.js, under the practice trial's
+ *   id, and the server marks them as practice (participant_flow.log_event).
  *
  * Dependencies:
  *   None at load time. Expects the DOM of scenario_view.js, workspace.js and skills.js (the selectors in STEPS).
  *   Loaded by flow.html before flow.js, which starts it on the practice scenario stage only.
  *
  * Usage:
- *   const tour = PracticeTour.start({ host, toggle, onFinish: () => { ... } });   tour.stop();
+ *   const tour = PracticeTour.start({ host, onFinish: () => { ... } });   tour.stop();
  */
 (function (root) {
   "use strict";
@@ -95,9 +95,8 @@
    *   intro         an optional paragraph shown above the text and its action label;
    *   target()      the element to spotlight, looked up again on every frame (panels re-render their DOM);
    *                 a step without one is a centred message;
-   *   fallback()    spotlit instead while target() is not on screen (for example a panel the participant closed),
-   *                 with fallbackText added to the text;
-   *   before()      run when the step is entered (for example, to reopen a panel the step is about);
+   *   fallback()    spotlit instead while target() is not on screen, with fallbackText added to the text;
+   *   before()      run when the step is entered (for example, to show the tab a step is about);
    *   done()        an action the step invites ("Try it: ..."); once it becomes true the tour moves on by itself.
    *                 It must have been false when the step began, so going Back never skips a step at once;
    *   action        the label shown before the text of a step with done(), e.g. "Try it".
@@ -261,12 +260,9 @@
   // Before changing any wording below, read the tour's wording rules in the README.
 
   function startPractice(options) {
-    const host = options.host, toggle = options.toggle;
+    const host = options.host;
     const q = (selector) => host.querySelector(selector) || document.querySelector(selector);
-    const panelOpen = () => toggle.getAttribute("aria-expanded") === "true";
-    const openPanel = () => { if (!panelOpen() && !toggle.hidden) toggle.click(); };
     const tab = (label) => [...document.querySelectorAll("#workspace .tab")].find((b) => b.textContent === label);
-    const inPanel = { fallback: () => toggle, fallbackText: "The workspace is closed: open it with this button to see this part." };
 
     const STEPS = [
       { title: "Practice Tutorial",
@@ -287,32 +283,28 @@
       { title: "Recorded Conversation",
         text: "All conversations are prerecorded, so you cannot send messages to the assistant.",
         target: () => q(".composer") },
-      { title: "Emma's Workspace", action: "Try it",
-        text: "Click Workspace to explore Emma's digital workspace.",
-        target: () => toggle, done: panelOpen },
-      Object.assign({ title: "Workspace Tabs",
+      { title: "Emma's Workspace",
+        text: "This panel shows Emma's digital workspace. It stays open beside the conversation, and each side "
+          + "scrolls on its own.",
+        target: () => q("#workspace") },
+      { title: "Workspace Tabs",
         text: "Switch between Mail, Calendar, and Drive to explore Emma's workspace as it was before "
           + "the assistant began the task.",
-        target: () => q("#workspace .tabs"), before: openPanel }, inPanel),
-      Object.assign({ title: "Opening an Item",
+        target: () => q("#workspace .tabs") },
+      { title: "Opening an Item",
         text: "Click an email, event or file to view it. Use ← Back to list to return. Mail has separate "
           + "Inbox and Sent folders.",
         target: () => q("#workspace .ws-body"),
         // Reached with Back from the Skills steps, the panel would still show Skills, not what this step describes.
-        before: () => { openPanel(); const s = tab("Skills"); if (s && s.classList.contains("on")) tab("Mail").click(); } },
-      inPanel),
-      Object.assign({ title: "Skills", action: "Try it",
+        before: () => { const s = tab("Skills"); if (s && s.classList.contains("on")) tab("Mail").click(); } },
+      { title: "Skills", action: "Try it",
         text: "Open the Skills tab. It lists the skills the assistant was given for this task.",
-        target: () => tab("Skills"), before: openPanel,
-        done: () => !!tab("Skills") && tab("Skills").classList.contains("on") }, inPanel),
-      Object.assign({ title: "Viewing a Skill",
+        target: () => tab("Skills"),
+        done: () => !!tab("Skills") && tab("Skills").classList.contains("on") },
+      { title: "Viewing a Skill",
         text: "Click a skill to view its documentation. Use ← All skills to return to the list.",
         target: () => q("#workspace .ws-body"),
-        before: () => { openPanel(); const s = tab("Skills"); if (s && !s.classList.contains("on")) s.click(); } }, inPanel),
-      { title: "Closing the Workspace", action: "Try it",
-        text: "Click ✕ to close the workspace. Click Workspace to open it at any time.",
-        target: () => (panelOpen() ? q("#workspace .ws-close") : toggle),
-        done: () => !panelOpen() },
+        before: () => { const s = tab("Skills"); if (s && !s.classList.contains("on")) s.click(); } },
       { title: "Tutorial Complete",
         text: "You can explore the practice conversation further before continuing to the practice questions. "
           + "The remaining conversations follow the same format.",

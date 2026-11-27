@@ -146,7 +146,7 @@ class Browser:
         self.skills.append((stage["trial_id"], json.loads(skills)))
         skill = json.loads(skills)[0]["id"]
         assert self.get(f"/api/skill?{q}&k={skill}")[0] == 200
-        for event in ({"type": "workspace_panel_open"}, {"type": "skills_tab_open"},
+        for event in ({"type": "skills_tab_open"},
                       {"type": "skill_doc_open", "skill_id": skill},
                       {"type": "skill_doc_view", "skill_id": skill, "duration_ms": 3000},
                       {"type": "scenario_visible", "duration_ms": 20000}):
@@ -274,7 +274,10 @@ class PilotProcedureTest(unittest.TestCase):
         for participant in (LOW, HIGH):
             trials = self.query("SELECT * FROM trial_summary WHERE participant_id = ?", participant)
             self.assertEqual(len(trials), 9)
-            self.assertTrue(all(t["performed_safely"] and t["scenario_visible_ms"] == 20000 for t in trials))
+            self.assertTrue(all(t["scenario_visible_ms"] == 20000 for t in trials))
+            # Answers for every trial; none for the display-only practice questions.
+            self.assertEqual([bool(t["performed_safely"]) for t in trials],
+                             [t["trial_type"] == "experimental" for t in trials])
             condition = next(r["condition"] for r in PAYLOAD["assignments"] if r["participant"] == participant)
             self.assertEqual(len(self.query("SELECT * FROM questionnaire_responses WHERE participant_id = ?",
                                             participant)), questionnaire_items(condition))

@@ -11,12 +11,15 @@
  *        marked "specify" (Other) shows a text field while it is ticked; the text is required only when the
  *        option is also marked "specify_required".
  *   The form only collects and checks answers for the participant's benefit; the server checks them again and is
- *   the one that stores them.
+ *   the one that stores them. In display-only mode (the practice) every input is disabled: the questions are shown
+ *   as an example of what will be asked, with nothing to answer and nothing collected.
  *
  * Inputs:
- *   AssessmentForm.render(container, spec, heading): `spec` is the stage's assessment as sent by the server:
- *   {intro, sha256, questions: [{id, text, required, options?, min?, max?, anchors?, max_chars?}, ...]} in the
- *   order to ask them (participant_flow.assessment_for builds it from src/study_materials/assessment.json).
+ *   AssessmentForm.render(container, spec, heading, options): `spec` is the stage's assessment as sent by the
+ *   server: {intro, sha256, questions: [{id, text, required, options?, min?, max?, anchors?, max_chars?}, ...]} in
+ *   the order to ask them (participant_flow.assessment_for builds it from src/study_materials/assessment.json).
+ *   `options` (optional): {intro: text shown under the heading instead of spec.intro, displayOnly: true to
+ *   disable every input}.
  *
  * Outputs:
  *   The form drawn into `container`. render() returns {collect, showErrors, showMessage}:
@@ -150,13 +153,15 @@
     return wrap;
   }
 
-  function render(container, spec, heading) {
+  function render(container, spec, heading, options) {
+    const opts = options || {};
     const prefix = "assess" + ++formCount;
-    const form = el("form", "stage-card assessment");
+    const form = el("form", "stage-card assessment" + (opts.displayOnly ? " display-only" : ""));
     form.noValidate = true;
     form.addEventListener("submit", (e) => e.preventDefault()); // submitted by the page's Continue button
     form.appendChild(el("h1", null, heading));
-    if (spec.intro) form.appendChild(el("p", "assessment-intro", spec.intro));
+    const intro = opts.intro !== undefined ? opts.intro : spec.intro;
+    if (intro) form.appendChild(el("p", "assessment-intro", intro));
     const sets = {};
     spec.questions.forEach((q) => {
       const set = question(q, prefix, (fs, id) => BUILDERS[q.id](fs, id, q));
@@ -167,6 +172,8 @@
     message.setAttribute("role", "alert");
     message.hidden = true;
     form.appendChild(message);
+    // Display-only: nothing can be selected, typed or focused; the questions are only read.
+    if (opts.displayOnly) form.querySelectorAll("input, textarea").forEach((input) => { input.disabled = true; });
     container.appendChild(form);
 
     const byId = Object.fromEntries(spec.questions.map((q) => [q.id, q]));

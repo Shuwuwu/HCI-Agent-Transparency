@@ -187,7 +187,9 @@ def find_problems(conn: sqlite3.Connection) -> list[str]:
     Checks: SQLite's integrity and foreign keys; an environment stamp; per participant, a stage-sequence snapshot
     matching their fingerprint, progress only for stages of that sequence and completed in order, completed_at set
     exactly when every stage is completed, a consent exactly when consent is completed, a response exactly for
-    each completed assessment (naming the trial, stimulus and condition of the plan), answers to each
+    each completed experimental assessment (naming the trial, stimulus and condition of the plan) and, for the
+    display-only practice assessment, none unless it was recorded by the earlier interactive practice (and then
+    only for a completed stage), answers to each
     questionnaire (pre- and post-study, by stage key) exactly when that questionnaire stage is completed; per event, a trial and stage of the participant's sequence with
     the stage's practice flag, a contiguous `seq` per trial, at least one session_start per scenario entered and
     at most one written by this server per trial. Events imported from the retired storage (origin "legacy") may
@@ -227,7 +229,12 @@ def find_problems(conn: sqlite3.Connection) -> list[str]:
             p("consent record and consent stage disagree")
         for stage in (s for s in stages if s["kind"] == "assessment"):
             response = store.response_of(conn, participant, stage["stage_key"])
-            if (stage["stage_key"] in completed) != (response is not None):
+            # The practice questions are display-only and store nothing; a practice response can only come from
+            # the earlier interactive practice, and then only with its stage completed.
+            expected = stage["stage_key"] in completed
+            if stage["practice"] and response is None:
+                expected = False
+            if expected != (response is not None):
                 p(f"{stage['stage_key']}: response and completed stage disagree")
             elif response and (response["trial_id"], response["stimulus"], response["condition"],
                                response["practice"]) != (stage["trial_id"], stage["stimulus"], stage["condition"],

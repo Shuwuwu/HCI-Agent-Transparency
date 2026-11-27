@@ -1,10 +1,16 @@
 """
 Purpose:
     Define, validate and summarise the interaction events of the participant flow: what a participant does in a
-    trial besides reading the conversation. That covers opening the workspace panel and for how long, the Mail,
-    Calendar and Drive tabs, the items opened in them and how long each item stayed on screen, the Skills tab and each skill document opened and for
-    how long, the activity cards expanded, collapsed and how long each stayed open (where the view shows them),
-    and how long the conversation was visible before the participant continued.
+    trial besides reading the conversation. That covers the Mail, Calendar and Drive tabs chosen and for how long,
+    the items opened in them and how long each item stayed on screen, the Skills tab and each skill document
+    opened and for how long, the activity cards expanded, collapsed and how long each stayed open (where the view
+    shows them), and how long the conversation was visible before the participant continued.
+
+    The workspace panel is always on screen beside the conversation, and its default Mail list is neither logged
+    nor timed, so every workspace event is something the participant chose to do. `workspace_panel_open` and
+    `workspace_panel_close` belong to the earlier interface, in which the panel was opened and closed with a
+    button: the current pages never send them, and they stay accepted only so that records made with that
+    interface remain valid and are summarised as they were recorded.
 
     The events are stored in the participant database (`events` table, participant_store.record_event), against
     the participant, trial and stage they belong to; this module never writes anything. It decides which events
@@ -58,8 +64,8 @@ EVENT_FIELDS = {
     "session_start": {},
     "stage_load": {},
     "scenario_visible": {"duration_ms": _ms},
-    "workspace_panel_open": {},
-    "workspace_panel_close": {"duration_ms": _ms},
+    "workspace_panel_open": {},  # earlier interface only (see the module docstring)
+    "workspace_panel_close": {"duration_ms": _ms},  # earlier interface only
     "workspace_tab_open": {"tab": _tab},
     "workspace_tab_view": {"tab": _tab, "duration_ms": _ms},
     "workspace_item_open": {"tab": _tab, "item_id": _token},
@@ -75,6 +81,10 @@ EVENT_FIELDS = {
     "trace_card_view": {"card_id": _card, "duration_ms": _ms},
 }
 SERVER_ONLY = ("session_start", "stage_load")
+# Events that only a deliberate action in the workspace panel produces. workspace_panel_open is the earlier
+# interface's button (see the module docstring); the current panel cannot be opened, so it never sends it.
+INSPECTION_EVENTS = ("workspace_panel_open", "workspace_tab_open", "workspace_item_open", "skills_tab_open",
+                     "skill_doc_open")
 FIELD_COLUMNS = ("tab", "item_id", "skill_id", "card_id", "duration_ms")  # the event columns of the database
 
 
@@ -119,8 +129,11 @@ def summarize(events: list[dict]) -> dict:
 
     skills_opened: any skill document opened; first_skill_open_s: seconds from the trial's session_start to the
     first skill_doc_open (None if either is missing); skills_viewed_ms: {skill id: total ms} from skill_doc_view;
-    skills_tab_opened / skills_tab_ms: the Skills tab was selected / total ms on it; workspace_opened;
-    workspace_panel_ms; workspace_tabs_viewed_ms: {tab: total ms}; workspace_items_opened: count;
+    skills_tab_opened / skills_tab_ms: the Skills tab was selected / total ms on it; workspace_inspected: the
+    participant did anything in the workspace panel (chose a tab, opened an item, the Skills tab or a skill
+    document; in records of the earlier interface, also opened the panel) — the panel being on screen by default
+    never counts; workspace_tabs_viewed_ms: {tab: total ms} on Mail, Calendar and Drive after the participant
+    chose them (the default Mail list is not timed); workspace_items_opened: count;
     workspace_items_viewed_ms: {tab: {item id: total ms}} from workspace_item_view (nested by tab because item ids
     are only unique within their tab: an email and a calendar event can share an id);
     trace_cards_expanded: distinct cards expanded; trace_cards_viewed_ms: {card id: total ms};
@@ -155,8 +168,7 @@ def summarize(events: list[dict]) -> dict:
         "skills_opened": first_open is not None,
         "first_skill_open_s": seconds,
         "skills_viewed_ms": by("skill_doc_view", "skill_id"),
-        "workspace_opened": any(e["type"] == "workspace_panel_open" for e in events),
-        "workspace_panel_ms": total("workspace_panel_close"),
+        "workspace_inspected": any(e["type"] in INSPECTION_EVENTS for e in events),
         "workspace_tabs_viewed_ms": by("workspace_tab_view", "tab"),
         "workspace_items_opened": sum(e["type"] == "workspace_item_open" for e in events),
         "workspace_items_viewed_ms": items,

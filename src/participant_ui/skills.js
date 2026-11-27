@@ -10,7 +10,8 @@
  *
  * Outputs:
  *   DOM inside the body element given to render(); interaction events skill_doc_open / skill_doc_view (with
- *   visible duration) via interaction.js.
+ *   visible duration) via interaction.js. A document still open when the panel is paused gets a skill_doc_view
+ *   then, and another for the time after it is resumed.
  *
  * Dependencies:
  *   markdown.js, interaction.js. Used by workspace.js, which owns the tabs.
@@ -28,18 +29,31 @@
 
   /**
    * Create the Skills view for one conversation. `redraw` is called when an asynchronous load finishes while
-   * the tab is showing. Returns {render(body), leave()}: render draws the current state (list or document) into
-   * `body`; leave() ends a running document view (tab switched, panel closed, page hidden).
+   * the tab is showing. Returns {render(body), leave(), pause(), resume()}: render draws the current state (list
+   * or document) into `body`; leave() ends a running document view and returns to the list (another tab chosen);
+   * pause() ends the running document view but keeps the document on screen (page hidden or closed, conversation
+   * left), and resume() starts timing it again without a new skill_doc_open.
    */
   function create(query, redraw) {
     let skills = null;   // list from the server, loaded on first render
     let loading = false;
     let failed = false;
     let doc = null;      // {id, name, description, markdown} while a document is displayed
+    let timing = false;  // the displayed document's viewing timer runs
+    let paused = false;  // between pause() and resume(): nothing is timed
 
-    function endDocView() {
-      if (doc === null) return;
+    function stopTiming() {
+      if (!timing) return;
+      timing = false;
       I.log("skill_doc_view", { skill_id: doc.id, duration_ms: I.stopTimer("skill:" + doc.id) });
+    }
+    function startTiming() {
+      if (timing || paused || doc === null) return;
+      timing = true;
+      I.startTimer("skill:" + doc.id);
+    }
+    function endDocView() {
+      stopTiming();
       doc = null;
     }
 
@@ -48,9 +62,10 @@
         .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
         .then((d) => {
           // The document counts as opened only once it is actually displayed.
+          endDocView();
           doc = d;
           I.log("skill_doc_open", { skill_id: id });
-          I.startTimer("skill:" + id);
+          startTiming();
           redraw();
         })
         .catch(() => { failed = true; redraw(); });
@@ -93,7 +108,12 @@
       body.appendChild(list);
     }
 
-    return { render, leave() { endDocView(); } };
+    return {
+      render,
+      leave() { endDocView(); },
+      pause() { stopTiming(); paused = true; },
+      resume() { paused = false; startTiming(); },
+    };
   }
 
   root.SkillsView = { create };
