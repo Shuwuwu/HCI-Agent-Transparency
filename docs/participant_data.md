@@ -22,7 +22,7 @@ The database is the single source of truth for everything recorded about a parti
 - progress and timestamps;
 - assessment answers;
 - interaction events;
-- the post-study questionnaire.
+- the pre- and post-study questionnaires.
 
 Exports and backups are derived from it and never edited. A database is stamped with its environment the first
 time it is opened and refuses the other one. A study database is **append-only** for recorded data: SQLite
@@ -127,7 +127,7 @@ Do not edit data in DB Browser. In a study database, the triggers refuse edits a
 | `consents` | participant who agreed | `agreed_at`, `consent_sha256`, `consent_text` (the exact text agreed to) |
 | `responses` | completed assessment (practice included, `practice` = 1) | `performed_safely`, `confidence` (1–5), `reasoning`, `sources` and `sources_offered` (JSON lists), `sources_other`, `questions_sha256`, `submitted_at` |
 | `events` | interaction event | `trial_id`, `stage_key`, `practice`, `seq` (order of arrival within the trial), `type`, `origin` (`browser`, `server`, or `legacy` for events imported from the retired files), `tab`, `item_id`, `skill_id`, `card_id`, `duration_ms`, `client_ms` (browser clock), `server_time` |
-| `questionnaire_responses` | participant and questionnaire item | `item_id`, `answer` (`''` for an optional item left blank), `questionnaire_sha256`, `submitted_at` |
+| `questionnaire_responses` | participant and questionnaire item asked | `stage_key` (`pre_questionnaire` or `questionnaire`, the post-study one), `item_id`, `answer` (`''` for an optional item left blank), `questionnaire_sha256`, `submitted_at` |
 | `meta` | setting | `schema_version`, `environment`, `legacy_import` |
 
 Event types:
@@ -156,21 +156,25 @@ on every run, so never edit them; change nothing but the database, and only thro
 | `trials.csv` | trial | `trial_summary`, plus the measures of `interaction_log.summarize`: Skills tab and skill-document use, workspace panel time, tabs and items, activity cards expanded and viewed. Dict-valued measures are JSON. `trial_type` is `practice` or `experimental`. |
 | `progress.csv` | stage entered | stage kind, trial and `trial_type` |
 | `events.csv` | event | with `trial_type` |
-| `questionnaire.csv` | participant and item | long format; `answer` coding below |
+| `questionnaire.csv` | participant and item asked | long format, both questionnaires, with `stage_key`; `answer` coding below |
 
-`questionnaire.csv` answers are stored as text, keyed by the `item_id` of `src/study_materials/questionnaire.json`
-(the file the row's `questionnaire_sha256` names holds the exact wording):
+`questionnaire.csv` answers are stored as text, keyed by `item_id`. Item ids are unique across
+`src/study_materials/pre_questionnaire.json` (`stage_key` `pre_questionnaire`, asked after consent) and
+`src/study_materials/questionnaire.json` (`stage_key` `questionnaire`, after the last trial); the file the row's
+`questionnaire_sha256` names holds the exact wording. Rows written before schema version 8 have no pre-study
+questionnaire and are all `questionnaire`.
 
-| `item_id` | Answer |
-|---|---|
-| `safety_judgement_approach`, `unsafe_meaning` | free text (required) |
-| `actions_visible`, `information_sufficient`, `information_overload` | `1` Strongly disagree … `5` Strongly agree |
-| `skill_docs_usefulness` | `1` Not at all useful … `5` Extremely useful, or `did_not_consult` |
-| `skill_docs_purpose_understood` | `1` Not at all … `5` Completely |
-| `ai_chat_frequency` | `never`, `less_than_monthly`, `monthly`, `weekly`, `daily` |
-| `agent_experience` | `never`, `once_or_twice`, `occasionally`, `regularly`, `not_sure` |
-| `prompt_injection_familiarity` | `never_heard`, `heard_of`, `basic_idea`, `could_explain`, `worked_with` |
-| `additional_information_wanted` | free text; `''` when left blank |
+| `stage_key` | `item_id` | Answer |
+|---|---|---|
+| `pre_questionnaire` | `ai_chat_frequency` | `never`, `less_than_monthly`, `monthly`, `weekly`, `daily` |
+| `pre_questionnaire` | `agent_experience` | `never`, `once_or_twice`, `occasionally`, `regularly`, `not_sure` |
+| `questionnaire` | `unsafe_meaning`, `information_relied_on` | free text (required) |
+| `questionnaire` | `information_sufficient` | `1` Not at all sufficient … `5` Completely sufficient |
+| `questionnaire` | `skill_docs_usefulness` | `1` Not at all useful … `5` Extremely useful, or `did_not_consult` |
+| `questionnaire` | `skill_docs_purpose_understood` | `1` Not at all … `5` Completely |
+| `questionnaire` | `information_overload` | `1` Strongly disagree … `5` Strongly agree |
+| `questionnaire` | `information_overload_explanation`, `additional_information_wanted` | free text; `''` when left blank |
+| `questionnaire` | `activity_log_usefulness` | `1` Not at all useful … `5` Extremely useful; **high condition only** (low participants are never asked it and have no row) |
 
 For analysis, filter `trial_type == "experimental"`. The practice trial is never part of the experimental analysis.
 

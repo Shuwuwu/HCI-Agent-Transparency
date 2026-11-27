@@ -1,55 +1,29 @@
 {
-  "version": "questionnaire_v1",
+  "version": "questionnaire_v2",
+  "title": "A few last questions",
   "intro": "These questions are about the session as a whole, not one conversation.",
   "items": [
     {
-      "id": "safety_judgement_approach",
-      "type": "text",
-      "text": "How did you decide whether the assistant's behaviour was safe or unsafe?",
-      "required": true,
-      "max_chars": 2000
-    },
-    {
       "id": "unsafe_meaning",
       "type": "text",
-      "text": "What did unsafe behaviour mean to you in this study?",
+      "text": "What does unsafe AI assistant behaviour mean to you?",
       "required": true,
       "max_chars": 2000
-    },
-    {
-      "id": "actions_visible",
-      "type": "scale",
-      "text": "I could see what the assistant did to complete each request.",
-      "required": true,
-      "min": 1,
-      "max": 5,
-      "anchors": {"1": "Strongly disagree", "2": "Disagree", "3": "Neither agree nor disagree", "4": "Agree",
-                  "5": "Strongly agree"}
     },
     {
       "id": "information_sufficient",
       "type": "scale",
-      "text": "I had enough information to assess the assistant's behaviour.",
+      "text": "How sufficient was the available information for making your safety assessments?",
       "required": true,
       "min": 1,
       "max": 5,
-      "anchors": {"1": "Strongly disagree", "2": "Disagree", "3": "Neither agree nor disagree", "4": "Agree",
-                  "5": "Strongly agree"}
-    },
-    {
-      "id": "information_overload",
-      "type": "scale",
-      "text": "There was too much information to review.",
-      "required": true,
-      "min": 1,
-      "max": 5,
-      "anchors": {"1": "Strongly disagree", "2": "Disagree", "3": "Neither agree nor disagree", "4": "Agree",
-                  "5": "Strongly agree"}
+      "anchors": {"1": "Not at all sufficient", "2": "Slightly sufficient", "3": "Moderately sufficient",
+                  "4": "Very sufficient", "5": "Completely sufficient"}
     },
     {
       "id": "skill_docs_usefulness",
       "type": "scale",
-      "text": "How useful was the skill documentation in assessing the assistant's behaviour?",
+      "text": "How useful was the skill documentation in making your safety assessments?",
       "required": true,
       "min": 1,
       "max": 5,
@@ -67,50 +41,46 @@
       "anchors": {"1": "Not at all", "2": "Slightly", "3": "Moderately", "4": "Very well", "5": "Completely"}
     },
     {
-      "id": "ai_chat_frequency",
-      "type": "choice",
-      "text": "How often do you use AI chat assistants (for example, ChatGPT, Claude or Gemini)?",
+      "id": "information_overload",
+      "type": "scale",
+      "text": "I felt overwhelmed by the amount of information available.",
       "required": true,
-      "options": [
-        {"id": "never", "label": "Never"},
-        {"id": "less_than_monthly", "label": "Less than once a month"},
-        {"id": "monthly", "label": "A few times a month"},
-        {"id": "weekly", "label": "A few times a week"},
-        {"id": "daily", "label": "Daily or almost daily"}
-      ]
+      "min": 1,
+      "max": 5,
+      "anchors": {"1": "Strongly disagree", "2": "Disagree", "3": "Neither agree nor disagree", "4": "Agree",
+                  "5": "Strongly agree"}
     },
     {
-      "id": "agent_experience",
-      "type": "choice",
-      "text": "Have you previously used AI assistants that perform actions on your behalf (for example, sending emails, scheduling events or managing files)?",
-      "required": true,
-      "options": [
-        {"id": "never", "label": "No, never"},
-        {"id": "once_or_twice", "label": "Yes, once or twice"},
-        {"id": "occasionally", "label": "Yes, occasionally"},
-        {"id": "regularly", "label": "Yes, regularly"},
-        {"id": "not_sure", "label": "Not sure"}
-      ]
+      "id": "information_overload_explanation",
+      "type": "text",
+      "text": "Please explain your answer to the statement above.",
+      "required": false,
+      "max_chars": 2000
     },
     {
-      "id": "prompt_injection_familiarity",
-      "type": "choice",
-      "text": "Before this study, how familiar were you with prompt injection?",
+      "id": "information_relied_on",
+      "type": "text",
+      "text": "What information did you rely on most when making your safety assessments?",
       "required": true,
-      "options": [
-        {"id": "never_heard", "label": "I had never heard of it"},
-        {"id": "heard_of", "label": "I had heard of it but did not know what it means"},
-        {"id": "basic_idea", "label": "I understood the basic idea"},
-        {"id": "could_explain", "label": "I could explain it to someone else"},
-        {"id": "worked_with", "label": "I have studied it or worked with it"}
-      ]
+      "max_chars": 2000
     },
     {
       "id": "additional_information_wanted",
       "type": "text",
-      "text": "What additional information would have helped you assess the assistant's behaviour?",
+      "text": "What additional information, if any, would have helped you make your safety assessments?",
       "required": false,
       "max_chars": 2000
+    },
+    {
+      "id": "activity_log_usefulness",
+      "type": "scale",
+      "text": "How useful was the assistant's activity log in making your safety assessments?",
+      "required": true,
+      "shown_with": "activity_log",
+      "min": 1,
+      "max": 5,
+      "anchors": {"1": "Not at all useful", "2": "Slightly useful", "3": "Moderately useful", "4": "Very useful",
+                  "5": "Extremely useful"}
     }
   ]
 }

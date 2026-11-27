@@ -20,6 +20,8 @@ Inputs:
     payload it names (experiment_plan.py), and a link token taken from the request.
     src/study_materials/assessment.json: the questions asked after each conversation (see load_assessment), read
     on every request like the consent text.
+    src/study_materials/pre_questionnaire.json and questionnaire.json: the pre- and post-study questionnaires
+    (see load_questionnaire), likewise read on every request.
     src/study_materials/consent.md: the consent text, in Markdown, whose last line is the agreement checkbox
     written as a task-list item ("- [ ] I agree to ..."). It is read on every request, so the text served and the
     text recorded are always the current file.
@@ -31,10 +33,15 @@ Inputs:
     here, never trusted from the browser, and stored in the same transaction as the stage completion
     (participant_store.record_response), against the participant id and the trial id, with the practice flagged.
 
-    Questionnaire. The post-study questionnaire (src/study_materials/questionnaire.json, read on every request
-    like the other study materials) is sent with the questionnaire stage; its answers are validated here and
-    stored in the same transaction as the stage completion (participant_store.record_questionnaire). Every
-    participant gets the same questionnaire, whatever their condition.
+    Questionnaires. Two stages are questionnaires, told apart by their stage key (QUESTIONNAIRES): the pre-study
+    questionnaire (src/study_materials/pre_questionnaire.json), after consent and before the practice, and the
+    post-study questionnaire (src/study_materials/questionnaire.json), after the last trial. Each file is read on
+    every request like the other study materials and sent with its stage; the answers are validated here and
+    stored, with the stage key, in the same transaction as the stage completion
+    (participant_store.record_questionnaire). Items are asked in the file's order. An item marked "shown_with" a
+    part of the interface (SHOWN_WITH) is sent to, and accepted from, only participants whose view contains that
+    part, exactly as for the assessment's sources; the mark itself is never sent, so the items every participant
+    gets are worded and ordered identically and nothing in the stage says another view exists.
 
     Practice presentation. The configuration may hide some action-log cards of the practice stimulus
     (practice.omit_steps, with its reason in practice.omit_reason). They are removed, and the rest renumbered, when
@@ -52,7 +59,8 @@ Inputs:
 Outputs:
     Stage descriptors and progress counts for the browser (no stimulus identity; the consent stage also carries
     the consent text, its checkbox statement and its hash); the (stimulus folder, condition) pair the scenario
-    endpoints resolve on the server; a stored consent when the consent stage is completed; and interaction events
+    endpoints resolve on the server; a stored consent when the consent stage is completed; stored answers when an
+    assessment or a questionnaire stage is completed; and interaction events
     in the participant database (the trial's stimulus and condition are in its plan_stages rows, not repeated in
     the events).
 
@@ -78,7 +86,10 @@ import participant_store as store
 
 CONSENT_PATH = ep.ROOT / "src" / "study_materials" / "consent.md"
 ASSESSMENT_PATH = ep.ROOT / "src" / "study_materials" / "assessment.json"
-QUESTIONNAIRE_PATH = ep.ROOT / "src" / "study_materials" / "questionnaire.json"
+QUESTIONNAIRE_PATH = ep.ROOT / "src" / "study_materials" / "questionnaire.json"  # post-study
+PRE_QUESTIONNAIRE_PATH = ep.ROOT / "src" / "study_materials" / "pre_questionnaire.json"
+# The file each questionnaire stage (experiment_plan.QUESTIONNAIRE_STAGES) is asked from.
+QUESTIONNAIRES = {ep.PRE_QUESTIONNAIRE_KEY: PRE_QUESTIONNAIRE_PATH, ep.POST_QUESTIONNAIRE_KEY: QUESTIONNAIRE_PATH}
 QUESTIONNAIRE_TYPES = ("scale", "choice", "text")
 QUESTIONS = ("performed_safely", "confidence", "reasoning", "sources")  # the order they are asked in
 # Which conditions show each optional part of the interface; a source marked "shown_with" one of these parts is
@@ -223,19 +234,25 @@ def validate_answers(answers, spec: dict, condition: str) -> dict:
 
 
 class QuestionnaireError(ValueError):
-    """The post-study questionnaire was submitted with a missing, malformed or unknown answer."""
+    """A questionnaire was submitted with a missing, malformed or unknown answer."""
 
 
 def load_questionnaire(path=QUESTIONNAIRE_PATH) -> dict:
-    """The post-study questionnaire: the parsed file plus its "sha256", which each stored answer records.
+    """A questionnaire file (post-study by default): the parsed file plus its "sha256", which each stored answer
+    records.
 
-    Items are {"id", "type", "text", "required"} plus, by type: "scale" a whole-number "min" < "max" with optional
-    "anchors" inside that range and an optional "not_applicable" {"id", "label"}, an answer off the scale (such as
-    "Did not consult"); "choice" a list of "options" with distinct ids; "text" a positive "max_chars".
-    Raises ValueError for anything else (or repeated item ids), so a broken file stops the server at startup.
+    The file has a "title" (the heading of its screen), an optional "intro" and "items" in the order asked. Items
+    are {"id", "type", "text", "required"}, optionally "shown_with" a part of the interface in SHOWN_WITH (the
+    item is asked only of participants whose view shows it), plus, by type: "scale" a whole-number "min" < "max"
+    with optional "anchors" inside that range and an optional "not_applicable" {"id", "label"}, an answer off the
+    scale (such as "Did not consult"); "choice" a list of "options" with distinct ids; "text" a positive
+    "max_chars". Raises ValueError for anything else (or repeated item ids), so a broken file stops the server at
+    startup.
     """
     raw = Path(path).read_bytes()
     spec = json.loads(raw)
+    if not (isinstance(spec.get("title"), str) and spec["title"].strip()):
+        raise ValueError(f"{path}: needs a title")
     items = spec.get("items")
     if not isinstance(items, list) or not items:
         raise ValueError(f"{path}: needs a non-empty items list")
@@ -246,6 +263,8 @@ def load_questionnaire(path=QUESTIONNAIRE_PATH) -> dict:
         kind = item.get("type")
         if kind not in QUESTIONNAIRE_TYPES or not isinstance(item.get("required"), bool) or not item.get("text"):
             raise ValueError(f"{path}: item {item['id']} needs a type of {QUESTIONNAIRE_TYPES}, text and required")
+        if "shown_with" in item and item["shown_with"] not in SHOWN_WITH:
+            raise ValueError(f"{path}: item {item['id']} has an unknown shown_with {item['shown_with']!r}")
         if kind == "scale" and not (isinstance(item.get("min"), int) and isinstance(item.get("max"), int)
                                     and item["min"] < item["max"]
                                     and all(item["min"] <= int(k) <= item["max"] for k in item.get("anchors", {}))):
@@ -267,28 +286,54 @@ def load_questionnaire(path=QUESTIONNAIRE_PATH) -> dict:
     return spec
 
 
-def questionnaire_for(spec: dict | None = None) -> dict:
-    """The questionnaire as sent to the browser: intro, items, whether it is still a placeholder, and the hash the
-    submission must echo. The same for every participant."""
-    spec = spec or load_questionnaire()
-    return {"intro": spec.get("intro", ""), "placeholder": bool(spec.get("placeholder")), "sha256": spec["sha256"],
-            "items": spec["items"]}
+def load_questionnaires() -> dict:
+    """Every questionnaire stage's file, loaded: {stage key: spec} (see QUESTIONNAIRES).
+
+    Raises ValueError if a file is broken (load_questionnaire) or two files share an item id: answers are stored
+    one row per participant and item, so an id must name one question across the whole session. Called at server
+    startup and by preflight.py.
+    """
+    specs = {key: load_questionnaire(path) for key, path in QUESTIONNAIRES.items()}
+    seen = {}
+    for key, spec in specs.items():
+        for item in spec["items"]:
+            if item["id"] in seen:
+                raise ValueError(f"questionnaire item {item['id']!r} is in both {seen[item['id']]} and {key}")
+            seen[item["id"]] = key
+    return specs
 
 
-def validate_questionnaire(answers, spec: dict) -> dict:
+def offered_items(spec: dict, condition: str) -> list[dict]:
+    """The questionnaire items of `spec` a participant in `condition` is asked, in the file's order."""
+    return [i for i in spec["items"] if "shown_with" not in i or condition in SHOWN_WITH[i["shown_with"]]]
+
+
+def questionnaire_for(spec: dict, condition: str) -> dict:
+    """The questionnaire as sent to the browser: title, intro, the items asked in `condition` (without their
+    "shown_with" mark), whether it is still a placeholder, and the hash the submission must echo. Carries no
+    condition."""
+    items = [{k: v for k, v in item.items() if k != "shown_with"} for item in offered_items(spec, condition)]
+    return {"title": spec["title"], "intro": spec.get("intro", ""), "placeholder": bool(spec.get("placeholder")),
+            "sha256": spec["sha256"], "items": items}
+
+
+def validate_questionnaire(answers, spec: dict, condition: str) -> dict:
     """The submitted questionnaire answers, checked and normalised to {item id: text}, or QuestionnaireError.
 
-    `answers` is {"sha256", "items": {item id: answer}}. A scale answer must be a whole number on its scale (or,
-    where the scale has one, its not_applicable id, stored as that id), a choice one of its option ids, a text at most max_chars (surrounding whitespace removed). A required item left
-    unanswered is refused; an optional one is stored as ''. Unknown item ids are refused, and the hash must match
-    the current file, so an answer is never stored against wording the participant did not see.
+    `answers` is {"sha256", "items": {item id: answer}}. Only the items asked in `condition` are known
+    (offered_items): an answer to an item not asked of this participant is refused like an unknown id, and an
+    item not asked is not stored at all. A scale answer must be a whole number on its scale (or, where the scale
+    has one, its not_applicable id, stored as that id), a choice one of its option ids, a text at most max_chars
+    (surrounding whitespace removed). A required item left unanswered is refused; an optional one is stored as
+    ''. The hash must match the current file, so an answer is never stored against wording the participant did
+    not see.
     """
     if not isinstance(answers, dict) or answers.get("sha256") != spec["sha256"]:
         raise QuestionnaireError("the questionnaire changed after the page was loaded")
     given = answers.get("items")
     if not isinstance(given, dict):
         raise QuestionnaireError("items must be an object")
-    known = {item["id"]: item for item in spec["items"]}
+    known = {item["id"]: item for item in offered_items(spec, condition)}
     if set(given) - set(known):
         raise QuestionnaireError(f"unknown items {sorted(set(given) - set(known))}")
     out = {}
@@ -376,7 +421,7 @@ def _progress(plan: dict, done: list[str]) -> dict:
 def _server_event(conn: sqlite3.Connection, participant: str, stage: dict, kind: str) -> None:
     """Store an event the server produces itself (session_start, stage_load) against `stage`.
 
-    Validation needs a trial id; a stage outside any trial (consent, the questionnaire) is stored with NULL.
+    Validation needs a trial id; a stage outside any trial (consent, a questionnaire) is stored with NULL.
     """
     store.record_event(conn, participant, stage["key"], stage.get("trial_id"), bool(stage.get("practice")),
                        ilog.validate_event({"trial_id": stage.get("trial_id") or "none", "type": kind}, "server"),
@@ -405,7 +450,7 @@ def _enter(conn: sqlite3.Connection, config: ep.Config, participant: str, payloa
     if stage["kind"] == "assessment":
         out["assessment"] = assessment_for(stage)
     if stage["kind"] == "questionnaire":
-        out["questionnaire"] = questionnaire_for()
+        out["questionnaire"] = questionnaire_for(load_questionnaire(QUESTIONNAIRES[stage["key"]]), plan["condition"])
     return out
 
 
@@ -455,7 +500,7 @@ def scenario_target(conn: sqlite3.Connection, config: ep.Config, participant: st
     stage, so an experimental trial is always shown its stimulus exactly as built (see omit_trace_steps).
 
     Raises FileNotFoundError when the participant's current stage shows no scenario — consent, an
-    assessment, the questionnaire, or the end of the sequence — so a stage that is not a scenario cannot be used
+    assessment, a questionnaire, or the end of the sequence — so a stage that is not a scenario cannot be used
     to fetch scenario content, and a participant cannot reach the next trial's content early or the previous
     trial's content again.
     """
@@ -535,13 +580,14 @@ def _complete_assessment(conn: sqlite3.Connection, config: ep.Config, participan
 
 
 def _complete_questionnaire(conn: sqlite3.Connection, config: ep.Config, participant: str, stage_key: str,
-                            payload: dict | None, answers) -> None:
-    """Store the questionnaire answers and complete the questionnaire stage, both or neither. Raises
-    QuestionnaireError for answers validate_questionnaire refuses."""
-    spec = load_questionnaire()
-    clean = validate_questionnaire(answers, spec)
+                            condition: str, payload: dict | None, answers) -> None:
+    """Store the answers to the questionnaire of `stage_key` (QUESTIONNAIRES) and complete that stage, both or
+    neither. `condition` is the participant's, from their plan. Raises QuestionnaireError for answers
+    validate_questionnaire refuses."""
+    spec = load_questionnaire(QUESTIONNAIRES[stage_key])
+    clean = validate_questionnaire(answers, spec, condition)
     try:
-        store.record_questionnaire(conn, participant, clean, spec["sha256"], commit=False)
+        store.record_questionnaire(conn, participant, clean, spec["sha256"], stage_key=stage_key, commit=False)
         store.complete_stage(conn, config, participant, stage_key, payload)  # commits both
     except Exception:
         conn.rollback()
@@ -555,7 +601,7 @@ def advance(conn: sqlite3.Connection, config: ep.Config, participant: str, stage
     The stage key must be the participant's current stage: participant_store.complete_stage ignores a repeated
     submission of a stage already completed (so a double click or a reloaded form cannot record a trial twice)
     and refuses a later one (so no stage can be skipped). Completing the consent stage also needs `consent`
-    (see _complete_consent), and completing an assessment or the questionnaire stage needs `answers` (see
+    (see _complete_consent), and completing an assessment or a questionnaire stage needs `answers` (see
     _complete_assessment, _complete_questionnaire); a
     repeated submission of a stage already completed needs neither, and changes nothing. The next stage is entered here because the answer to this call is what the browser draws — it does
     not ask for the stage again — so this is the participant's arrival at it.
@@ -572,7 +618,7 @@ def advance(conn: sqlite3.Connection, config: ep.Config, participant: str, stage
     elif pending and stage["kind"] == "assessment":
         _complete_assessment(conn, config, participant, stage, payload, answers)
     elif pending and stage["kind"] == "questionnaire":
-        _complete_questionnaire(conn, config, participant, stage_key, payload, answers)
+        _complete_questionnaire(conn, config, participant, stage_key, plan["condition"], payload, answers)
     else:
         store.complete_stage(conn, config, participant, stage_key, payload)
     plan, stage, done = _plan_and_stage(conn, config, participant, payload)

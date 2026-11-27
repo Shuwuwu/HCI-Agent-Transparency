@@ -1,13 +1,14 @@
 /*
  * Purpose:
- *   The questions at the end of the session, as one form. Three kinds of item: a rating scale (radio-button stops,
+ *   A questionnaire screen (the one before the practice, and the one at the end of the session), as one form,
+ *   under the title the server sends with it. Three kinds of item: a rating scale (radio-button stops,
  *   none selected until the participant picks one, optionally with an answer off the scale, such as "Did not
  *   consult", drawn below it), a single choice from a list, and free text. The form only
  *   collects answers and says which required ones are missing; the server checks them again and stores them.
  *
  * Inputs:
  *   QuestionnaireForm.render(container, spec): `spec` is the stage's questionnaire as sent by the server:
- *   {intro, placeholder, sha256, items: [{id, type: "scale"|"choice"|"text", text, required, min?, max?, anchors?,
+ *   {title, intro, placeholder, sha256, items: [{id, type: "scale"|"choice"|"text", text, required, min?, max?, anchors?,
  *   not_applicable?: {id, label}, options?, max_chars?}, ...]} in the order to ask them.
  *
  * Outputs:
@@ -19,7 +20,7 @@
  *     showMessage(text)  a message for the whole form.
  *
  * Dependencies:
- *   None. Loaded by flow.html before flow.js, which mounts it on the questionnaire stage. Uses the classes of the
+ *   None. Loaded by flow.html before flow.js, which mounts it on each questionnaire stage. Uses the classes of the
  *   form in assessment.js (style.css), so both look the same.
  */
 (function (root) {
@@ -89,7 +90,7 @@
     const form = el("form", "assessment stage-card");
     form.noValidate = true;
     form.addEventListener("submit", (e) => e.preventDefault());
-    form.appendChild(el("h1", null, "A few last questions"));
+    form.appendChild(el("h1", null, spec.title));
     if (spec.placeholder) {
       const box = el("div", "placeholder");
       box.appendChild(el("strong", "placeholder-tag", "Placeholder"));

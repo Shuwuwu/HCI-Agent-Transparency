@@ -1,0 +1,33 @@
+{
+  "version": "pre_questionnaire_v1",
+  "title": "Before you begin",
+  "intro": "A few questions about your experience with AI assistants.",
+  "items": [
+    {
+      "id": "ai_chat_frequency",
+      "type": "choice",
+      "text": "How often do you use AI chat assistants (for example, ChatGPT, Claude or Gemini)?",
+      "required": true,
+      "options": [
+        {"id": "never", "label": "Never"},
+        {"id": "less_than_monthly", "label": "Less than once a month"},
+        {"id": "monthly", "label": "A few times a month"},
+        {"id": "weekly", "label": "A few times a week"},
+        {"id": "daily", "label": "Daily or almost daily"}
+      ]
+    },
+    {
+      "id": "agent_experience",
+      "type": "choice",
+      "text": "Have you previously used AI assistants that perform actions on your behalf (for example, sending emails, scheduling events or managing files)?",
+      "required": true,
+      "options": [
+        {"id": "never", "label": "No, never"},
+        {"id": "once_or_twice", "label": "Yes, once or twice"},
+        {"id": "occasionally", "label": "Yes, occasionally"},
+        {"id": "regularly", "label": "Yes, regularly"},
+        {"id": "not_sure", "label": "Not sure"}
+      ]
+    }
+  ]
+}

@@ -171,9 +171,10 @@ def check_reviews(report: Report, config: ep.Config, payload: dict | None) -> No
 
 
 def check_materials(report: Report) -> None:
-    """Consent, assessment and questionnaire load; placeholders still in them, or on the completion screen."""
+    """Consent, assessment and both questionnaires load (with no item id shared between the questionnaires);
+    placeholders still in them, or on the completion screen."""
     for name, loader in (("consent", flow.load_consent), ("assessment", flow.load_assessment),
-                         ("questionnaire", flow.load_questionnaire)):
+                         ("questionnaire", flow.load_questionnaires)):
         try:
             material = loader()
         except (OSError, ValueError) as exc:
@@ -182,8 +183,11 @@ def check_materials(report: Report) -> None:
         if name == "consent":
             left = CONSENT_PLACEHOLDER_RE.findall(material["markdown"])
             report.add(WARN if left else PASS, name, f"placeholders to fill: {left}" if left else "complete")
-        elif name == "questionnaire" and material.get("placeholder"):
-            report.add(WARN, name, "still the placeholder questionnaire")
+        elif name == "questionnaire":
+            placeholders = [key for key, spec in material.items() if spec.get("placeholder")]
+            report.add(WARN if placeholders else PASS, name,
+                       f"still placeholders: {placeholders}" if placeholders
+                       else ", ".join(spec.get("version", key) for key, spec in material.items()))
         else:
             report.add(PASS, name, f"{material.get('version', 'loaded')}")
     flow_js = (ps.UI_DIR / "flow.js").read_text(encoding="utf-8")

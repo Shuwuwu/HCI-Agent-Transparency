@@ -15,7 +15,7 @@ Inputs:
 
 Outputs:
     show ID     JSON on stdout: the participant's record (no token), stage sequence, progress, consent, answers,
-                questionnaire and interaction events.
+                both questionnaires (each row with its stage key) and interaction events.
     export      CSV files in data/participants/exports/<environment>/ (or <...>/<ID>/ with --participant, or
                 --out DIR), each with a header row, plus export_manifest.json (source database, schema version,
                 environment, time, row count and SHA-256 of every file). Files are private (0600):
@@ -25,7 +25,8 @@ Outputs:
                                       dict-valued measures as JSON)
                   progress.csv        one row per stage entered, with its kind, trial and trial_type
                   events.csv          one row per interaction event, with trial_type
-                  questionnaire.csv   one row per participant and item
+                  questionnaire.csv   one row per participant and item asked, pre- and post-study, with the
+                                      stage_key of its questionnaire
     check       the problems found (see find_problems), one per line; exit status 1 if there are any.
     backup      a verified copy in data/participants/backups/<environment>/<environment>-<UTC time>-manual.sqlite3
                 with a .sha256 beside it (see backup). The participant server also makes one when it starts
@@ -93,7 +94,7 @@ def participant_data(conn: sqlite3.Connection, participant: str, consent_text: b
         "progress": _rows(conn, f"SELECT * FROM progress {where} ORDER BY stage_index", (participant,)),
         "consent": consent,
         "responses": responses,
-        "questionnaire": _rows(conn, f"SELECT item_id, answer, questionnaire_sha256, submitted_at "
+        "questionnaire": _rows(conn, f"SELECT stage_key, item_id, answer, questionnaire_sha256, submitted_at "
                                      f"FROM questionnaire_responses {where} ORDER BY rowid", (participant,)),
         "trials": _rows(conn, f"SELECT * FROM trial_summary {where} ORDER BY trial_ordinal", (participant,)),
         "events": _rows(conn, f"SELECT * FROM events {where} ORDER BY event_id", (participant,)),
@@ -137,9 +138,9 @@ def export_tables(conn: sqlite3.Connection, participant: str | None = None) -> d
             "events.csv": _table(conn, f"SELECT event_id, participant_id, trial_id, stage_key, {trial_type}, seq, "
                                        "type, origin, tab, item_id, skill_id, card_id, duration_ms, client_ms, "
                                        f"server_time FROM events {where} ORDER BY participant_id, event_id", params),
-            "questionnaire.csv": _table(conn, "SELECT participant_id, item_id, answer, questionnaire_sha256, "
-                                              f"submitted_at FROM questionnaire_responses {where} "
-                                              "ORDER BY participant_id, rowid", params),
+            "questionnaire.csv": _table(conn, "SELECT participant_id, stage_key, item_id, answer, "
+                                              "questionnaire_sha256, submitted_at FROM questionnaire_responses "
+                                              f"{where} ORDER BY participant_id, rowid", params),
         }
     finally:
         conn.rollback()
@@ -186,8 +187,8 @@ def find_problems(conn: sqlite3.Connection) -> list[str]:
     Checks: SQLite's integrity and foreign keys; an environment stamp; per participant, a stage-sequence snapshot
     matching their fingerprint, progress only for stages of that sequence and completed in order, completed_at set
     exactly when every stage is completed, a consent exactly when consent is completed, a response exactly for
-    each completed assessment (naming the trial, stimulus and condition of the plan), questionnaire answers
-    exactly when the questionnaire is completed; per event, a trial and stage of the participant's sequence with
+    each completed assessment (naming the trial, stimulus and condition of the plan), answers to each
+    questionnaire (pre- and post-study, by stage key) exactly when that questionnaire stage is completed; per event, a trial and stage of the participant's sequence with
     the stage's practice flag, a contiguous `seq` per trial, at least one session_start per scenario entered and
     at most one written by this server per trial. Events imported from the retired storage (origin "legacy") may
     repeat a session_start (they include attempts before a reset) and need not have an entered stage.
@@ -232,9 +233,14 @@ def find_problems(conn: sqlite3.Connection) -> list[str]:
                                response["practice"]) != (stage["trial_id"], stage["stimulus"], stage["condition"],
                                                          stage["practice"]):
                 p(f"{stage['stage_key']}: response names another trial, stimulus or condition than the plan")
-        questionnaire = [s for s in stages if s["kind"] == "questionnaire"]
-        if questionnaire and (questionnaire[0]["stage_key"] in completed) != bool(store.questionnaire_of(conn, participant)):
-            p("questionnaire answers and questionnaire stage disagree")
+        for stage in (s for s in stages if s["kind"] == "questionnaire"):
+            if (stage["stage_key"] in completed) != bool(store.questionnaire_of(conn, participant, stage["stage_key"])):
+                p(f"{stage['stage_key']}: questionnaire answers and questionnaire stage disagree")
+        known = {s["stage_key"] for s in stages if s["kind"] == "questionnaire"}
+        for (key,) in conn.execute(f"SELECT DISTINCT {store.questionnaire_stage_column(conn)} "
+                                   "FROM questionnaire_responses WHERE participant_id = ?", (participant,)):
+            if key not in known:
+                p(f"questionnaire answers for {key}, which is not a questionnaire stage of their sequence")
         trials = {s["trial_id"] for s in stages if s["trial_id"]}
         for event in _rows(conn, "SELECT * FROM events WHERE participant_id = ?", (participant,)):
             stage = by_key.get(event["stage_key"])

@@ -14,7 +14,8 @@ Outputs:
     unittest results.
 
 Dependencies:
-    src/scripts/participant_server.py, participant_store.py, participant_data.py, experiment_plan.py;
+    src/scripts/participant_server.py, participant_store.py, participant_data.py, experiment_plan.py,
+    participant_flow.py (which questionnaire items each condition is asked);
     tests/study_data_fixtures.py.
 
 Usage:
@@ -39,6 +40,7 @@ sys.path.insert(0, str(ROOT / "tests"))
 
 import experiment_plan as ep  # noqa: E402
 import participant_data as pdata  # noqa: E402
+import participant_flow as flow  # noqa: E402
 import participant_server as ps  # noqa: E402
 import participant_store as store  # noqa: E402
 from study_data_fixtures import CONFIG, PAYLOAD, PARTICIPANTS, new_database, submission  # noqa: E402
@@ -197,8 +199,10 @@ class EndToEndTests(unittest.TestCase):
                 responses = self.rows("SELECT * FROM responses WHERE participant_id = ?", participant)
                 self.assertEqual(sorted(r["stage_key"] for r in responses), sorted(s["key"] for s in assessments))
                 self.assertEqual(sum(r["practice"] for r in responses), 1)
-                self.assertEqual(len(store.questionnaire_of(self.conn, participant)),
-                                 len(json.loads((ROOT / "src/study_materials/questionnaire.json").read_text())["items"]))
+                condition = self.plan[participant]["condition"]
+                for key, spec in flow.load_questionnaires().items():
+                    self.assertEqual(list(store.questionnaire_of(self.conn, participant, key)),
+                                     [i["id"] for i in flow.offered_items(spec, condition)], key)
                 for scenario in scenarios:
                     events = store.trial_events(self.conn, participant, scenario["trial_id"])
                     types = [e["type"] for e in events]

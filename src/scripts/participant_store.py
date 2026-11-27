@@ -37,8 +37,11 @@ Purpose:
     whether the browser or the server produced it. The allowed types are EVENT_TYPES; interaction_log.py validates
     their fields and participant_flow.log_event checks the trial is the participant's current one.
 
-    Post-study questionnaire (`questionnaire_responses`): one row per item, with the hash of the questionnaire file
-    the participant answered. Only the first submission is kept.
+    Questionnaires (`questionnaire_responses`): the pre- and post-study questionnaire answers, one row per item,
+    with the stage key of the questionnaire it belongs to ("pre_questionnaire" or "questionnaire") and the hash of
+    the file the participant answered. Item ids are unique across both files (participant_flow.load_questionnaires
+    checks it), and an item a participant was not asked (one shown in the other condition only) has no row. Only
+    the first submission is kept.
 
 Inputs:
     An experiment configuration and assignments payload (experiment_plan.py) when enrolling participants, and a
@@ -57,8 +60,8 @@ Outputs:
     configuration provenance, stage fingerprint, timestamps), `plan_stages` (their stage sequence, one row per
     stage), `progress` (one row per stage a participant has entered, with its completion time), `consents` (at
     most one row per participant: when they agreed, and the consent text and its hash), `responses` (one row per
-    completed assessment), `events` (interaction events), `questionnaire_responses` (the post-study questionnaire,
-    one row per item) and the view `experimental_responses` (responses without the practice). CHECK constraints
+    completed assessment), `events` (interaction events), `questionnaire_responses` (both questionnaires, one row
+    per item asked) and the view `experimental_responses` (responses without the practice). CHECK constraints
     refuse out-of-range answers, unknown event types and conditions. Researcher views (no link tokens):
     `participant_overview` (one row per participant: condition, consent, how far they are, counts), `trial_summary`
     (one row per trial: what it showed, viewing and response times, the answers) and `experimental_events` (events
@@ -100,8 +103,9 @@ TOKEN_BYTES = 24  # 32 URL-safe characters
 # 2: the consents table; 3: responses and experimental_responses; 4: responses.sources_other;
 # 5: plan_stages (the stage sequence each participant was enrolled under), events (interaction events, which
 #    replace the JSON-lines log files) and CHECK constraints on responses; 6: questionnaire_responses;
-# 7: the researcher views participant_overview, trial_summary and experimental_events (VIEWS).
-SCHEMA_VERSION = 7
+# 7: the researcher views participant_overview, trial_summary and experimental_events (VIEWS);
+# 8: questionnaire_responses.stage_key (the pre-study questionnaire is stored in the same table).
+SCHEMA_VERSION = 8
 STAGE_KINDS = ("consent", "scenario", "assessment", "questionnaire", "completion")  # as experiment_plan.STAGE_KINDS
 CONDITIONS = ("low", "high")
 # Every interaction event type the database accepts. interaction_log.EVENT_FIELDS validates the fields of each
@@ -210,8 +214,11 @@ CREATE TABLE IF NOT EXISTS questionnaire_responses (
     participant_id       TEXT NOT NULL REFERENCES participants(participant_id),
     item_id              TEXT NOT NULL,
     answer               TEXT NOT NULL,     -- '' for an optional item left unanswered
-    questionnaire_sha256 TEXT NOT NULL,     -- of src/study_materials/questionnaire.json as served
+    questionnaire_sha256 TEXT NOT NULL,     -- of the questionnaire file as served (src/study_materials/)
     submitted_at         TEXT NOT NULL,
+    -- pre_questionnaire or questionnaire (post-study). Added in version 8; the default is the stage every row
+    -- written before then belongs to, since the post-study questionnaire was the only one.
+    stage_key            TEXT NOT NULL DEFAULT 'questionnaire',
     PRIMARY KEY (participant_id, item_id)
 );
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -353,6 +360,8 @@ def connect(path: Path, environment: str | None = None) -> sqlite3.Connection:
         # exists is not, so it is added here; a table the script has just created already has it. Existing rows are
         # untouched apart from taking the new column's default.
         _add_column_if_missing(conn, "responses", "sources_other", "TEXT NOT NULL DEFAULT ''")  # version 4
+        _add_column_if_missing(conn, "questionnaire_responses", "stage_key",
+                               "TEXT NOT NULL DEFAULT 'questionnaire'")  # version 8
         conn.commit()
         if int(row["value"]) < 5:
             _rebuild_responses(conn, path)
@@ -657,24 +666,38 @@ def trial_events(conn: sqlite3.Connection, participant: str, trial_id: str | Non
 
 
 def record_questionnaire(conn: sqlite3.Connection, participant: str, answers: dict, questionnaire_sha256: str,
-                         commit: bool = True) -> dict:
-    """Store the post-study questionnaire: one row per item of `answers` ({item id: answer text}, already
-    validated by participant_flow.py). Only the first submission is kept, as for the assessments. Pass
-    commit=False to make it part of a larger transaction (participant_flow.advance commits it with the stage).
-    Returns the stored answers."""
+                         stage_key: str = ep.POST_QUESTIONNAIRE_KEY, commit: bool = True) -> dict:
+    """Store one questionnaire: one row per item of `answers` ({item id: answer text}, already validated by
+    participant_flow.py), labelled with the questionnaire's `stage_key` (post-study by default). Only the first
+    submission is kept, as for the assessments. Pass commit=False to make it part of a larger transaction
+    (participant_flow.advance commits it with the stage). Returns the stored answers of that stage."""
     stamp = now()
     conn.executemany("INSERT INTO questionnaire_responses (participant_id, item_id, answer, questionnaire_sha256, "
-                     "submitted_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT (participant_id, item_id) DO NOTHING",
-                     [(participant, item, answer, questionnaire_sha256, stamp) for item, answer in answers.items()])
+                     "submitted_at, stage_key) VALUES (?, ?, ?, ?, ?, ?) "
+                     "ON CONFLICT (participant_id, item_id) DO NOTHING",
+                     [(participant, item, answer, questionnaire_sha256, stamp, stage_key)
+                      for item, answer in answers.items()])
     if commit:
         conn.commit()
-    return questionnaire_of(conn, participant)
+    return questionnaire_of(conn, participant, stage_key)
 
 
-def questionnaire_of(conn: sqlite3.Connection, participant: str) -> dict:
-    """The participant's stored questionnaire answers, {item id: answer}; empty when none are stored."""
-    return {row["item_id"]: row["answer"] for row in conn.execute(
-        "SELECT item_id, answer FROM questionnaire_responses WHERE participant_id = ? ORDER BY rowid", (participant,))}
+def questionnaire_stage_column(conn: sqlite3.Connection) -> str:
+    """The SQL expression for a questionnaire answer's stage key: the stage_key column, or, in a database not yet
+    upgraded to version 8 (one opened read-only, as preflight.py does), the constant 'questionnaire', the stage
+    every answer stored before then belongs to."""
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(questionnaire_responses)")}
+    return "stage_key" if "stage_key" in columns else f"'{ep.POST_QUESTIONNAIRE_KEY}'"
+
+
+def questionnaire_of(conn: sqlite3.Connection, participant: str, stage_key: str | None = None) -> dict:
+    """The participant's stored questionnaire answers, {item id: answer}, of one questionnaire stage or, with
+    `stage_key` None, of both; empty when none are stored. Works on a database not yet upgraded to version 8
+    (questionnaire_stage_column)."""
+    column = questionnaire_stage_column(conn)
+    return {row[0]: row[1] for row in conn.execute(
+        f"SELECT item_id, answer FROM questionnaire_responses WHERE participant_id = ? AND (? IS NULL OR {column} = ?) "
+        "ORDER BY rowid", (participant, stage_key, stage_key))}
 
 
 def consent_of(conn: sqlite3.Connection, participant: str) -> dict | None:

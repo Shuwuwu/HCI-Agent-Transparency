@@ -160,14 +160,20 @@ class StageSequenceTests(unittest.TestCase):
         self.plan = ep.plan_for(DEV_CONFIG, FIRST, DEV_PAYLOAD)
         self.stages = self.plan["stages"]
 
-    def test_sequence_is_consent_practice_trials_questionnaire_completion(self):
+    def test_sequence_is_consent_pre_questionnaire_practice_trials_questionnaire_completion(self):
         keys = [s["key"] for s in self.stages]
         trials = DEV_CONFIG["trials_per_participant"]
-        expected = ["consent", "practice_scenario", "practice_assessment"]
+        expected = ["consent", "pre_questionnaire", "practice_scenario", "practice_assessment"]
         for n in range(1, trials + 1):
             expected += [f"trial_{n:02d}_scenario", f"trial_{n:02d}_assessment"]
         expected += ["questionnaire", "completion"]
         self.assertEqual(keys, expected)
+
+    def test_both_questionnaire_stages_are_of_kind_questionnaire(self):
+        """The pre- and post-study questionnaires share a kind and are told apart by key, so the stored stage kinds
+        (participant_store.STAGE_KINDS, a CHECK constraint) need no new value."""
+        questionnaires = [s["key"] for s in self.stages if s["kind"] == "questionnaire"]
+        self.assertEqual(questionnaires, list(ep.QUESTIONNAIRE_STAGES))
 
     def test_stage_keys_are_unique_and_indexes_are_contiguous(self):
         keys = [s["key"] for s in self.stages]

@@ -1,8 +1,9 @@
 """
 Purpose:
     Turn researcher configuration plus one participant's assignment row into the ordered sequence of stages that
-    participant walks through: consent, a practice scenario (with its guided tour), then each assigned trial
-    (scenario view followed by its assessment), the post-study questionnaire and the completion screen.
+    participant walks through: consent, the pre-study questionnaire, a practice scenario (with its guided tour),
+    then each assigned trial (scenario view followed by its assessment), the post-study questionnaire and the
+    completion screen.
 
     The sequence is a pure function of the configuration and the assignment row, so deriving it again yields the
     same stage keys and the same trial ids. That is what makes resuming an interrupted session safe: the server
@@ -75,8 +76,13 @@ REHEARSAL_VERSION = "rehearsal-safe"  # the stimulus version recorded for such a
 PARTICIPANT_DATA_DIR = "data/participants"
 CONDITIONS = ("low", "high")
 # Stage kinds the participant flow knows. "scenario" shows one agent conversation, "assessment" the judgment that
-# follows it; the rest are single screens whose content is study material.
+# follows it; the rest are single screens whose content is study material. Both questionnaires are of kind
+# "questionnaire" and told apart by their stage key (QUESTIONNAIRE_STAGES); participant_flow.py maps each key to
+# its study-material file.
 STAGE_KINDS = ("consent", "scenario", "assessment", "questionnaire", "completion")
+PRE_QUESTIONNAIRE_KEY = "pre_questionnaire"
+POST_QUESTIONNAIRE_KEY = "questionnaire"
+QUESTIONNAIRE_STAGES = (PRE_QUESTIONNAIRE_KEY, POST_QUESTIONNAIRE_KEY)
 
 
 class ConfigError(ValueError):
@@ -213,9 +219,11 @@ def _scenario_of(folder: str) -> str:
 def stage_sequence(config: Config, assignment: dict) -> list[dict]:
     """The ordered stages of one participant, derived from the configuration and their assignment row.
 
-    Order: consent, the practice scenario (and its assessment unless practice.assessment is false),
-    then for each assigned trial its scenario stage followed by its assessment stage, then the questionnaire and
-    the completion screen. `trials_per_participant` takes the first N trials of the row, keeping the
+    Order: consent, the pre-study questionnaire, the practice scenario (and its assessment unless
+    practice.assessment is false), then for each assigned trial its scenario stage followed by its assessment
+    stage, then the post-study questionnaire and the completion screen. The pre-study questionnaire comes before
+    the practice so its answers (prior experience with AI assistants) are given before the participant has seen
+    any conversation. `trials_per_participant` takes the first N trials of the row, keeping the
     counterbalanced order; the condition is the row's and applies to every scenario stage, practice included, so
     the practice familiarises the participant with the interface they will actually use.
 
@@ -236,9 +244,10 @@ def stage_sequence(config: Config, assignment: dict) -> list[dict]:
                           f"{len(trials)}")
     participant = assignment["participant"]
     suffix = config["safe_stimulus_suffix"]
-    # Consent leads straight into the practice: the practice tour introduces the interface, so there is no
-    # separate instructions screen.
-    stages: list[dict] = [{"key": "consent", "kind": "consent"}]
+    # Consent and the pre-study questionnaire lead straight into the practice: the practice tour introduces the
+    # interface, so there is no separate instructions screen.
+    stages: list[dict] = [{"key": "consent", "kind": "consent"},
+                          {"key": PRE_QUESTIONNAIRE_KEY, "kind": "questionnaire"}]
 
     def trial_stages(prefix: str, tid: str, ordinal: int, folder: str, version: str, with_assessment: bool,
                      practice: bool) -> list[dict]:
@@ -262,7 +271,7 @@ def stage_sequence(config: Config, assignment: dict) -> list[dict]:
             folder, version = f"{trial['scenario']}{suffix}", REHEARSAL_VERSION
         stages += trial_stages(f"trial_{ordinal:02d}", trial_id(participant, ordinal), ordinal, folder, version,
                                True, False)
-    stages += [{"key": "questionnaire", "kind": "questionnaire"}, {"key": "completion", "kind": "completion"}]
+    stages += [{"key": POST_QUESTIONNAIRE_KEY, "kind": "questionnaire"}, {"key": "completion", "kind": "completion"}]
     return [dict(stage, index=i) for i, stage in enumerate(stages)]
 
 

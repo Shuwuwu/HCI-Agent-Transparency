@@ -146,6 +146,21 @@ class CheckTests(unittest.TestCase):
     def test_a_database_written_by_the_flow_is_consistent(self):
         self.assertEqual(pdata.find_problems(self.conn), [])
 
+    def test_a_database_not_yet_upgraded_to_version_8_can_be_checked(self):
+        """preflight.py checks the database read-only, before the server upgrades it, so the check must also read
+        a questionnaire_responses table without stage_key; every such row is a post-study answer."""
+        self.conn.execute("SAVEPOINT old")
+        self.conn.execute("DELETE FROM questionnaire_responses WHERE stage_key = 'pre_questionnaire'")
+        self.conn.execute("ALTER TABLE questionnaire_responses DROP COLUMN stage_key")
+        problems = pdata.find_problems(self.conn)
+        self.assertTrue(store.questionnaire_of(self.conn, DONE, "questionnaire"))
+        self.assertEqual(store.questionnaire_of(self.conn, DONE, "pre_questionnaire"), {})
+        self.conn.execute("ROLLBACK TO old")
+        self.conn.execute("RELEASE old")
+        # The only problem is the one that is true of such a database: no pre-study answers for completed stages.
+        self.assertTrue(problems)
+        self.assertTrue(all("pre_questionnaire" in p for p in problems), problems)
+
     def test_damaged_records_are_reported(self):
         damage = [
             ("DELETE FROM responses WHERE participant_id = ? AND stage_key = 'trial_03_assessment'", "response"),
@@ -154,6 +169,10 @@ class CheckTests(unittest.TestCase):
             ("DELETE FROM consents WHERE participant_id = ?", "consent"),
             ("UPDATE participants SET completed_at = NULL WHERE participant_id = ?", "completed_at"),
             ("DELETE FROM questionnaire_responses WHERE participant_id = ?", "questionnaire"),
+            ("DELETE FROM questionnaire_responses WHERE participant_id = ? AND stage_key = 'pre_questionnaire'",
+             "pre_questionnaire"),
+            ("UPDATE questionnaire_responses SET stage_key = 'debriefing' WHERE participant_id = ?",
+             "not a questionnaire stage"),
             ("DELETE FROM events WHERE participant_id = ? AND trial_id LIKE '%-t02' AND type = 'session_start'",
              "session_start"),
         ]

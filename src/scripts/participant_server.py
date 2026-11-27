@@ -49,8 +49,8 @@ Outputs:
         POST /api/stage/complete        {"token", "stage_key"}: complete that stage and return the next one. The
                                         consent stage also needs "consent": {"agreed": true, "sha256": <hash of
                                         the consent text shown>}, and stores that agreement; an assessment stage
-                                        and the questionnaire stage need "answers" and store them
-                                        (participant_flow.py)
+                                        and each questionnaire stage (pre- and post-study) need "answers" and
+                                        store them (participant_flow.py)
         POST /api/log                   {"token", "trial_id", "type", ...}: one interaction event (see
                                         interaction_log.py), stored in the participant database only for the
                                         trial that token's participant is on now; never read back by any route
@@ -709,7 +709,7 @@ def main():
     payload = ep.load_assignments(config)
     flow.load_consent()  # a missing or malformed consent file stops the server here, not at a participant's start
     flow.load_assessment()  # likewise the assessment questions
-    flow.load_questionnaire()  # and the post-study questionnaire
+    flow.load_questionnaires()  # and the pre- and post-study questionnaires
     use_corpus(args.corpus if args.corpus is not None else config["corpus_path"])
     check_presentation_edits()
     if Path(CORPUS["path"]).resolve() == Path(config["corpus_path"]).resolve():

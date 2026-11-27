@@ -48,7 +48,7 @@ def legacy_store(folder: Path) -> tuple[Path, Path]:
     for participant in (FIRST, SECOND):
         store.enrol(conn, CONFIG, participant, PAYLOAD)
     store.record_consent(conn, FIRST, "0" * 64, "consent text")
-    for key in ("consent", "practice_scenario"):
+    for key in ("consent", "pre_questionnaire", "practice_scenario"):
         store.complete_stage(conn, CONFIG, FIRST, key, PAYLOAD)
     store.record_response(conn, FIRST, "practice_assessment", {
         "trial_id": f"{FIRST}-p00", "practice": True, "stimulus": "user_task_13__no_injection",
@@ -106,7 +106,7 @@ class MigrationTests(unittest.TestCase):
 
     def test_apply_reproduces_every_row_and_event(self):
         report = self.run_migration()
-        self.assertEqual(report["legacy_rows"], {"participants": 2, "progress": 2, "consents": 1, "responses": 1})
+        self.assertEqual(report["legacy_rows"], {"participants": 2, "progress": 3, "consents": 1, "responses": 1})
         self.assertEqual(report["not_imported"]["files"], 1)  # the researcher preview
         conn = store.connect(self.target, "development")
         self.addCleanup(conn.close)

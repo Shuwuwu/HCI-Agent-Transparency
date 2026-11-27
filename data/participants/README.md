@@ -15,7 +15,7 @@ is kept private to its owner (mode 0700) and the databases are readable by their
 | `backups/legacy/` | The archive of the retired storage (`src/data/participants/participants.db` and the `src/data/interaction_logs/` files) made by `migrate_legacy_storage.py`. |
 
 Each database is the single source of truth for its environment: participants, condition assignments,
-stage sequences, consent, progress, answers, interaction events and the questionnaire. The development and study
+stage sequences, consent, progress, answers, interaction events and both questionnaires. The development and study
 databases are stamped with their environment and refuse to be opened for the other one.
 
 How to read the data, export it, back it up and restore it: `docs/participant_data.md`.

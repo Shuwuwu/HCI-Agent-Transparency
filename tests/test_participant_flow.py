@@ -3,7 +3,9 @@
 Three things are checked, and nothing else: that no participant-facing response reveals which stimulus or which
 transparency condition a trial holds (the folder name says whether a trial is injected, so leaking it would tell
 a participant what to expect), that the flow cannot lose, duplicate or reorder a trial, and that no participant
-gets past the consent stage without their agreement to the exact consent text being recorded.
+gets past the consent stage without their agreement to the exact consent text being recorded. The assessment and
+questionnaire tests also check that every answer is validated and stored, including that the questionnaire
+item asked only alongside the activity log is asked of, and accepted from, only those participants.
 
 Each test server is its own Handler subclass rather than a mutation of participant_server.Handler, whose class
 attributes are global: the tests can then run in any order alongside tests/test_participant_server.py.
@@ -15,6 +17,7 @@ import sys
 import tempfile
 import threading
 import unittest
+from unittest import mock
 import urllib.error
 import urllib.request
 from http.server import ThreadingHTTPServer
@@ -226,13 +229,13 @@ class ExposureTests(FlowTestCase):
             srv.close()
 
     def test_scenario_content_is_refused_at_every_stage_that_shows_no_scenario(self):
-        """Consent, an assessment and the questionnaire must not be usable to fetch a trial's
+        """Consent, an assessment and either questionnaire must not be usable to fetch a trial's
         content: that is how a participant could otherwise read the next trial early or the last one again."""
         srv = FlowServer()
         try:
             participant = participant_with("low")
             token = srv.tokens[participant]
-            for stage_key in ("consent", "practice_assessment", "questionnaire"):
+            for stage_key in ("consent", "pre_questionnaire", "practice_assessment", "questionnaire"):
                 srv.walk(participant, until=stage_key)
                 self.assertEqual(srv.stage(participant)["stage"]["key"], stage_key)
                 for route in CONTENT_ROUTES:
@@ -329,9 +332,9 @@ class IntegrityTests(FlowTestCase):
             first = srv.agree(participant)
             second = srv.complete(participant, "consent")  # a replay needs no agreement and changes nothing
             self.assertEqual((first[0], second[0]), (200, 200))
-            self.assertEqual(json.loads(first[1])["stage"]["key"], "practice_scenario")
-            self.assertEqual(json.loads(second[1])["stage"]["key"], "practice_scenario")
-            self.assertEqual(srv.stage(participant)["stage"]["key"], "practice_scenario")
+            self.assertEqual(json.loads(first[1])["stage"]["key"], "pre_questionnaire")
+            self.assertEqual(json.loads(second[1])["stage"]["key"], "pre_questionnaire")
+            self.assertEqual(srv.stage(participant)["stage"]["key"], "pre_questionnaire")
         finally:
             srv.close()
 
@@ -580,7 +583,8 @@ class AssessmentTests(unittest.TestCase):
 
 
 class QuestionnaireTests(unittest.TestCase):
-    """The post-study questionnaire: stored with the participant, validated, and saved once."""
+    """The post-study questionnaire: stored with the participant, validated, and saved once; one item is asked
+    only of participants who see the activity log."""
 
     def setUp(self):
         self.srv = FlowServer()
@@ -591,17 +595,37 @@ class QuestionnaireTests(unittest.TestCase):
     def tearDown(self):
         self.srv.close()
 
-    def stored(self):
+    def stored(self, participant=None, stage_key="questionnaire"):
         conn = store.connect(self.srv.handler.db_path)
         try:
-            return store.questionnaire_of(conn, self.participant)
+            return store.questionnaire_of(conn, participant or self.participant, stage_key)
         finally:
             conn.close()
+
+    def high_stage(self):
+        high = participant_with("high")
+        self.srv.walk(high, until="questionnaire")
+        return high, self.srv.stage(high)["stage"]
 
     def test_the_stage_carries_the_questionnaire_file(self):
         spec = flow.load_questionnaire()
         self.assertEqual(self.stage["questionnaire"]["sha256"], spec["sha256"])
-        self.assertEqual([i["id"] for i in self.stage["questionnaire"]["items"]], [i["id"] for i in spec["items"]])
+        self.assertEqual(self.stage["questionnaire"]["title"], spec["title"])
+        self.assertEqual([i["id"] for i in self.stage["questionnaire"]["items"]],
+                         [i["id"] for i in spec["items"] if "shown_with" not in i])
+
+    def test_the_items_are_the_planned_post_study_questions_in_order(self):
+        _, high = self.high_stage()
+        shared = ["unsafe_meaning", "information_sufficient", "skill_docs_usefulness", "skill_docs_purpose_understood",
+                  "information_overload", "information_overload_explanation", "information_relied_on",
+                  "additional_information_wanted"]
+        self.assertEqual([i["id"] for i in self.stage["questionnaire"]["items"]], shared)
+        self.assertEqual([i["id"] for i in high["questionnaire"]["items"]], shared + ["activity_log_usefulness"])
+        optional = {i["id"] for i in high["questionnaire"]["items"] if not i["required"]}
+        self.assertEqual(optional, {"information_overload_explanation", "additional_information_wanted"})
+        for item in high["questionnaire"]["items"]:
+            if item["type"] == "scale":  # every point of every scale is labelled
+                self.assertEqual(sorted(map(int, item["anchors"])), list(range(item["min"], item["max"] + 1)), item)
 
     def test_answers_are_stored_per_item_with_the_file_hash_and_the_participant_finishes(self):
         answers = self.srv.questionnaire_answers(self.stage)
@@ -609,15 +633,18 @@ class QuestionnaireTests(unittest.TestCase):
         self.assertEqual(status, 200, body)
         stored = self.stored()
         spec = flow.load_questionnaire()
-        self.assertEqual(list(stored), [i["id"] for i in spec["items"]])
+        self.assertEqual(list(stored), [i["id"] for i in flow.offered_items(spec, "low")])
         optional = [i["id"] for i in spec["items"] if not i["required"]]
         self.assertTrue(all(stored[i] == "" for i in optional if i not in answers["items"]))
         conn = store.connect(self.srv.handler.db_path)
         try:
-            hashes = {r[0] for r in conn.execute("SELECT questionnaire_sha256 FROM questionnaire_responses")}
+            labels = {tuple(r) for r in conn.execute(
+                "SELECT questionnaire_sha256, stage_key FROM questionnaire_responses "
+                "WHERE participant_id = ? AND item_id IN (%s)" % ",".join("?" * len(stored)),
+                (self.participant, *stored))}
         finally:
             conn.close()
-        self.assertEqual(hashes, {spec["sha256"]})
+        self.assertEqual(labels, {(spec["sha256"], "questionnaire")})
         self.assertEqual(json.loads(body)["stage"]["kind"], "completion")
 
     def test_missing_unknown_or_out_of_range_answers_are_refused_and_nothing_is_stored(self):
@@ -637,12 +664,31 @@ class QuestionnaireTests(unittest.TestCase):
         self.assertEqual(self.stored(), {})
         self.assertEqual(self.srv.stage(self.participant)["stage"]["key"], "questionnaire")
 
-    def test_both_conditions_get_the_same_questionnaire_and_it_is_not_a_placeholder(self):
-        high = participant_with("high")
-        self.srv.walk(high, until="questionnaire")
-        self.assertEqual(self.srv.stage(high)["stage"]["questionnaire"], self.stage["questionnaire"])
-        self.assertFalse(self.stage["questionnaire"]["placeholder"])
-        self.assertEqual(len(self.stage["questionnaire"]["items"]), 11)
+    def test_shared_items_are_identical_in_both_conditions_and_it_is_not_a_placeholder(self):
+        _, high = self.high_stage()
+        low_q, high_q = self.stage["questionnaire"], high["questionnaire"]
+        self.assertEqual(high_q["items"][:len(low_q["items"])], low_q["items"])
+        self.assertEqual({k: v for k, v in high_q.items() if k != "items"},
+                         {k: v for k, v in low_q.items() if k != "items"})
+        self.assertFalse(low_q["placeholder"])
+
+    def test_the_activity_log_item_is_asked_and_stored_only_in_the_condition_that_shows_it(self):
+        high, stage = self.high_stage()
+        self.assertNotIn("activity_log_usefulness", [i["id"] for i in self.stage["questionnaire"]["items"]])
+        self.assertTrue(all("shown_with" not in i for i in stage["questionnaire"]["items"]))  # the mark is not sent
+        # A low participant cannot answer it, even by adding it to the submission.
+        smuggled = self.srv.questionnaire_answers(self.stage, activity_log_usefulness=3)
+        self.assertEqual(self.srv.complete(self.participant, "questionnaire", answers=smuggled)[0], 400)
+        # A high participant must answer it.
+        missing = self.srv.questionnaire_answers(stage)
+        del missing["items"]["activity_log_usefulness"]
+        self.assertEqual(self.srv.complete(high, "questionnaire", answers=missing)[0], 400)
+        answers = self.srv.questionnaire_answers(stage, activity_log_usefulness=4)
+        self.assertEqual(self.srv.complete(high, "questionnaire", answers=answers)[0], 200)
+        self.assertEqual(self.stored(high)["activity_log_usefulness"], "4")
+        self.assertEqual(self.srv.complete(self.participant, "questionnaire",
+                                           answers=self.srv.questionnaire_answers(self.stage))[0], 200)
+        self.assertNotIn("activity_log_usefulness", self.stored())
 
     def test_did_not_consult_is_stored_as_its_id_and_only_where_the_scale_offers_it(self):
         items = self.stage["questionnaire"]["items"]
@@ -655,15 +701,31 @@ class QuestionnaireTests(unittest.TestCase):
         self.assertEqual(self.srv.complete(self.participant, "questionnaire", answers=right)[0], 200)
         self.assertEqual(self.stored()[with_na["id"]], na)
 
-    def test_a_malformed_not_applicable_option_stops_the_questionnaire_loading(self):
+    def test_a_malformed_questionnaire_file_stops_the_loading(self):
         spec = json.loads(flow.QUESTIONNAIRE_PATH.read_text())
-        scale = next(i for i in spec["items"] if i["type"] == "scale")
         path = Path(tempfile.mkdtemp()) / "questionnaire.json"
-        for bad in ({"id": "3", "label": "x"}, {"id": "skipped"}, "skipped"):
-            scale["not_applicable"] = bad
-            path.write_text(json.dumps(spec))
-            with self.assertRaises(ValueError, msg=bad):
+        scale_index = next(n for n, i in enumerate(spec["items"]) if i["type"] == "scale")
+        breakages = [("not_applicable", {"id": "3", "label": "x"}), ("not_applicable", {"id": "skipped"}),
+                     ("not_applicable", "skipped"), ("shown_with", "trace_panel")]
+        for key, value in breakages:
+            broken = json.loads(json.dumps(spec))
+            broken["items"][scale_index][key] = value
+            path.write_text(json.dumps(broken))
+            with self.assertRaises(ValueError, msg=(key, value)):
                 flow.load_questionnaire(path)
+        path.write_text(json.dumps({**spec, "title": ""}))
+        with self.assertRaises(ValueError):
+            flow.load_questionnaire(path)
+
+    def test_an_item_id_shared_by_the_two_questionnaires_stops_the_loading(self):
+        pre = json.loads(flow.PRE_QUESTIONNAIRE_PATH.read_text())
+        pre["items"][0]["id"] = flow.load_questionnaire()["items"][0]["id"]
+        path = Path(tempfile.mkdtemp()) / "pre_questionnaire.json"
+        path.write_text(json.dumps(pre))
+        with mock.patch.dict(flow.QUESTIONNAIRES, {ep.PRE_QUESTIONNAIRE_KEY: path}):
+            with self.assertRaises(ValueError):
+                flow.load_questionnaires()
+        self.assertEqual(set(flow.load_questionnaires()), set(ep.QUESTIONNAIRE_STAGES))
 
     def test_submitting_again_keeps_the_first_answers(self):
         first = self.srv.questionnaire_answers(self.stage)
@@ -673,6 +735,67 @@ class QuestionnaireTests(unittest.TestCase):
         again = self.srv.questionnaire_answers(self.stage, **{scale["id"]: scale["max"]})
         self.assertEqual(self.srv.complete(self.participant, "questionnaire", answers=again)[0], 200)
         self.assertEqual(self.stored(), kept)
+
+
+class PreQuestionnaireTests(unittest.TestCase):
+    """The pre-study questionnaire: right after consent, the same in both conditions, validated, and stored under
+    its own stage key before the practice can start."""
+
+    def setUp(self):
+        self.srv = FlowServer()
+        self.participant = participant_with("low")
+        self.agreed = self.srv.agree(self.participant)
+        self.stage = json.loads(self.agreed[1])["stage"]
+
+    def tearDown(self):
+        self.srv.close()
+
+    def stored(self, stage_key):
+        conn = store.connect(self.srv.handler.db_path)
+        try:
+            return store.questionnaire_of(conn, self.participant, stage_key)
+        finally:
+            conn.close()
+
+    def test_consent_leads_to_the_pre_study_questionnaire(self):
+        self.assertEqual(self.agreed[0], 200)
+        self.assertEqual((self.stage["key"], self.stage["kind"]), ("pre_questionnaire", "questionnaire"))
+        spec = flow.load_questionnaire(flow.PRE_QUESTIONNAIRE_PATH)
+        self.assertEqual(self.stage["questionnaire"]["sha256"], spec["sha256"])
+        self.assertEqual([(i["id"], i["type"]) for i in self.stage["questionnaire"]["items"]],
+                         [("ai_chat_frequency", "choice"), ("agent_experience", "choice")])
+        self.assertTrue(all(i["required"] for i in self.stage["questionnaire"]["items"]))
+        self.assertNotEqual(self.stage["questionnaire"]["title"], flow.load_questionnaire()["title"])
+
+    def test_both_conditions_get_the_same_pre_study_questionnaire(self):
+        high = participant_with("high")
+        high_stage = json.loads(self.srv.agree(high)[1])["stage"]
+        self.assertEqual(high_stage["questionnaire"], self.stage["questionnaire"])
+
+    def test_the_practice_cannot_start_before_it_is_answered_and_an_unknown_option_is_refused(self):
+        self.assertEqual(self.srv.complete(self.participant, "practice_scenario")[0], 409)
+        self.assertEqual(self.srv.complete(self.participant, "pre_questionnaire")[0], 400)  # no answers
+        wrong = self.srv.questionnaire_answers(self.stage, ai_chat_frequency="hourly")
+        self.assertEqual(self.srv.complete(self.participant, "pre_questionnaire", answers=wrong)[0], 400)
+        post = flow.load_questionnaire()  # the other questionnaire's hash is not accepted here
+        stale = {**self.srv.questionnaire_answers(self.stage), "sha256": post["sha256"]}
+        self.assertEqual(self.srv.complete(self.participant, "pre_questionnaire", answers=stale)[0], 400)
+        self.assertEqual(self.stored("pre_questionnaire"), {})
+        self.assertEqual(self.srv.stage(self.participant)["stage"]["key"], "pre_questionnaire")
+
+    def test_answers_are_stored_under_its_stage_key_and_lead_to_the_practice(self):
+        answers = self.srv.questionnaire_answers(self.stage, ai_chat_frequency="weekly", agent_experience="not_sure")
+        status, body = self.srv.complete(self.participant, "pre_questionnaire", answers=answers)
+        self.assertEqual(status, 200, body)
+        self.assertEqual(json.loads(body)["stage"]["key"], "practice_scenario")
+        self.assertEqual(self.stored("pre_questionnaire"),
+                         {"ai_chat_frequency": "weekly", "agent_experience": "not_sure"})
+        self.assertEqual(self.stored("questionnaire"), {})
+        # Both questionnaires end up side by side, each under its own key.
+        self.srv.walk(self.participant)
+        self.assertEqual(list(self.stored("pre_questionnaire")), ["ai_chat_frequency", "agent_experience"])
+        self.assertTrue(self.stored("questionnaire"))
+        self.assertFalse(set(self.stored("pre_questionnaire")) & set(self.stored("questionnaire")))
 
 
 class ConsentTests(unittest.TestCase):
@@ -727,7 +850,7 @@ class ConsentTests(unittest.TestCase):
         self.srv.complete(self.participant, "consent")
         self.srv.get(f"/p/{self.srv.tokens[self.participant]}")
         self.assertEqual(self.consent_row(), first)
-        self.assertEqual(self.srv.stage(self.participant)["stage"]["key"], "practice_scenario")
+        self.assertEqual(self.srv.stage(self.participant)["stage"]["key"], "pre_questionnaire")
 
 
 class ConsentSchemaTests(unittest.TestCase):

@@ -81,6 +81,31 @@ class ConnectTests(unittest.TestCase):
         self.assertEqual((kept["confidence"], kept["sources_other"]), (4, ""))
         self.assertEqual(conn.execute("SELECT sources_other FROM experimental_responses").fetchone()[0], "")
 
+    def test_a_version_7_database_labels_its_questionnaire_answers_as_post_study(self):
+        """Before version 8 the post-study questionnaire was the only one, so the stage_key column added on upgrade
+        must label every stored answer "questionnaire", and new answers keep their own stage key."""
+        path = temp_db()
+        conn = store.connect(path)
+        store.enrol(conn, CONFIG, FIRST, PAYLOAD)
+        conn.executescript("""
+            DROP TABLE questionnaire_responses;
+            CREATE TABLE questionnaire_responses (participant_id TEXT NOT NULL, item_id TEXT NOT NULL,
+                answer TEXT NOT NULL, questionnaire_sha256 TEXT NOT NULL, submitted_at TEXT NOT NULL,
+                PRIMARY KEY (participant_id, item_id));""")
+        conn.execute("INSERT INTO questionnaire_responses VALUES (?, 'unsafe_meaning', 'a', 'h', 'now')", (FIRST,))
+        conn.execute("UPDATE meta SET value = '7' WHERE key = 'schema_version'")
+        conn.commit()
+        conn.close()
+        conn = store.connect(path)
+        self.assertEqual(conn.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()[0],
+                         str(store.SCHEMA_VERSION))
+        self.assertEqual(store.questionnaire_of(conn, FIRST, "questionnaire"), {"unsafe_meaning": "a"})
+        store.record_questionnaire(conn, FIRST, {"ai_chat_frequency": "daily"}, "0" * 64,
+                                   stage_key="pre_questionnaire")
+        self.assertEqual(store.questionnaire_of(conn, FIRST, "pre_questionnaire"), {"ai_chat_frequency": "daily"})
+        self.assertEqual(store.questionnaire_of(conn, FIRST), {"unsafe_meaning": "a", "ai_chat_frequency": "daily"})
+        conn.close()
+
     def test_a_newer_schema_version_is_refused(self):
         path = temp_db()
         conn = store.connect(path)
@@ -246,7 +271,8 @@ class EnvironmentTests(unittest.TestCase):
         store.enrol(conn, CONFIG, FIRST, PAYLOAD)
         conn.execute("UPDATE participants SET simulated = 0")
         store.record_consent(conn, FIRST, "0" * 64, "text")
-        store.complete_stage(conn, CONFIG, FIRST, "consent", PAYLOAD)
+        for key in ("consent", "pre_questionnaire"):
+            store.complete_stage(conn, CONFIG, FIRST, key, PAYLOAD)
         store.enter_stage(conn, CONFIG, FIRST, PAYLOAD)
         store.record_event(conn, FIRST, "practice_scenario", f"{FIRST}-p00", True, {"type": "stage_load"}, "server")
         store.record_questionnaire(conn, FIRST, {"q": "1"}, "0" * 64)
@@ -386,7 +412,7 @@ class FlowTests(unittest.TestCase):
         before = store.completed_stages(self.conn, FIRST)
         nxt = store.complete_stage(self.conn, CONFIG, FIRST, "consent", PAYLOAD)
         self.assertEqual(store.completed_stages(self.conn, FIRST), before)
-        self.assertEqual(nxt["key"], "practice_scenario")
+        self.assertEqual(nxt["key"], "pre_questionnaire")
 
     def test_a_stage_cannot_be_skipped(self):
         with self.assertRaises(store.StoreError):
@@ -398,17 +424,17 @@ class FlowTests(unittest.TestCase):
             store.complete_stage(self.conn, CONFIG, FIRST, "debriefing", PAYLOAD)
 
     def test_progress_survives_reopening_the_database(self):
-        for key in ("consent", "practice_scenario", "practice_assessment"):
+        for key in ("consent", "pre_questionnaire", "practice_scenario", "practice_assessment"):
             store.complete_stage(self.conn, CONFIG, FIRST, key, PAYLOAD)
         expected = store.current_stage(self.conn, CONFIG, FIRST, PAYLOAD)["key"]
         self.conn.close()
         reopened = store.connect(self.path)
         self.assertEqual(store.completed_stages(reopened, FIRST),
-                         ["consent", "practice_scenario", "practice_assessment"])
+                         ["consent", "pre_questionnaire", "practice_scenario", "practice_assessment"])
         self.assertEqual(store.current_stage(reopened, CONFIG, FIRST, PAYLOAD)["key"], expected)
 
     def test_reopening_the_link_mid_trial_returns_the_same_stage(self):
-        for key in ("consent", "practice_scenario", "practice_assessment"):
+        for key in ("consent", "pre_questionnaire", "practice_scenario", "practice_assessment"):
             store.complete_stage(self.conn, CONFIG, FIRST, key, PAYLOAD)
         stage = store.enter_stage(self.conn, CONFIG, FIRST, PAYLOAD)
         self.assertEqual(stage["key"], "trial_01_scenario")
@@ -421,7 +447,7 @@ class FlowTests(unittest.TestCase):
         state = store.status(self.conn, CONFIG, FIRST, PAYLOAD)
         self.assertEqual(state["stages_completed"], 1)
         self.assertEqual(state["stages"], len(self.plan["stages"]))
-        self.assertEqual(state["current_stage"], "practice_scenario")
+        self.assertEqual(state["current_stage"], "pre_questionnaire")
         self.assertIs(state["plan_changed"], False)
         self.assertIsNone(state["completed_at"])
 
@@ -432,7 +458,7 @@ class ResetTests(unittest.TestCase):
     def setUp(self):
         self.conn = store.connect(temp_db())
         self.row = store.enrol(self.conn, CONFIG, FIRST, PAYLOAD)
-        for key in ("consent", "practice_scenario", "practice_assessment"):
+        for key in ("consent", "pre_questionnaire", "practice_scenario", "practice_assessment"):
             store.complete_stage(self.conn, CONFIG, FIRST, key, PAYLOAD)
         store.record_consent(self.conn, FIRST, "0" * 64, "consent text")
 
@@ -442,7 +468,7 @@ class ResetTests(unittest.TestCase):
             "confidence": 3, "reasoning": "r", "sources": ["request"], "sources_other": "", "sources_offered": ["request"],
             "questions_sha256": "0" * 64})
         cleared = store.reset(self.conn, CONFIG, FIRST, PAYLOAD)
-        self.assertEqual(cleared["stages_cleared"], 3)
+        self.assertEqual(cleared["stages_cleared"], 4)
         self.assertEqual(cleared["responses_cleared"], 1)  # redoing the trial must not keep the old answer
         self.assertTrue(cleared["consent_cleared"])
         self.assertEqual(store.current_stage(self.conn, CONFIG, FIRST, PAYLOAD)["key"], "consent")
@@ -465,7 +491,7 @@ class ResetTests(unittest.TestCase):
         self.conn.commit()
         with self.assertRaises(store.StoreError):
             store.reset(self.conn, CONFIG, FIRST, PAYLOAD)
-        self.assertEqual(len(store.completed_stages(self.conn, FIRST)), 3)
+        self.assertEqual(len(store.completed_stages(self.conn, FIRST)), 4)
         self.assertIsNotNone(store.consent_of(self.conn, FIRST))
 
 
@@ -483,7 +509,7 @@ class ResetTests(unittest.TestCase):
     def test_a_study_configuration_cannot_be_used_to_reset(self):
         with self.assertRaises(store.StoreError):
             store.reset(self.conn, alternative_config(simulated=False), FIRST, PAYLOAD)
-        self.assertEqual(len(store.completed_stages(self.conn, FIRST)), 3)
+        self.assertEqual(len(store.completed_stages(self.conn, FIRST)), 4)
 
 
 class PlanChangeTests(unittest.TestCase):

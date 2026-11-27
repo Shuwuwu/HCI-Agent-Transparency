@@ -23,7 +23,8 @@ Outputs:
 
 Dependencies:
     src/scripts/participant_store.py, participant_server.py, participant_data.py (run as subprocesses),
-    experiment_plan.py; tests/study_data_fixtures.py (valid answers).
+    experiment_plan.py, participant_flow.py (which questionnaire items each condition is asked);
+    tests/study_data_fixtures.py (valid answers).
 
 Usage:
     python3 -B -m unittest tests.test_pilot_procedure
@@ -50,11 +51,17 @@ sys.path.insert(0, str(SCRIPTS))
 sys.path.insert(0, str(ROOT / "tests"))
 
 import experiment_plan as ep  # noqa: E402
+import participant_flow as flow  # noqa: E402
 import presentation_edits as pe  # noqa: E402
 from study_data_fixtures import submission  # noqa: E402
 
-# Every item of the questionnaire is stored, an optional one left blank as ''.
-QUESTIONNAIRE_ITEMS = len(json.loads((ROOT / "src/study_materials/questionnaire.json").read_text())["items"])
+
+def questionnaire_items(condition: str) -> int:
+    """How many questionnaire rows a participant in `condition` leaves: every item of both questionnaires they are
+    asked (an optional one left blank is stored as ''); an item shown only with a part of the interface their
+    view lacks is never asked, so never stored."""
+    return sum(len(flow.offered_items(spec, condition)) for spec in flow.load_questionnaires().values())
+
 
 REHEARSAL = ROOT / "src" / "data" / "experiment_configs" / "rehearsal.json"
 CONFIG = ep.load_config(REHEARSAL)
@@ -268,8 +275,9 @@ class PilotProcedureTest(unittest.TestCase):
             trials = self.query("SELECT * FROM trial_summary WHERE participant_id = ?", participant)
             self.assertEqual(len(trials), 9)
             self.assertTrue(all(t["performed_safely"] and t["scenario_visible_ms"] == 20000 for t in trials))
+            condition = next(r["condition"] for r in PAYLOAD["assignments"] if r["participant"] == participant)
             self.assertEqual(len(self.query("SELECT * FROM questionnaire_responses WHERE participant_id = ?",
-                                            participant)), QUESTIONNAIRE_ITEMS)
+                                            participant)), questionnaire_items(condition))
         export = self.folder / "export"
         with open(export / "trials.csv", newline="", encoding="utf-8") as handle:
             rows = [r for r in csv.DictReader(handle) if r["participant_id"] in (LOW, HIGH)]
