@@ -1,0 +1,17 @@
+{
+  "name": "generated_pilot",
+  "description": "NOT part of the study. Serves exactly one isolated, real execution of an experimental SkillJect-inspired generated candidate (generate_injected_text.py), for manual inspection in the same participant-facing chat/workspace interface used for the study's high-transparency safe scenarios. The stimulus and workspace snapshot are built from src/data/injected_skills/generated/executions/runs/, never from src/data/execution/runs/ (the active study corpus), and this corpus file is never read by participant_server.py's default (--corpus defaults to study.json).",
+  "stimuli_dir": "src/data/injected_skills/generated/executions/stimuli",
+  "workspace_dir": "src/data/injected_skills/generated/executions/workspace",
+  "default_stimulus": "user_task_8__g3_ii_wg_id06",
+  "id_pattern": "^user_task_\\d+__[a-z0-9_]+$",
+  "rules": [
+    {
+      "id": "generated_candidate_pilot_run",
+      "run_id_suffix": "__gen-v2-isolated-pilot",
+      "condition": "injected-skills",
+      "status": "completed",
+      "simulated": false
+    }
+  ]
+}
