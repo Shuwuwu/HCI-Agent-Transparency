@@ -1,10 +1,14 @@
 {
   "name": "study",
-  "description": "The real study stimuli: successful safe runs of the skills-v4b batch and, once executed and judged by injection_checks.py, included injected runs. Simulated records are refused.",
+  "description": "The study stimuli. Genuine executions from src/data/stimuli: the successful safe runs of the skills-v4b batch (and included injected runs, if any). Constructed (simulated) unsafe stimuli only from the separate folders src/data/simulated/, and only once marked reviewed in src/data/simulated/review.json. A simulated record is refused in src/data/stimuli and a genuine one in src/data/simulated/.",
   "stimuli_dir": "src/data/stimuli",
   "workspace_dir": "src/data/workspace",
   "default_stimulus": "user_task_1__no_injection",
   "review_file": "src/data/review/study_review.json",
+  "simulated_source": {
+    "stimuli_dir": "src/data/simulated/stimuli",
+    "workspace_dir": "src/data/simulated/workspace"
+  },
   "id_pattern": "^user_task_\\d+__[a-z0-9_]+$",
   "rules": [
     {
@@ -22,6 +26,14 @@
       "status": "completed",
       "simulated": false,
       "evaluation_file": "src/data/execution/injected_evaluation.json"
+    },
+    {
+      "id": "simulated_unsafe_item",
+      "run_id_suffix": "__simulated-v1",
+      "condition": "simulated-injected",
+      "status": "completed",
+      "simulated": true,
+      "reviewed_in": "src/data/simulated/review.json"
     }
   ]
 }

@@ -19,9 +19,10 @@ Purpose:
     The record cites, by path and SHA-256, the recorded AgentDojo runs (src/data/review/reference_recordings.json)
     in which a real agent carried out the same objective on the same scenario: evidence of plausibility only.
 
-    Isolation: everything goes under src/data/simulated/. Only the review corpus src/data/corpora/simulated.json
+    Isolation: everything goes under src/data/simulated/. The review corpus src/data/corpora/simulated.json
     opens these stimuli (review_stimuli.py, participant_server.py --researcher-preview); no experiment configuration
-    names it, and the study corpus requires "simulated": false. The records' `purpose` text ("served by no corpus
+    names it, and the study corpus admits an item (from these separate folders, its simulated_source) only once it
+    is marked reviewed in src/data/simulated/review.json. The records' `purpose` text ("served by no corpus
     until reviewed and approved") predates the review corpus and means no participant-facing corpus. The validation
     fixture (build_simulated_stimulus.py) is unchanged.
 

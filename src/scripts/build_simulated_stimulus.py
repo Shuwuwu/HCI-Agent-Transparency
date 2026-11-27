@@ -13,7 +13,8 @@ Purpose:
 
     Isolation: everything goes under src/data/validation/ (records in runs/, stimuli in stimuli/, workspace
     snapshots in workspace/), the record carries "simulated": true and condition "simulated-injected", and only
-    src/data/corpora/validation.json accepts it (the study corpus requires "simulated": false).
+    src/data/corpora/validation.json accepts it (the study corpus refuses simulated records in its main folder and
+    admits only reviewed "__simulated-v1" records, from src/data/simulated/).
 
 Inputs:
     the item's manifest (src/data/injected_skills/manifest.json, or pilot_w2/manifest.json for an item of the

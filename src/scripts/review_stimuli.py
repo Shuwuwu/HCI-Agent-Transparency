@@ -17,7 +17,9 @@ Purpose:
 
 Inputs:
     A corpus file (src/data/corpora/*.json; default study.json), the stimuli, workspaces and execution records it
-    names, and the existing review record (to keep manual answers).
+    names, and the existing review record (to keep manual answers). Only the corpus's main folder is reviewed: the
+    stimuli of a simulated_source are reviewed in their own corpus (src/data/corpora/simulated.json), whose record
+    the study corpus's reviewed_in rule reads.
 
 Outputs:
     The review record (corpus "review_file"): the checklist, and per stimulus its classification, content hashes,
@@ -94,7 +96,7 @@ def classify(record: dict) -> str:
 
 def load_context(folder: str) -> dict:
     """Everything the automated checks look at for one stimulus, from the ACTIVE corpus (ps.use_corpus first)."""
-    stim_dir, ws_dir = ps.STIMULI_DIR / folder, ps.WORKSPACE_DIR / folder
+    stim_dir, ws_dir = ps.stimulus_dir(folder) / folder, ps.workspace_dir_of(folder) / folder
     ctx = {"folder": folder, "files": {n: (stim_dir / n).is_file() for n in REQUIRED_FILES},
            "workspace_file": (ws_dir / "workspace.json").is_file(), "eligible": ps.is_eligible(folder),
            "listed": folder in ps.list_stimulus_ids()}
@@ -236,7 +238,9 @@ def review_corpus(previous: dict | None = None) -> dict:
     """The review record of the active corpus, keeping manual answers from `previous` (same folder names)."""
     previous = previous or {}
     entries = {}
-    for folder in ps.list_stimulus_ids():
+    # A corpus's simulated_source stimuli are reviewed in their own corpus (the record its reviewed_in rule names),
+    # so they are not reviewed a second time here.
+    for folder in (f for f in ps.list_stimulus_ids() if ps.stimulus_source(f) == "main"):
         ctx = load_context(folder)
         checks = run_checks(ctx)
         manual = (previous.get("stimuli", {}).get(folder) or {}).get("manual") or empty_manual()

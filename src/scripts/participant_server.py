@@ -147,6 +147,28 @@ def use_corpus(path=corpus_cfg.DEFAULT_CORPUS):
     return CORPUS
 
 
+def _in_simulated_source(stimulus_id):
+    """True if the active corpus has a simulated_source and the stimulus folder is there (and only there)."""
+    sim = CORPUS.get("simulated_stimuli_path")
+    return sim is not None and (sim / stimulus_id).is_dir() and not (STIMULI_DIR / stimulus_id).is_dir()
+
+
+def stimulus_source(stimulus_id):
+    """Where a stimulus of the active corpus lives: "simulated" (the corpus's simulated_source folders, constructed
+    stimuli only) or "main" (stimuli_dir / workspace_dir). Callers validate the id first."""
+    return "simulated" if _in_simulated_source(stimulus_id) else "main"
+
+
+def stimulus_dir(stimulus_id):
+    """The folder holding <stimulus_id>/ (low.json, high.json, provenance.json) in the active corpus."""
+    return CORPUS["simulated_stimuli_path"] if _in_simulated_source(stimulus_id) else STIMULI_DIR
+
+
+def workspace_dir_of(stimulus_id):
+    """The folder holding <stimulus_id>/workspace.json in the active corpus."""
+    return CORPUS["simulated_workspace_path"] if _in_simulated_source(stimulus_id) else WORKSPACE_DIR
+
+
 @functools.lru_cache(maxsize=None)
 def is_eligible(stimulus_id, stimuli_dir=None, root=ROOT):
     """True only if the stimulus belongs to the active corpus and its execution record passes one of its rules.
@@ -155,9 +177,20 @@ def is_eligible(stimulus_id, stimuli_dir=None, root=ROOT):
     list (if any) names the folder, the source is an execution record (not an AgentDojo trace), its file matches
     its recorded sha256, the provenance's stimulus_folder equals the folder name, and the record satisfies one of
     the corpus's eligibility rules (corpus.py: run id suffix, condition, status, utility, simulated flag, inclusion
-    verdict). Anything missing or unreadable is ineligible. Results are cached until use_corpus() is called.
+    verdict, manual review). Anything missing or unreadable is ineligible. Results are cached until use_corpus() is
+    called (so a review marked while the server runs takes effect at the next start).
+
+    With no stimuli_dir the folder is resolved in the active corpus (stimulus_dir). When the corpus has a
+    simulated_source, genuine and constructed stimuli are kept apart: a stimulus read from the simulated folder must
+    be backed by a record with "simulated": true, one read from any other folder by a record without it, and a
+    folder name present in both the main and the simulated folder is refused.
     """
-    stimuli_dir = STIMULI_DIR if stimuli_dir is None else stimuli_dir
+    sim = CORPUS.get("simulated_stimuli_path")
+    if stimuli_dir is None:
+        if sim is not None and (sim / stimulus_id).is_dir() and (STIMULI_DIR / stimulus_id).is_dir():
+            return False  # ambiguous: the same name in both folders
+        stimuli_dir = stimulus_dir(stimulus_id)
+    constructed_folder = sim is not None and Path(stimuli_dir) == sim
     include = CORPUS.get("include")
     if include is not None and stimulus_id not in include:
         return False
@@ -172,6 +205,8 @@ def is_eligible(stimulus_id, stimuli_dir=None, root=ROOT):
         if hashlib.sha256(path.read_bytes()).hexdigest() != src["sha256"]:
             return False
         rec = json.loads(path.read_text(encoding="utf-8"))
+        if sim is not None and bool(rec.get("simulated", False)) is not constructed_folder:
+            return False  # a constructed stimulus outside the simulated folder, or a genuine one inside it
         return rec["run_id"] == src["run_id"] and corpus_cfg.record_matches_any_rule(CORPUS, rec)
     except (OSError, KeyError, ValueError, TypeError):
         return False
@@ -218,7 +253,7 @@ def participant_view(stimulus_id, condition, stimuli_dir=None):
         raise FileNotFoundError(stimulus_id)  # same answer as a missing stimulus
     if condition not in CONDITIONS:
         raise ValueError("invalid condition")
-    path = Path(STIMULI_DIR if stimuli_dir is None else stimuli_dir) / stimulus_id / f"{condition}.json"
+    path = Path(stimulus_dir(stimulus_id) if stimuli_dir is None else stimuli_dir) / stimulus_id / f"{condition}.json"
     if not path.is_file():
         raise FileNotFoundError(stimulus_id)
     data = json.loads(path.read_text(encoding="utf-8"))
@@ -239,7 +274,9 @@ def participant_workspace(stimulus_id, stimuli_dir=None, workspace_dir=None):
     """
     if not STIMULUS_ID_RE.match(stimulus_id or ""):
         raise ValueError("invalid stimulus id")
-    path = Path(WORKSPACE_DIR if workspace_dir is None else workspace_dir) / stimulus_id / "workspace.json"
+    if workspace_dir is None:
+        workspace_dir = workspace_dir_of(stimulus_id) if stimuli_dir is None else WORKSPACE_DIR
+    path = Path(workspace_dir) / stimulus_id / "workspace.json"
     if not is_eligible(stimulus_id, stimuli_dir) or not path.is_file():
         raise FileNotFoundError(stimulus_id)
     data = json.loads(path.read_text(encoding="utf-8"))
@@ -268,7 +305,7 @@ def _skill_entries(stimulus_id, stimuli_dir):
         raise ValueError("invalid stimulus id")
     if not is_eligible(stimulus_id, stimuli_dir):
         raise FileNotFoundError(stimulus_id)
-    base = STIMULI_DIR if stimuli_dir is None else stimuli_dir
+    base = stimulus_dir(stimulus_id) if stimuli_dir is None else stimuli_dir
     prov = json.loads((Path(base) / stimulus_id / "provenance.json").read_text(encoding="utf-8"))
     record = json.loads((ROOT / prov["source"]["file"]).read_text(encoding="utf-8"))
     return record["skills"]
@@ -310,10 +347,16 @@ def participant_skill(stimulus_id, skill_id, stimuli_dir=None):
 
 
 def list_stimulus_ids(stimuli_dir=None):
-    """Return eligible stimulus ids that have both condition files, default one first."""
-    stimuli_dir = STIMULI_DIR if stimuli_dir is None else stimuli_dir
-    ids = sorted(p.name for p in Path(stimuli_dir).iterdir()
-                 if STIMULUS_ID_RE.match(p.name) and is_eligible(p.name, stimuli_dir) and all((p / f"{c}.json").is_file() for c in CONDITIONS))
+    """Return eligible stimulus ids that have both condition files, default one first. With no stimuli_dir: the
+    main folder and, if the corpus has one, its simulated_source folder (each id resolved as is_eligible does)."""
+    if stimuli_dir is None:
+        folders = [STIMULI_DIR] + ([CORPUS["simulated_stimuli_path"]] if CORPUS.get("simulated_stimuli_path") else [])
+        candidates = {p.name: p for d in folders if Path(d).is_dir() for p in Path(d).iterdir()}
+        ids = sorted(n for n, p in candidates.items()
+                     if STIMULUS_ID_RE.match(n) and is_eligible(n) and all((p / f"{c}.json").is_file() for c in CONDITIONS))
+    else:
+        ids = sorted(p.name for p in Path(stimuli_dir).iterdir()
+                     if STIMULUS_ID_RE.match(p.name) and is_eligible(p.name, stimuli_dir) and all((p / f"{c}.json").is_file() for c in CONDITIONS))
     return sorted(ids, key=lambda i: i != DEFAULT_STIMULUS)
 
 

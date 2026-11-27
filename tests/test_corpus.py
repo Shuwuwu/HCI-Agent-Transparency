@@ -1,5 +1,7 @@
 """Tests for corpus.py and the corpus-driven eligibility of participant_server.py: configuration validation,
-each rule condition, the optional include list, and the isolation of simulated records from the study corpus."""
+each rule condition, the optional include list, the isolation of simulated records from the study corpus's main
+folder, and the separate simulated_source folder from which the study corpus admits a constructed stimulus only after
+its manual review (reviewed_in)."""
 
 import json
 import shutil
@@ -16,6 +18,7 @@ import participant_server as ps  # noqa: E402
 
 STUDY = ROOT / "src" / "data" / "corpora" / "study.json"
 VALIDATION = ROOT / "src" / "data" / "corpora" / "validation.json"
+SIM_ITEM = "user_task_1__g3_ii_w1"  # a simulated unsafe stimulus (src/data/simulated/)
 
 
 def write_config(tmp, **changes):
@@ -42,9 +45,34 @@ class CorpusFileTests(unittest.TestCase):
         self.assertNotEqual(study["review_path"], validation["review_path"])
         self.assertFalse(str(validation["stimuli_path"]).startswith(str(study["stimuli_path"]) + "/"))
 
-    def test_study_rules_require_a_real_run_and_validation_rules_a_simulated_one(self):
-        self.assertTrue(all(r["simulated"] is False for r in corpus.load_corpus(STUDY)["rules"]))
+    def test_study_admits_a_simulated_record_only_after_review_and_validation_only_simulated_ones(self):
+        study = corpus.load_corpus(STUDY)
+        for rule in study["rules"]:
+            if rule["simulated"] is not False:
+                self.assertEqual(rule["reviewed_in"], "src/data/simulated/review.json", rule["id"])
+        self.assertEqual(study["simulated_stimuli_path"], ROOT / "src" / "data" / "simulated" / "stimuli")
+        self.assertEqual(study["simulated_workspace_path"], ROOT / "src" / "data" / "simulated" / "workspace")
         self.assertTrue(all(r["simulated"] is True for r in corpus.load_corpus(VALIDATION)["rules"]))
+        self.assertIsNone(corpus.load_corpus(VALIDATION)["simulated_stimuli_path"])
+
+    def test_invalid_simulated_source_is_rejected(self):
+        config = json.loads(STUDY.read_text())
+        with tempfile.TemporaryDirectory() as tmp:
+            for broken in ({"stimuli_dir": "x"}, {"stimuli_dir": config["stimuli_dir"], "workspace_dir": "y"}, "x"):
+                (Path(tmp) / "c.json").write_text(json.dumps({**config, "simulated_source": broken}))
+                with self.assertRaises(corpus.CorpusError):
+                    corpus.load_corpus(Path(tmp) / "c.json")
+
+    def test_reviewed_in_requires_status_reviewed_for_the_records_item(self):
+        record = {"injection": {"item_id": SIM_ITEM}}
+        with tempfile.TemporaryDirectory() as tmp:
+            review = Path(tmp) / "review.json"
+            rule = {"id": "r", "reviewed_in": str(review)}
+            self.assertFalse(corpus.rule_matches(rule, record))  # no review file
+            for status, expected in (("reviewed", True), ("unreviewed", False), ("stale", False), ("rejected", False)):
+                review.write_text(json.dumps({"stimuli": {SIM_ITEM: {"status": status}}}))
+                self.assertIs(corpus.rule_matches(rule, record), expected, status)
+            self.assertFalse(corpus.rule_matches(rule, {}))  # a record without an item id
 
     def test_invalid_configuration_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -133,6 +161,50 @@ class ServerCorpusTests(unittest.TestCase):
             for cond in ps.CONDITIONS:
                 with self.assertRaises(FileNotFoundError):
                     ps.participant_view(fixture, cond, Path(tmp))
+
+    def test_study_corpus_serves_a_simulated_stimulus_only_once_reviewed_and_from_its_own_folder(self):
+        sim_dir = corpus.load_corpus(STUDY)["simulated_stimuli_path"]
+        with tempfile.TemporaryDirectory() as tmp:
+            review = Path(tmp) / "review.json"
+            config = json.loads(STUDY.read_text())
+            config["rules"][-1]["reviewed_in"] = str(review)  # the simulated rule, pointed at a temporary review
+            path = Path(tmp) / "corpus.json"
+            path.write_text(json.dumps(config))
+            ps.use_corpus(path)
+            self.assertFalse(ps.is_eligible(SIM_ITEM))  # not reviewed: refused
+            self.assertEqual(len(ps.list_stimulus_ids()), 20)
+            review.write_text(json.dumps({"stimuli": {SIM_ITEM: {"status": "reviewed"}}}))
+            ps.use_corpus(path)  # eligibility is cached per corpus load
+            self.assertTrue(ps.is_eligible(SIM_ITEM))
+            self.assertEqual(ps.stimulus_source(SIM_ITEM), "simulated")
+            self.assertIn(SIM_ITEM, ps.list_stimulus_ids())
+            high = json.loads((sim_dir / SIM_ITEM / "high.json").read_text())
+            self.assertEqual(ps.participant_view(SIM_ITEM, "high")["user_request"], high["user_request"])
+            self.assertEqual(len(ps.participant_view(SIM_ITEM, "high")["trace"]), len(high["action_log"]))
+            self.assertIn("state", ps.participant_workspace(SIM_ITEM))
+            self.assertEqual([s["id"] for s in ps.participant_skills(SIM_ITEM)], ["calendar-lookup"])
+            import review_stimuli as rv  # the study review never reviews it a second time
+            self.assertNotIn(SIM_ITEM, rv.review_corpus()["stimuli"])
+
+    def test_a_genuine_stimulus_in_the_simulated_folder_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            empty, sim = Path(tmp) / "main", Path(tmp) / "sim"
+            empty.mkdir()
+            shutil.copytree(corpus.load_corpus(STUDY)["stimuli_path"] / "user_task_1__no_injection",
+                            sim / "user_task_1__no_injection")
+            ps.use_corpus(write_config(tmp, stimuli_dir=str(empty), simulated_source={
+                "stimuli_dir": str(sim), "workspace_dir": str(Path(tmp) / "ws")}))
+            self.assertFalse(ps.is_eligible("user_task_1__no_injection"))
+
+    def test_a_name_in_both_folders_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            sim = Path(tmp) / "sim"
+            shutil.copytree(corpus.load_corpus(STUDY)["stimuli_path"] / "user_task_1__no_injection",
+                            sim / "user_task_1__no_injection")
+            ps.use_corpus(write_config(tmp, simulated_source={"stimuli_dir": str(sim),
+                                                              "workspace_dir": str(Path(tmp) / "ws")}))
+            self.assertFalse(ps.is_eligible("user_task_1__no_injection"))
+            self.assertTrue(ps.is_eligible("user_task_2__no_injection"))
 
     def test_study_stimuli_folder_never_holds_a_simulated_stimulus(self):
         for folder in corpus.load_corpus(STUDY)["stimuli_path"].iterdir():
