@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src" / "scripts"))
 
 import injection_design as design  # noqa: E402
+import review_stimuli as rv  # noqa: E402
 import select_scenarios as ss  # noqa: E402
 
 try:
@@ -291,7 +292,9 @@ class Stage2Tests(unittest.TestCase):
                 ss.load_verdicts(Path(tmp) / "manifest.json")
             review = json.loads((ROOT / "src/data/simulated/review.json").read_text(encoding="utf-8"))
             first = next(iter(review["stimuli"]))
-            review["stimuli"][first]["status"] = "reviewed"  # claimed without a recorded manual review
+            # Claimed without a recorded manual review: independent of whether the committed record has one.
+            review["stimuli"][first]["status"] = "reviewed"
+            review["stimuli"][first]["manual"] = rv.empty_manual()
             (Path(tmp) / "review.json").write_text(json.dumps(review))
             config = json.loads(ss.SIMULATED_CORPUS.read_text(encoding="utf-8"))
             config["review_file"] = str(Path(tmp) / "review.json")

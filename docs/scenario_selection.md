@@ -251,7 +251,7 @@ every reviewed/rejected pattern of the 12 study items; no pass rate is assumed):
 The design is fragile: an item listed in the last column cannot be rejected without changing the design (for example
 fixing the scenario's safe stimulus, or giving a spare scenario an item), which would be a documented decision.
 
-Stage 2 (simulated unsafe stimuli): 12 of 12 simulated items pass the inclusion checks and 1 are marked reviewed. No final set yet: an item passes only once it is manually reviewed, and the passing items do not yet allow a valid final set. The status of each candidate is in the CSV.
+Stage 2 (simulated unsafe stimuli): 12 of 12 simulated items pass the inclusion checks and 12 are marked reviewed. Final scenarios user_task_1, user_task_2, user_task_15, user_task_17, user_task_26, user_task_27, user_task_28, user_task_29; list A unsafe: user_task_1, user_task_17, user_task_26, user_task_28; list B unsafe: user_task_15, user_task_2, user_task_27, user_task_29. The status of each candidate is in the CSV.
 
 ## 7. Unavoidable repetitions
 

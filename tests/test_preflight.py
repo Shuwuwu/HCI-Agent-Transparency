@@ -112,7 +112,12 @@ class PreflightTests(unittest.TestCase):
         self.assertEqual(self.db.read_bytes(), before)
 
     def test_the_development_configuration_fails_on_its_unservable_unsafe_stimuli(self):
-        report = preflight.run(CONFIG["path"], self.folder / "none.sqlite3", free_port())
+        # Simulated unsafe stimuli are servable only once reviewed (corpus.py reviewed_in). The lookup is patched so the
+        # test does not depend on how many items the committed review record marks reviewed.
+        with mock.patch.object(preflight.ps.corpus_cfg, "_reviewed", return_value=False):
+            preflight.ps.is_eligible.cache_clear()
+            report = preflight.run(CONFIG["path"], self.folder / "none.sqlite3", free_port())
+        preflight.ps.is_eligible.cache_clear()
         status = {check: status for status, check, _ in report.findings}
         self.assertEqual(status["stimuli"], preflight.FAIL)
 
@@ -138,14 +143,29 @@ class ReviewCheckTests(unittest.TestCase):
         records = [r.relative_to(ROOT).as_posix() for r, _ in preflight.review_records(self.STUDY_CORPUS)]
         self.assertEqual(records, ["src/data/review/study_review.json", "src/data/simulated/review.json"])
 
-    def test_committed_records_are_current_and_unreviewed_stimuli_only_warn_in_a_rehearsal(self):
+    def shown_with_one_unreviewed(self, config=None):
+        """check_reviews findings with a review record in which every stimulus shown is reviewed except one."""
+        shown = sorted({s["stimulus"] for row in PAYLOAD["assignments"] for s in preflight.ep.scenario_stages(
+            preflight.ep.plan_for(self.config, row["participant"], PAYLOAD), practice=True)})
+        record = {"stimuli": {folder: {"status": "reviewed"} for folder in shown}}
+        record["stimuli"][shown[0]]["status"] = "unreviewed"
+        with mock.patch.object(preflight, "review_records", return_value=[(ROOT / "x.json", self.STUDY_CORPUS)]), \
+                mock.patch.object(preflight.rv, "read_record", return_value=record), \
+                mock.patch.object(preflight.rv, "review_corpus", side_effect=lambda saved: saved):
+            return self.findings(config)
+
+    def test_committed_records_are_current(self):
         found, report = self.findings()
         self.assertFalse(report.failed, found)
         self.assertEqual([f[0] for f in found if f[1] == "review records"], [preflight.PASS] * 2)
+
+    def test_unreviewed_stimuli_only_warn_in_a_rehearsal(self):
+        found, report = self.shown_with_one_unreviewed()
+        self.assertFalse(report.failed, found)
         self.assertEqual([f[0] for f in found if f[1] == "manual review"], [preflight.WARN])
 
     def test_unreviewed_stimuli_fail_for_the_study_configuration(self):
-        found, report = self.findings({**self.config, "simulated": False})
+        found, report = self.shown_with_one_unreviewed({**self.config, "simulated": False})
         self.assertTrue(report.failed)
         self.assertEqual([f[0] for f in found if f[1] == "manual review"], [preflight.FAIL])
 
@@ -153,7 +173,9 @@ class ReviewCheckTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             stale = Path(tmp) / "review.json"
             record = json.loads((ROOT / "src/data/simulated/review.json").read_text())
-            next(iter(record["stimuli"].values()))["status"] = "reviewed"  # claimed without a manual review
+            entry = next(iter(record["stimuli"].values()))
+            entry["status"] = "reviewed"  # claimed without a manual review
+            entry["manual"] = preflight.rv.empty_manual()
             stale.write_text(json.dumps(record))
             corpus = ROOT / "src" / "data" / "corpora" / "simulated.json"
             for records in ([(stale, corpus)], [(Path(tmp) / "absent.json", corpus)]):
