@@ -6,7 +6,8 @@ Purpose:
     other skills, and a rebuild that reproduces the committed files exactly (no AgentDojo clone needed).
 
 Inputs:
-    The committed src/data/skill_library/prompts/ and sources/ files, src/prompts/skill_capability_*_v2.md,
+    The committed src/data/skill_library/prompts/ (v4) and experimental/prompt_v5/prompts/ (v5) and sources/
+    files, src/prompts/skill_capability_*_v4.md and *_v5.md,
     src/data/skill_taxonomy.json and the vendored runs (for the leakage checks).
 
 Outputs:
@@ -288,6 +289,83 @@ class RebuildTest(unittest.TestCase):
         text = Path(cp.__file__).read_text(encoding="utf-8")
         for word in ("urllib", "requests", "http.client", "socket", "agentdojo_source", "agentdojo_tools"):
             self.assertNotIn(word, text)
+
+
+V5 = "skill_capability_v5"
+V5_DIR = cp.TEMPLATES[V5]["out_dir"]
+V5_RECORDS = {p.stem: json.loads(p.read_text(encoding="utf-8")) for p in sorted(V5_DIR.glob("*.json"))}
+V5_SYSTEM_TEXT = cp.TEMPLATES[V5]["system"].read_text(encoding="utf-8").strip()
+# The general guidance v5 adds (derived from recurring skills-v4b failures, without any benchmark value).
+V5_CONVENTIONS = ("incomplete (a day and month without a year)",
+                  "Never supply a year that no tool result gave",
+                  "Search with one or two distinctive words rather than a phrase copied from the request",
+                  "or without an optional filter such as a date, before reporting that nothing was found",
+                  "the answer gives that value in exactly that format")
+
+
+class ExperimentalV5Test(unittest.TestCase):
+    """v5 is an experimental template version beside the stable v4: its own templates and its own output folder,
+    so building it never changes the requests the published skills were generated from."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.prompts, cls.outputs = scenario_material()
+
+    def test_v4_stays_the_default_and_v5_has_its_own_files_and_folder(self):
+        self.assertEqual(cp.TEMPLATE_VERSION, "skill_capability_v4")
+        self.assertEqual((cp.TEMPLATES[cp.TEMPLATE_VERSION]["out_dir"], cp.TEMPLATES[V5]["status"]),
+                         (cp.DEFAULT_OUT_DIR, "experimental"))
+        self.assertNotEqual(V5_DIR, cp.DEFAULT_OUT_DIR)
+        self.assertTrue(cp.TEMPLATES[V5]["system"].name.endswith("_v5.md") and
+                        cp.TEMPLATES[V5]["user"].name.endswith("_v5.md"))
+
+    def test_committed_v5_prompts_equal_a_fresh_build_and_record_v5(self):
+        self.assertEqual(sorted(V5_RECORDS), sorted(RECORDS))
+        with tempfile.TemporaryDirectory() as tmp:
+            for path in cp.build_all(out_dir=Path(tmp), template_version=V5):
+                self.assertEqual(path.read_bytes(), (V5_DIR / path.name).read_bytes(), path.name)
+        for skill_id, record in V5_RECORDS.items():
+            self.assertEqual(record["template_version"], V5, skill_id)
+            self.assertEqual(record["prompt_sha256"], prompt_utils.canonical_hash(record["request"]), skill_id)
+
+    def test_v4_and_v5_differ_only_in_the_templates(self):
+        for skill_id, record in V5_RECORDS.items():
+            v4 = RECORDS[skill_id]
+            self.assertEqual((record["source"], record["limits"]), (v4["source"], v4["limits"]), skill_id)
+            self.assertEqual({k: v for k, v in record["request"].items() if k not in ("instructions", "input")},
+                             {k: v for k, v in v4["request"].items() if k not in ("instructions", "input")}, skill_id)
+
+    def test_v5_adds_the_conventions_and_v4_does_not_have_them(self):
+        for skill_id in V5_RECORDS:
+            for phrase in V5_CONVENTIONS:
+                self.assertIn(phrase, V5_RECORDS[skill_id]["request"]["input"], (skill_id, phrase))
+                self.assertNotIn(phrase, RECORDS[skill_id]["request"]["input"], (skill_id, phrase))
+        self.assertIn("Turn every convention you are given into explicit guidance", V5_SYSTEM_TEXT)
+        self.assertIn("searching again after a search found nothing, as the Conventions describe, is not an extra "
+                      "check", V5_SYSTEM_TEXT)
+        self.assertNotIn("Turn every convention you are given", SYSTEM_TEXT)
+
+    def test_v5_keeps_every_v4_rule_it_does_not_extend(self):
+        for rule in re.findall(r"^\d+\. .*$", SYSTEM_TEXT, flags=re.M):
+            if not rule.startswith(("7. ", "12. ")):  # the two rules v5 extends
+                self.assertIn(rule, V5_SYSTEM_TEXT)
+
+    def test_no_year_is_hardcoded_into_the_v5_instructions(self):
+        for text in (V5_SYSTEM_TEXT, cp.TEMPLATES[V5]["user"].read_text(encoding="utf-8")):
+            self.assertNotRegex(text, r"\b(19|20)\d\d\b")
+
+    def test_v5_prompts_contain_no_scenario_content(self):
+        for skill_id, record in V5_RECORDS.items():
+            text = record["request"]["instructions"] + "\n" + record["request"]["input"]
+            self.assertEqual(leaked_literals(text.lower(), self.prompts, self.outputs, tool_text_of(PACKAGES[skill_id])),
+                             [], skill_id)
+            for user_task_id, prompt in self.prompts.items():
+                self.assertEqual(cm.shared_sequences(text, prompt), [], (skill_id, user_task_id))
+
+    def test_an_unknown_template_version_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ValueError):
+                cp.build_all(out_dir=Path(tmp), template_version="skill_capability_v9")
 
 
 if __name__ == "__main__":

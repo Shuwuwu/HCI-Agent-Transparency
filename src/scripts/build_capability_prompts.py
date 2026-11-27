@@ -13,12 +13,18 @@ Purpose:
 
 Inputs:
     src/data/skill_library/sources/<skill-id>.json (build_skill_sources.py).
-    src/prompts/skill_capability_system_v4.md and skill_capability_user_v4.md: the prompt templates (the user
-    template has {{placeholders}} that this script fills).
+    src/prompts/skill_capability_system_<version>.md and skill_capability_user_<version>.md: the prompt templates
+    (the user template has {{placeholders}} that this script fills). Two versions coexist (TEMPLATES):
+      * skill_capability_v4 (default, stable): the version the published skills in src/data/skills/ were
+        generated with;
+      * skill_capability_v5 (experimental, not validated): adds general guidance for dates without a year,
+        searching again after an empty search and answer formats; see
+        src/data/skill_library/experimental/prompt_v5/README.md.
 
 Outputs:
-    src/data/skill_library/prompts/<skill-id>.json, one per source package, with the keys: skill_id,
-    template_version, prompt_sha256, estimated_input_tokens, limits (the length rules the prompt states, for
+    For v4: src/data/skill_library/prompts/<skill-id>.json; for v5:
+    src/data/skill_library/experimental/prompt_v5/prompts/<skill-id>.json. One file per source package, with the
+    keys: skill_id, template_version, prompt_sha256, estimated_input_tokens, limits (the length rules the prompt states, for
     the validator), source (source package file name, its SHA-256 and the skill definition's SHA-256) and
     request (the request body to send as-is: model, instructions, input, reasoning, max_output_tokens).
     prompt_sha256 is the SHA-256 of the canonical JSON of "request". Output is deterministic and contains no local
@@ -30,6 +36,7 @@ Dependencies:
 
 Usage:
     python3 -B src/scripts/build_capability_prompts.py [--sources-dir PATH] [--out-dir PATH]
+    python3 -B src/scripts/build_capability_prompts.py --template-version skill_capability_v5
 """
 
 import argparse
@@ -41,12 +48,25 @@ from pathlib import Path
 import agentdojo_runs as runs
 import prompt_utils
 
-TEMPLATE_VERSION = "skill_capability_v4"
 PROMPTS_DIR = runs.REPO_ROOT / "src" / "prompts"
-SYSTEM_TEMPLATE = PROMPTS_DIR / "skill_capability_system_v4.md"
-USER_TEMPLATE = PROMPTS_DIR / "skill_capability_user_v4.md"
-DEFAULT_SOURCES_DIR = runs.REPO_ROOT / "src" / "data" / "skill_library" / "sources"
-DEFAULT_OUT_DIR = runs.REPO_ROOT / "src" / "data" / "skill_library" / "prompts"
+SKILL_LIBRARY_DIR = runs.REPO_ROOT / "src" / "data" / "skill_library"
+DEFAULT_SOURCES_DIR = SKILL_LIBRARY_DIR / "sources"
+DEFAULT_OUT_DIR = SKILL_LIBRARY_DIR / "prompts"
+EXPERIMENTAL_V5_DIR = SKILL_LIBRARY_DIR / "experimental" / "prompt_v5"
+
+# Each template version has its own template files and its own output folder, so an experimental version never
+# overwrites the request files the published skills were generated from.
+TEMPLATES = {
+    "skill_capability_v4": {"system": PROMPTS_DIR / "skill_capability_system_v4.md",
+                            "user": PROMPTS_DIR / "skill_capability_user_v4.md",
+                            "out_dir": DEFAULT_OUT_DIR, "status": "stable"},
+    "skill_capability_v5": {"system": PROMPTS_DIR / "skill_capability_system_v5.md",
+                            "user": PROMPTS_DIR / "skill_capability_user_v5.md",
+                            "out_dir": EXPERIMENTAL_V5_DIR / "prompts", "status": "experimental"},
+}
+TEMPLATE_VERSION = "skill_capability_v4"  # the default: the version of the published skills
+SYSTEM_TEMPLATE = TEMPLATES[TEMPLATE_VERSION]["system"]
+USER_TEMPLATE = TEMPLATES[TEMPLATE_VERSION]["user"]
 
 # The length rules stated in the system prompt, recorded so the validator can use the same numbers (the prompt text
 # itself is a file, so a test checks that the numbers there match).
@@ -96,8 +116,10 @@ def render_tool_specs(tools: list[dict]) -> str:
     return "\n\n".join(blocks)
 
 
-def build_prompt(source_record: dict, source_bytes: bytes, system_prompt: str, user_template: str) -> dict:
-    """Build the output record (request plus provenance) for one skill source package."""
+def build_prompt(source_record: dict, source_bytes: bytes, system_prompt: str, user_template: str,
+                 template_version: str = TEMPLATE_VERSION) -> dict:
+    """Build the output record (request plus provenance) for one skill source package; template_version is only
+    recorded (the caller passes the matching template texts)."""
     user_prompt = prompt_utils.fill_template(user_template, {
         "skill_id": source_record["skill_id"],
         "kind_statement": KIND_STATEMENTS[source_record["kind"]],
@@ -115,7 +137,7 @@ def build_prompt(source_record: dict, source_bytes: bytes, system_prompt: str, u
     }
     return {
         "skill_id": source_record["skill_id"],
-        "template_version": TEMPLATE_VERSION,
+        "template_version": template_version,
         "prompt_sha256": prompt_utils.canonical_hash(request),
         "estimated_input_tokens": math.ceil((len(system_prompt) + len(user_prompt)) / 4),  # rough: 4 chars/token
         "limits": LIMITS,
@@ -128,18 +150,25 @@ def build_prompt(source_record: dict, source_bytes: bytes, system_prompt: str, u
     }
 
 
-def build_all(sources_dir: Path = DEFAULT_SOURCES_DIR, out_dir: Path = DEFAULT_OUT_DIR) -> list[Path]:
-    """Write one prompt file per source package and return the files written, sorted by skill id."""
+def build_all(sources_dir: Path = DEFAULT_SOURCES_DIR, out_dir: Path | None = None,
+              template_version: str = TEMPLATE_VERSION) -> list[Path]:
+    """Write one prompt file per source package with the given template version and return the files written,
+    sorted by skill id. out_dir defaults to that version's own folder (TEMPLATES). Raises ValueError for an
+    unknown version and FileNotFoundError when there are no source packages."""
+    if template_version not in TEMPLATES:
+        raise ValueError(f"unknown template version {template_version!r}; choose from {sorted(TEMPLATES)}")
+    templates = TEMPLATES[template_version]
+    out_dir = out_dir or templates["out_dir"]
     source_files = sorted(sources_dir.glob("*.json"))
     if not source_files:
         raise FileNotFoundError(f"no skill source packages in {sources_dir}; run build_skill_sources.py first")
-    system_prompt = SYSTEM_TEMPLATE.read_text(encoding="utf-8").strip()
-    user_template = USER_TEMPLATE.read_text(encoding="utf-8")
+    system_prompt = templates["system"].read_text(encoding="utf-8").strip()
+    user_template = templates["user"].read_text(encoding="utf-8")
     out_dir.mkdir(parents=True, exist_ok=True)
     written = []
     for source_file in source_files:
         source_bytes = source_file.read_bytes()
-        record = build_prompt(json.loads(source_bytes), source_bytes, system_prompt, user_template)
+        record = build_prompt(json.loads(source_bytes), source_bytes, system_prompt, user_template, template_version)
         path = out_dir / source_file.name
         path.write_text(json.dumps(record, indent=4, ensure_ascii=False) + "\n", encoding="utf-8")
         written.append(path)
@@ -149,10 +178,12 @@ def build_all(sources_dir: Path = DEFAULT_SOURCES_DIR, out_dir: Path = DEFAULT_O
 def main() -> None:
     parser = argparse.ArgumentParser(description="Build the capability-skill generation prompts.")
     parser.add_argument("--sources-dir", type=Path, default=DEFAULT_SOURCES_DIR)
-    parser.add_argument("--out-dir", type=Path, default=DEFAULT_OUT_DIR)
+    parser.add_argument("--template-version", choices=sorted(TEMPLATES), default=TEMPLATE_VERSION)
+    parser.add_argument("--out-dir", type=Path, help="default: the template version's own folder")
     args = parser.parse_args()
-    written = build_all(args.sources_dir, args.out_dir)
-    print(f"Wrote {len(written)} prompt files to {args.out_dir}")
+    written = build_all(args.sources_dir, args.out_dir, args.template_version)
+    status = TEMPLATES[args.template_version]["status"]
+    print(f"Wrote {len(written)} prompt files ({args.template_version}, {status}) to {written[0].parent}")
 
 
 if __name__ == "__main__":
