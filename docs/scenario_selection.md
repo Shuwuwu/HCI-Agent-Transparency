@@ -223,7 +223,7 @@ over every pass/fail pattern of the 12 items):
 | 0.5 | 0.88 | 0.43 | 0.43 |
 | 0.7 | 0.97 | 0.85 | 0.85 |
 
-Stage 2 has not run: no injected execution has been performed yet; the stage-2 CSV columns are empty.
+Stage 2 (simulated unsafe stimuli): 12 of 12 simulated items pass the inclusion checks and 0 are marked reviewed. No final set yet: an item passes only once it is manually reviewed, and the passing items do not yet allow a valid final set. The status of each candidate is in the CSV.
 
 ## 7. Unavoidable repetitions
 

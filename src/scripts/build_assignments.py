@@ -23,13 +23,16 @@ Purpose:
     links is a separate step (not done here).
 
 Inputs:
-    The final set and lists chosen by select_scenarios.choose_final_set from the passing injected items (stage 2:
-    src/data/execution/injected_evaluation.json), or --simulate / --write-simulated N with every planned item
-    assumed to pass (no stage-2 evaluation needed).
+    The final set and lists chosen by select_scenarios.choose_final_set from the passing unsafe items (stage 2,
+    select_scenarios.load_verdicts: a simulated item passes when its record passed the inclusion checks and its
+    stimulus is marked "reviewed" in src/data/simulated/review.json), or --simulate / --write-simulated N with every
+    planned item assumed to pass (no stage-2 input needed).
 
 Outputs:
     --simulate: a validation summary on stdout (no file is written).
-    --write: src/data/participant_assignments.json, the study assignments ("simulated": false).
+    --write: src/data/participant_assignments.json, the study assignments ("simulated": false). Here "simulated"
+        means development assignments over planned items, not constructed traces: the study assignments show
+        the constructed (simulated) unsafe stimuli and are still "simulated": false.
     --write-simulated: src/data/validation/participant_assignments.json, the same design over the *planned*
         (not yet passing) items, marked "simulated": true. It exists so that the participant flow can be built
         and tested before the injected runs pass; the study corpus and the study assignments never read it, and
@@ -226,12 +229,14 @@ def main() -> None:
         return
     if args.write is None:
         parser.error("choose --simulate N, --write-simulated N or --write N")
-    evaluation = ss.EVALUATION
-    if not evaluation.exists():
-        sys.exit("no evaluation file: the injected runs have not been executed and evaluated yet")
-    st2 = ss.stage2(result, json.loads(evaluation.read_text(encoding="utf-8")))
+    verdicts = ss.load_verdicts()
+    if verdicts is None:
+        sys.exit("no simulated unsafe stimuli yet: run build_simulated_items.py")
+    st2 = ss.stage2(result, verdicts)
     if not st2["final"]:
-        sys.exit("no valid final set with the items that passed")
+        passed = sum(i["passing"] for i in st2["info"].values())
+        sys.exit(f"no valid final set with the items that passed ({passed} of {len(st2['info'])} included and "
+                 "reviewed): review them with review_stimuli.py --corpus src/data/corpora/simulated.json --mark")
     final = st2["final"]
     assignments = generate(final, items, args.write)
     problems = validate(assignments, final, items, result["pairs"])

@@ -10,7 +10,7 @@ data is and how to read, export, back up and restore it, see [participant_data.m
 | Participant flow: consent, practice tour, 8 trials with assessments, questionnaire, completion | Ready; tested end to end in both conditions |
 | Data recording, privacy, exports, backups | Ready |
 | Rehearsal with simulated participants (`rehearsal.json`) | Ready |
-| Unsafe stimuli | **Not ready.** The study configuration needs `src/data/participant_assignments.json`, written by `build_assignments.py --write N` once the injected runs are evaluated and their stimuli built. |
+| Unsafe stimuli | **Not ready.** The 12 unsafe stimuli are built as simulated (constructed) traces in `src/data/simulated/` but not yet manually reviewed. The study configuration needs `src/data/participant_assignments.json`, written by `build_assignments.py --write N` once enough of them are marked reviewed for stage 2 to find a final set. |
 | Consent text | **One placeholder left:** `[secure storage platform]` |
 | Post-study questionnaire | Ready: 11 items, the same in both conditions (`src/study_materials/questionnaire.json`) |
 | Completion screen | **Placeholder** debriefing and compensation text (`src/participant_ui/flow.js`) |
@@ -41,8 +41,15 @@ needs the internet.
 
 ## One-time setup for the study
 
-1. **Write the study assignments** for N participants (the plan is 16–20). This is possible once the injected runs
-   have been evaluated and the unsafe stimuli built:
+1. **Review the simulated unsafe stimuli, then write the study assignments** for N participants (the plan is
+   16–20). Mark each item after reading it in the researcher preview
+   (`participant_server.py --researcher-preview --corpus src/data/corpora/simulated.json`), regenerate the selection
+   so stage 2 picks the final set, then write the assignments (refused until a final set exists):
+
+   ```bash
+   python3 -B src/scripts/review_stimuli.py --corpus src/data/corpora/simulated.json --mark ITEM --reviewer NAME --set M1=pass M2=pass M3=pass M4=pass M5=pass M6=pass M7=pass
+   python3 -B src/scripts/select_scenarios.py
+   ```
 
    ```bash
    python3 -B src/scripts/build_assignments.py --write 20

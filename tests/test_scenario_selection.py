@@ -1,11 +1,14 @@
 """Tests of select_scenarios.py: the rules give the documented outcome, the committed CSV and document are exactly what
-the pipeline generates, the item allocation and the final-set / list choice satisfy their constraints. The facts are
-refreshed with AgentDojo (--collect); one test (skipped without AgentDojo) checks the committed facts are current."""
+the pipeline generates, the item allocation and the final-set / list choice satisfy their constraints, and stage 2
+passes an item only when its simulated record passed the inclusion checks and its stimulus is manually reviewed (from a
+current review record). The facts are refreshed with AgentDojo (--collect); one test (skipped without AgentDojo)
+checks the committed facts are current."""
 
 import csv
 import io
 import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -28,6 +31,15 @@ ROWS = RESULT["rows"]
 
 def by_status(status):
     return sorted((s for s in ROWS if ROWS[s]["status"] == status), key=ss.task_number)
+
+
+def verdicts(status="reviewed", included=True, **overrides):
+    """Synthetic stage-2 input for the 12 planned items; overrides: {scenario: (included, review_status)}."""
+    out = {}
+    for s, a in RESULT["allocation"].items():
+        inc, st = overrides.get(s, (included, status))
+        out[a["item_id"]] = {"included": inc, "review_status": st}
+    return {"items": out}
 
 
 def synthetic_items(allocation=None):
@@ -150,8 +162,7 @@ class AllocationTests(unittest.TestCase):
 
 class ArtifactTests(unittest.TestCase):
     def test_committed_csv_and_document_are_what_the_pipeline_generates(self):
-        evaluation = (json.loads(ss.EVALUATION.read_text(encoding="utf-8")) if ss.EVALUATION.exists() else None)
-        csv_text, doc_text = ss.build(FACTS, evaluation)
+        csv_text, doc_text = ss.build(FACTS, ss.load_verdicts())
         self.assertEqual(ss.CSV_PATH.read_text(encoding="utf-8"), csv_text,
                          "src/data/scenario_selection.csv is stale: run python3 -B src/scripts/select_scenarios.py")
         self.assertEqual(ss.DOC_PATH.read_text(encoding="utf-8"), doc_text,
@@ -177,16 +188,65 @@ class ArtifactTests(unittest.TestCase):
             self.assertIn(needle, doc)
         self.assertNotIn("{{", doc)
 
-    def test_stage_two_fills_the_columns_from_evaluations(self):
-        evaluation = {"evaluations": [{"item_id": a["item_id"], "included": True} for a in RESULT["allocation"].values()]}
-        csv_text, doc_text = ss.build(FACTS, evaluation)
+    def test_stage_two_fills_the_columns_when_every_item_is_reviewed(self):
+        csv_text, doc_text = ss.build(FACTS, verdicts())
         rows = list(csv.DictReader(io.StringIO(csv_text)))
         final = [r for r in rows if r["final_set"] == "yes"]
         self.assertEqual(len(final), 8)
         self.assertEqual(sorted(r["participant_list"] for r in final), ["A"] * 4 + ["B"] * 4)
-        self.assertTrue(all(r["attempts"] == "1" and r["passing_attempts"] == "1" for r in rows
-                            if r["selection_status"] == "candidate"))
-        self.assertIn("final scenarios", doc_text)
+        self.assertTrue(all(r["simulated_included"] == "yes" and r["review_status"] == "reviewed"
+                            and r["stage2_status"] == "passed" for r in rows if r["selection_status"] == "candidate"))
+        self.assertIn("Final scenarios", doc_text)
+
+
+class Stage2Tests(unittest.TestCase):
+    def test_an_item_passes_only_when_included_and_reviewed(self):
+        self.assertIsNone(ss.stage2(RESULT, verdicts("unreviewed"))["final"])
+        st2 = ss.stage2(RESULT, verdicts(user_task_1=(True, "rejected"), user_task_2=(True, "stale"),
+                                         user_task_8=(False, "reviewed")))
+        self.assertFalse(any(st2["info"][s]["passing"] for s in ("user_task_1", "user_task_2", "user_task_8")))
+        self.assertEqual(ss.stage2_status(st2["info"]["user_task_1"]), "rejected in review")
+        self.assertEqual(ss.stage2_status(st2["info"]["user_task_2"]), "review out of date")
+        self.assertEqual(ss.stage2_status(st2["info"]["user_task_8"]), "failed inclusion checks")
+        self.assertEqual(ss.stage2_status(st2["info"]["user_task_9"]), "passed")
+
+    def test_a_rejected_item_never_enters_the_final_set(self):
+        final = ss.stage2(RESULT, verdicts(user_task_24=(True, "rejected")))["final"]
+        if final:
+            self.assertNotIn("user_task_24", final["scenarios"])
+
+    def test_items_must_match_the_plan(self):
+        v = verdicts()
+        v["items"]["user_task_0__g1_ii_w1"] = {"included": True, "review_status": "reviewed"}
+        with self.assertRaises(ss.Stage2Error):
+            ss.stage2(RESULT, v)
+
+    def test_committed_inputs_give_twelve_included_unreviewed_items(self):
+        v = ss.load_verdicts()
+        self.assertEqual(set(v["items"]), {a["item_id"] for a in RESULT["allocation"].values()})
+        self.assertTrue(all(i["included"] for i in v["items"].values()))
+        self.assertEqual({i["review_status"] for i in v["items"].values()}, {"unreviewed"})
+
+    def test_the_real_injected_runs_are_not_a_stage_two_input(self):
+        self.assertFalse(hasattr(ss, "EVALUATION"))
+
+    def test_a_changed_record_or_a_stale_review_stops_stage_two(self):
+        manifest = json.loads(ss.SIMULATED_MANIFEST.read_text(encoding="utf-8"))
+        with tempfile.TemporaryDirectory() as tmp:
+            changed = json.loads(json.dumps(manifest))
+            changed["items"][0]["record"]["sha256"] = "0" * 64
+            (Path(tmp) / "manifest.json").write_text(json.dumps(changed))
+            with self.assertRaises(ss.Stage2Error):
+                ss.load_verdicts(Path(tmp) / "manifest.json")
+            review = json.loads((ROOT / "src/data/simulated/review.json").read_text(encoding="utf-8"))
+            first = next(iter(review["stimuli"]))
+            review["stimuli"][first]["status"] = "reviewed"  # claimed without a recorded manual review
+            (Path(tmp) / "review.json").write_text(json.dumps(review))
+            config = json.loads(ss.SIMULATED_CORPUS.read_text(encoding="utf-8"))
+            config["review_file"] = str(Path(tmp) / "review.json")
+            (Path(tmp) / "corpus.json").write_text(json.dumps(config))
+            with self.assertRaises(ss.Stage2Error):
+                ss.load_verdicts(corpus_path=Path(tmp) / "corpus.json")
 
 
 @unittest.skipUnless(HAVE_AGENTDOJO, "needs AgentDojo (.venv-agentdojo/bin/python)")

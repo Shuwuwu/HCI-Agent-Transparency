@@ -7,8 +7,12 @@ Purpose:
       * src/data/scenario_selection.csv   one row per user task, with status, rule id and reason;
       * docs/scenario_selection.md        the rules, tables, constraints, trade-offs and unavoidable repetitions,
                                           rendered from docs/scenario_selection.template.md plus the computed results.
-    After the paid runs (not part of this script), the same pipeline fills the stage-2 columns from the run
-    evaluations (injection_checks.py): attempts, passes, and the final 8 scenarios split into two participant lists.
+    Stage 2 fills the stage-2 columns and picks the final 8 scenarios, split into two participant lists, from the
+    candidate items that pass. The unsafe stimuli are constructed (simulated) traces (build_simulated_items.py), so
+    an item passes when its simulated record passed the inclusion checks (injection_checks.py) AND the researcher
+    marked its stimulus "reviewed" in src/data/simulated/review.json (review_stimuli.py). Until items are reviewed
+    there is no final set. The real injected runs (src/data/execution/injected_evaluation.json) are not a stage-2
+    input.
 
     The rules (ids are used in the CSV and the document):
       R1  pool: a taxonomy-mapped scenario whose skills-v4b run succeeded (the 20 eligible stimuli);
@@ -18,19 +22,22 @@ Purpose:
       R4  AgentDojo difficulty HARD is removed;
       R3b near-duplicate prompts (word-set Jaccard >= 0.5) keep only the lowest seeded rank;
       R5  area-by-area round-robin in seeded order, balancing Easy/Medium, gives 12 candidates then the spares;
-      R6  (final set, stage 2) the final 8 never contain both members of a repeated-task pair.
+      R6  (final set, stage 2) from the passing items (simulated, included, manually reviewed), the final 8 never
+          contain both members of a repeated-task pair.
     Subjective decisions are not hidden: the document lists, per rule, whether it is systematic or a judgment.
 
 Inputs:
     src/data/scenario_selection_inputs.json (facts about the tasks, produced by --collect, which needs AgentDojo),
-    optionally src/data/execution/injected_evaluation.json (stage 2), docs/scenario_selection.template.md.
+    docs/scenario_selection.template.md, and for stage 2 src/data/simulated/manifest.json (the simulated items and
+    their inclusion verdicts; each record's SHA-256 is checked) and src/data/simulated/review.json (their manual
+    review status; it must be current, i.e. equal to a fresh review_stimuli.py review, or stage 2 stops).
 
 Outputs:
     src/data/scenario_selection.csv, docs/scenario_selection.md (and with --collect the inputs file).
 
 Dependencies:
     injection_design.py, agentdojo_runs.py, participant_server.py (the eligibility rule), build_workspace_snapshots.py
-    (replay, only for --collect). --collect needs the AgentDojo environment; everything else is plain python3.
+    (replay, only for --collect), review_stimuli.py (stage 2: checks the review record is current). --collect needs the AgentDojo environment; everything else is plain python3.
 
 Usage:
     .venv-agentdojo/bin/python -B src/scripts/select_scenarios.py --collect     # refresh the facts (no model calls)
@@ -55,7 +62,8 @@ INPUTS = ROOT / "src" / "data" / "scenario_selection_inputs.json"
 CSV_PATH = ROOT / "src" / "data" / "scenario_selection.csv"
 DOC_PATH = ROOT / "docs" / "scenario_selection.md"
 TEMPLATE = ROOT / "docs" / "scenario_selection.template.md"
-EVALUATION = ROOT / "src" / "data" / "execution" / "injected_evaluation.json"
+SIMULATED_MANIFEST = ROOT / "src" / "data" / "simulated" / "manifest.json"
+SIMULATED_CORPUS = ROOT / "src" / "data" / "corpora" / "simulated.json"  # its review_file is the review record
 TAXONOMY = ROOT / "src" / "data" / "skill_taxonomy.json"
 
 SELECTION_VERSION = "scenario_selection_v1"
@@ -98,7 +106,7 @@ COLUMNS = [
     "ground_truth_calls", "safe_trace_actions", "in_pool", "near_duplicate_group", "repeated_task_group",
     "compatible_objectives", "seed_rank", "selection_status", "rule_id", "rationale",
     "planned_item_id", "attacker_objective", "strategy", "wording", "wording_variant", "attacker_identity",
-    "attempts", "passing_attempts", "stage2_status", "final_set", "participant_list",
+    "simulated_included", "review_status", "stage2_status", "final_set", "participant_list",
 ]
 
 
@@ -454,23 +462,78 @@ def feasibility_by_attrition(allocation: dict, rows: dict, pairs: list, rates=(0
     return out
 
 
-def stage2(result: dict, evaluation: dict | None) -> dict:
-    """Per candidate: attempts, passing attempts and status; and the final set from the passing items."""
-    info = {s: {"attempts": 0, "passing": 0} for s in result["allocation"]}
+class Stage2Error(RuntimeError):
+    """The stage-2 inputs are inconsistent (a record changed, the review record is stale, or items do not match)."""
+
+
+def load_verdicts(manifest_path: Path = SIMULATED_MANIFEST, corpus_path: Path = SIMULATED_CORPUS) -> dict | None:
+    """The stage-2 input: {"items": {item_id: {"included": bool, "review_status": str}}}, or None when no simulated
+    items exist yet.
+
+    "included" is the inclusion verdict of the item's simulated record (its SHA-256 must match the manifest);
+    "review_status" is the item's status in the review record of the simulated corpus (unreviewed, reviewed,
+    rejected, stale, auto_failed; "missing" if absent). The review record must equal a fresh review
+    (review_stimuli.py), so a status saved before the stimulus or the checks changed is never trusted.
+    Raises Stage2Error otherwise."""
+    if not manifest_path.exists():
+        return None
+    import participant_server as ps
+    import review_stimuli as rv
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    items = {}
+    for entry in manifest["items"]:
+        record_path = ROOT / entry["record"]["file"]
+        if hashlib.sha256(record_path.read_bytes()).hexdigest() != entry["record"]["sha256"]:
+            raise Stage2Error(f"{entry['record']['file']} does not match its SHA-256 in {manifest_path.name}")
+        record = json.loads(record_path.read_text(encoding="utf-8"))
+        items[entry["item_id"]] = {"included": record["simulation"]["inclusion_check"]["included"] is True}
+    previous = ps.CORPUS
+    try:
+        ps.use_corpus(corpus_path)
+        saved = rv.read_record(ps.CORPUS["review_path"])
+        if saved is None or rv.review_corpus(saved) != saved:
+            raise Stage2Error("the simulated review record is missing or out of date: run review_stimuli.py "
+                              f"--corpus {corpus_path} --write")
+    finally:
+        ps.use_corpus(previous["path"]) if previous else ps.use_corpus()
+    for item_id, verdict in items.items():
+        verdict["review_status"] = (saved["stimuli"].get(item_id) or {}).get("status", "missing")
+    return {"items": items}
+
+
+def stage2(result: dict, verdicts: dict | None) -> dict:
+    """Per candidate: whether its simulated item passed the inclusion checks, its review status and its stage-2
+    status; and the final set (R6) from the passing items, i.e. included AND reviewed. `verdicts` is load_verdicts()
+    output (None: no simulated items, stage 2 has not run). The verdicts must name exactly the planned items."""
+    info = {s: {"included": None, "review_status": None, "passing": False} for s in result["allocation"]}
     final = None
-    if evaluation:
+    if verdicts:
         by_item = {a["item_id"]: s for s, a in result["allocation"].items()}
-        for ev in evaluation["evaluations"]:
-            s = by_item.get(ev["item_id"])
-            if s:
-                info[s]["attempts"] += 1
-                info[s]["passing"] += bool(ev["included"])
+        if set(verdicts["items"]) != set(by_item):
+            raise Stage2Error("the simulated items do not match the planned items: rebuild them "
+                              "(build_simulated_items.py)")
+        for item_id, verdict in verdicts["items"].items():
+            s = by_item[item_id]
+            info[s].update(included=verdict["included"], review_status=verdict["review_status"],
+                           passing=verdict["included"] and verdict["review_status"] == "reviewed")
         passing = [{"scenario": s, "area": result["rows"][s]["area"], "difficulty": result["rows"][s]["difficulty"],
                     "rank": result["rows"][s]["rank"], **plan_fields(a)}
                    for s, a in result["allocation"].items() if info[s]["passing"]]
         final = choose_final_set(passing, result["pairs"], wordings=planned_wordings(result["allocation"]),
                                   strategies=planned_strategies(result["allocation"]))
-    return {"info": info, "final": final, "ran": bool(evaluation)}
+    return {"info": info, "final": final, "ran": bool(verdicts)}
+
+
+STAGE2_STATUS = {"reviewed": "passed", "unreviewed": "awaiting manual review", "rejected": "rejected in review",
+                 "stale": "review out of date", "auto_failed": "automated checks failed", "missing": "not in review"}
+
+
+def stage2_status(info: dict) -> str:
+    """The CSV's stage-2 status of one candidate (see STAGE2_STATUS); inclusion failures come first."""
+    if not info["included"]:
+        return "failed inclusion checks"
+    return STAGE2_STATUS.get(info["review_status"], info["review_status"])
 
 
 # ------------------------------------------------------------------------------------------------ rendering
@@ -483,9 +546,7 @@ def csv_rows(result: dict, st2: dict) -> list[dict]:
         identity = design.identity_by_id(plan["identity_id"]) if plan else None
         status2, in_final, which = "", "", ""
         if plan and st2["ran"]:
-            i = st2["info"][s]
-            status2 = "not run" if not i["attempts"] else ("passed" if i["passing"] else
-                                                          ("failed all attempts" if i["attempts"] >= MAX_ATTEMPTS else "failed so far"))
+            status2 = stage2_status(st2["info"][s])
             if st2["final"]:
                 in_final = "yes" if s in st2["final"]["scenarios"] else "no"
                 which = "A" if s in st2["final"]["A"] else ("B" if s in st2["final"]["B"] else "")
@@ -503,8 +564,8 @@ def csv_rows(result: dict, st2: dict) -> list[dict]:
             "wording_variant": plan.get("variant", "") if plan else "",
             "attacker_identity": identity["name"] + " <" + identity["address"] + ">" if identity else
             ("none (file ID 13)" if plan else ""),
-            "attempts": st2["info"][s]["attempts"] if plan and st2["ran"] else "",
-            "passing_attempts": st2["info"][s]["passing"] if plan and st2["ran"] else "",
+            "simulated_included": ("yes" if st2["info"][s]["included"] else "no") if plan and st2["ran"] else "",
+            "review_status": st2["info"][s]["review_status"] if plan and st2["ran"] else "",
             "stage2_status": status2, "final_set": in_final, "participant_list": which})
     return out
 
@@ -601,13 +662,18 @@ def sections(result: dict, st2: dict, facts: dict) -> dict[str, str]:
         [[a["per_attempt"], f"{a['item_pass']:.2f}", f"{a['probability']:.2f}", f"{b['probability']:.2f}"]
          for a, b in zip(strict_rates, relaxed_rates)])
     if st2["ran"]:
-        final = st2["final"]
-        out["stage2"] = ("Stage 2 (after the runs): " + ("final scenarios " + ", ".join(final["scenarios"]) + f"; list A unsafe: "
-                         + ", ".join(final["A"]) + "; list B unsafe: " + ", ".join(final["B"]) + "."
-                         if final else "no valid final set exists with the items that passed.")
-                         + " Attempts and outcomes per candidate are in the CSV.")
+        final, info = st2["final"], st2["info"].values()
+        reviewed = sum(i["passing"] for i in info)
+        included = sum(bool(i["included"]) for i in info)
+        out["stage2"] = (f"Stage 2 (simulated unsafe stimuli): {included} of {len(st2['info'])} simulated items pass the "
+                         f"inclusion checks and {reviewed} are marked reviewed. " +
+                         ("Final scenarios " + ", ".join(final["scenarios"]) + "; list A unsafe: " + ", ".join(final["A"])
+                          + "; list B unsafe: " + ", ".join(final["B"]) + "."
+                          if final else "No final set yet: an item passes only once it is manually reviewed, and the "
+                          "passing items do not yet allow a valid final set.")
+                         + " The status of each candidate is in the CSV.")
     else:
-        out["stage2"] = "Stage 2 has not run: no injected execution has been performed yet; the stage-2 CSV columns are empty."
+        out["stage2"] = "Stage 2 has not run: no simulated unsafe stimuli exist yet; the stage-2 CSV columns are empty."
     return out
 
 
@@ -621,9 +687,9 @@ def render_document(result: dict, st2: dict, facts: dict) -> str:
     return text
 
 
-def build(facts: dict, evaluation: dict | None = None) -> tuple[str, str]:
+def build(facts: dict, verdicts: dict | None = None) -> tuple[str, str]:
     result = select(facts)
-    st2 = stage2(result, evaluation)
+    st2 = stage2(result, verdicts)
     return render_csv(csv_rows(result, st2)), render_document(result, st2, facts)
 
 
@@ -637,8 +703,7 @@ def main() -> None:
         INPUTS.write_text(json.dumps(collect_facts(), indent=2) + "\n", encoding="utf-8")
         print(f"facts written to {INPUTS}")
     facts = json.loads(INPUTS.read_text(encoding="utf-8"))
-    evaluation = json.loads(EVALUATION.read_text(encoding="utf-8")) if EVALUATION.exists() else None
-    csv_text, doc_text = build(facts, evaluation)
+    csv_text, doc_text = build(facts, load_verdicts())
     if args.check:
         stale = [p.name for p, t in ((CSV_PATH, csv_text), (DOC_PATH, doc_text))
                  if not p.exists() or p.read_text(encoding="utf-8") != t]
