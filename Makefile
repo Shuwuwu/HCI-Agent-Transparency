@@ -18,8 +18,9 @@
 #   in data/participants/backups/<environment>/.
 #
 # Dependencies:
-#   GNU make 3.81 or newer, python3, lsof (port checks; macOS ships it), cloudflared (the tunnel target only).
-#   Scripts: participant_server.py, preflight.py, participant_store.py, rehearsal_tunnel.py.
+#   GNU make 3.81 or newer, python3, lsof (port checks; macOS ships it), cloudflared (the tunnel target only),
+#   the Tailscale app, signed in (the funnel-* targets only).
+#   Scripts: participant_server.py, preflight.py, participant_store.py, rehearsal_tunnel.py, funnel_server.py.
 #
 # Usage:
 #   make                    # list the targets and the port assignments
@@ -31,7 +32,10 @@
 #     and study data stay in separate files.
 #   - No target passes --host or --allow-network: every server listens on 127.0.0.1 only.
 #   - Only the review-* targets pass --researcher-preview, always with the development configuration and on their
-#     own ports; the serve-* targets and the tunnel never do.
+#     own ports; the serve-* targets, the tunnel and the funnel-* targets never do.
+#   - Only tunnel and funnel-* make a server reachable from other computers, and only through their scripts, which
+#     refuse to publish unless the researcher routes answer 404. tunnel refuses the study; funnel-study refuses
+#     while a participant-facing placeholder is left. funnel-* always back the database up (NO_BACKUP is refused).
 #   - Stop a server with Ctrl+C in its terminal. make passes the interrupt to the server and waits for it, so the
 #     server writes its shutdown backup as it does when started directly.
 
@@ -58,6 +62,12 @@ ifneq ($(BACKUP_FLAG),)
 $(error NO_BACKUP is refused for the study: the study database is always backed up)
 endif
 endif
+# funnel_server.py has no --no-backup: a server reachable by participants is always backed up.
+ifneq ($(filter funnel-%,$(MAKECMDGOALS)),)
+ifneq ($(BACKUP_FLAG),)
+$(error NO_BACKUP is refused for the funnel targets: they always back the database up)
+endif
+endif
 
 # $(call require_free_port,PORT): stop with a clear message if something already listens on PORT.
 require_free_port = if lsof -nP -iTCP:$(1) -sTCP:LISTEN >/dev/null 2>&1; then \
@@ -76,7 +86,7 @@ LINKS_TARGETS := $(addprefix links-,$(ENVIRONMENTS))
 
 .DEFAULT_GOAL := help
 .PHONY: help ports $(PREFLIGHT_TARGETS) $(LINKS_TARGETS) serve-development serve-rehearsal serve-study \
-	review-simulated review-study review-validation tunnel
+	review-simulated review-study review-validation tunnel funnel-rehearsal funnel-study
 
 help:
 	@echo "Participant server commands (stop any server with Ctrl+C in its terminal):"
@@ -95,13 +105,16 @@ help:
 	@echo ""
 	@echo "  make tunnel                 readiness check, then the remote rehearsal over a Cloudflare Quick Tunnel"
 	@echo "                              (local server on 127.0.0.1:$(TUNNEL_PORT); rehearsal only)"
+	@echo "  make funnel-rehearsal       readiness check, then the rehearsal published over Tailscale Funnel"
+	@echo "  make funnel-study           readiness check, then the study published over Tailscale Funnel"
+	@echo "                              (local server on 127.0.0.1:$(FLOW_PORT); https://<this computer>.<tailnet>.ts.net)"
 	@echo ""
-	@echo "Options: NO_BACKUP=1 (development, rehearsal and tunnel only), PYTHON=..."
+	@echo "Options: NO_BACKUP=1 (serve-development, serve-rehearsal and tunnel only), PYTHON=..."
 
 # Read-only: which of the assigned ports something is listening on, and which process.
 ports:
 	@printf '%-6s %-36s %s\n' PORT 'ASSIGNED TO' STATUS
-	@for entry in "$(FLOW_PORT)|participant flow (serve-*)" \
+	@for entry in "$(FLOW_PORT)|participant flow (serve-*, funnel-*)" \
 		"$(REVIEW_SIMULATED_PORT)|review-simulated" \
 		"$(REVIEW_STUDY_PORT)|review-study" \
 		"$(REVIEW_VALIDATION_PORT)|review-validation" \
@@ -153,3 +166,14 @@ review-validation:
 tunnel:
 	$(call preflight,rehearsal,$(TUNNEL_PORT))
 	$(PY) $(SCRIPTS)/rehearsal_tunnel.py --port $(TUNNEL_PORT) $(BACKUP_FLAG)
+
+# funnel_server.py starts the server without --researcher-preview, refuses an occupied port or an existing Tailscale
+# share, checks the researcher routes answer 404 locally and at the public address, and never prints link tokens.
+# For the study it also refuses while a consent, questionnaire or completion-screen placeholder is left.
+funnel-rehearsal: preflight-rehearsal
+	@$(call require_free_port,$(FLOW_PORT))
+	$(PY) $(SCRIPTS)/funnel_server.py --experiment-config $(CONFIG_DIR)/rehearsal.json --port $(FLOW_PORT)
+
+funnel-study: preflight-study
+	@$(call require_free_port,$(FLOW_PORT))
+	$(PY) $(SCRIPTS)/funnel_server.py --experiment-config $(CONFIG_DIR)/study.json --port $(FLOW_PORT)

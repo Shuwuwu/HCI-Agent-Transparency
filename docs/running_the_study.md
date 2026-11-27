@@ -13,10 +13,11 @@ data is and how to read, export, back up and restore it, see [participant_data.m
 | Unsafe stimuli | Ready. The 12 unsafe stimuli are simulated (constructed) traces in `src/data/simulated/`, all marked reviewed. Task 24 is withdrawn after manual review and excluded from the study corpus; by rule R7 spare task 17 takes over its planned item (G2, W3 v1, the same injected skill), built as `user_task_17__g2_ii_w3v1` (see `docs/scenario_selection.md`). Stage 2's final set is scenarios 1, 2, 15, 17, 26, 27, 28 and 29. |
 | Study assignments | Written for 20 participants (`src/data/participant_assignments.json`, `build_assignments.py --write 20`). `experiment_plan.py --check` reports every stimulus servable. Rewrite them only before enrolment. |
 | Manual stimulus review | Done (2026-11-27). All 19 served safe and 12 simulated unsafe study stimuli are marked reviewed (task 24 is excluded; `review_stimuli.py` lists the status of each). `preflight.py` fails the study configuration if any stimulus a participant will see stops being marked reviewed or a review record goes out of date. |
-| Consent text | **One placeholder left:** `[secure storage platform]` |
+| Consent text | Ready: no placeholder left (data storage and HTTPS transmission described, 2026-11-27) |
 | Pre-study questionnaire | Ready: 2 items, the same in both conditions (`src/study_materials/pre_questionnaire.json`) |
 | Post-study questionnaire | Ready: 8 items, identical in both conditions, plus 1 on the activity log for the high condition only (`src/study_materials/questionnaire.json`) |
-| Completion screen | **Placeholder** debriefing and compensation text (`src/participant_ui/flow.js`) |
+| Completion screen | **Placeholder** debriefing and compensation text (`src/participant_ui/flow.js`). `funnel_server.py` refuses to publish the study until it is replaced |
+| Remote sessions (Tailscale Funnel, `funnel_server.py`) | Tested with simulated data only (2026-11-27). Not yet used with real participants: see "Remote study sessions over Tailscale Funnel" for what must be in place first |
 
 `preflight.py` reports each of these. Do not run real participants or a pilot with real people until it shows no
 failures and no placeholder warnings.
@@ -33,6 +34,8 @@ needs the internet.
   the computer's own disk, not in a synced folder (OneDrive, iCloud, Dropbox), so participant data is never
   uploaded. Copy backups to approved storage yourself (see "After each session").
 - **Deployment:** Remote deployment is permitted when access is secured through HTTPS, participant sessions are isolated, and the hosting arrangement complies with research ethics requirements.
+  The one remote setup for the study is Tailscale Funnel (`funnel_server.py`; see "Remote study sessions over
+  Tailscale Funnel"); the Cloudflare Quick Tunnel is for rehearsals only.
 - **Protections already in place:**
   - every response forbids caching, referrers and framing, and allows only the server's own files;
   - participants never see stimulus names, versions or conditions;
@@ -78,6 +81,9 @@ them to the server. Anyone holding a link could continue that participant's sess
 - Print them again at any time with `participant_store.py --config ... --links`. They never change.
 - Open the participant's link yourself in the study computer's browser at the start of their session; never email
   or post it.
+- For remote sessions the links start with the Funnel address instead
+  (`https://<this computer>.<tailnet>.ts.net/p/<token>`), and each link is sent to its participant only, through
+  the channel the ethics approval names, never posted or shared in a group message.
 - The participant ID (`P001`, …) is pseudonymous. Keep the list linking IDs to people (if you need one at all)
   apart from the computer and the data, as the ethics approval specifies.
 
@@ -208,6 +214,84 @@ Notes: a Quick Tunnel has no uptime guarantee and is not for the study. The link
 which is acceptable here only because every participant is simulated. The server's request log shows each link
 token, as it does on `127.0.0.1`.
 
+## Remote study sessions over Tailscale Funnel
+
+For participants on their own computers, `funnel_server.py` publishes the participant server at a fixed HTTPS
+address, `https://<this computer>.<tailnet>.ts.net`, through Tailscale Funnel. The address does not change when the
+server or the computer restarts, so links printed once stay valid. TLS ends on this computer: Tailscale's relays
+forward the encrypted connection and cannot read link tokens or answers. Everything else is unchanged: the server
+still listens on `127.0.0.1`, uses the configuration's own database (no `--db`), writes its startup and shutdown
+backups, and serves no researcher route.
+
+The script refuses to publish, and opens nothing, when:
+
+- the configuration is the study and a placeholder is left in the consent text, the questionnaires or the
+  completion screen (a simulated configuration may be published with them, for testing);
+- the configuration's database does not exist (enrol first);
+- Tailscale is not running and signed in, or already shares anything (so its funnel is the only one, and clearing
+  the configuration on exit removes nothing else);
+- the port is in use;
+- `/`, `/chat`, `/static/app.js` or an `s=` content route answers anything but 404, on `127.0.0.1` before
+  publishing or at the public address after.
+
+It never prints link tokens; it prints the `participant_store.py` command that does.
+
+**Once, on the study computer:**
+
+```bash
+brew install --cask tailscale-app
+```
+
+Open Tailscale and sign in. The first start prints a `login.tailscale.com` link: open it and approve Funnel for the
+tailnet (it turns on HTTPS certificates and the Funnel permission), then start again.
+
+**First, test with simulated data** (the rehearsal configuration and database):
+
+```bash
+make funnel-rehearsal
+```
+
+From a computer that is **not** signed in to this tailnet (this computer and the tailnet's own devices reach the
+address over the tailnet instead of the public relay), open a rehearsal link and walk through a few screens. Print
+the links with the command the script shows. Stop with Ctrl+C.
+
+**Enrol the study participants once, then print their links for the Funnel address.** Enrolment creates
+`data/participants/study.sqlite3` and makes it append-only, so do it only after the assignments are final:
+
+```bash
+python3 -B src/scripts/participant_store.py --config src/data/experiment_configs/study.json --enrol-all
+```
+
+```bash
+python3 -B src/scripts/participant_store.py --config src/data/experiment_configs/study.json --links --base-url https://<this computer>.<tailnet>.ts.net
+```
+
+**Start for a session** (readiness check, then the study server published at the Funnel address):
+
+```bash
+make funnel-study
+```
+
+**Stop:** Ctrl+C in the same terminal. The funnel is closed and its configuration cleared first, then the server
+stops and writes its shutdown backup. Then confirm nothing is shared. It must print `{}`; plain
+`tailscale funnel status` does not show every entry:
+
+```bash
+tailscale serve status --json
+```
+
+Notes:
+
+- Keep the computer awake, on power and online for the whole session. If it sleeps, the participant sees an error;
+  reopening the link after the server is back resumes where they left off.
+- A public address is noticed by automated scanners within minutes (new certificates are published). They are
+  answered 404 or 501; tokens are 32 random characters, so a link cannot be guessed.
+- Funnel is in beta and has bandwidth limits that Tailscale does not publish. Run a pilot session before relying
+  on it.
+- The server's request log in this terminal shows link tokens, as it does on `127.0.0.1`. Do not paste it anywhere.
+- Participants use their own desktop or laptop and browser. Mobile devices remain out of scope; tell participants
+  so with their link.
+
 ## Troubleshooting
 
 | Symptom | Cause and fix |
@@ -221,3 +305,7 @@ token, as it does on `127.0.0.1`.
 | A database or backup looks damaged | Stop the server, run `participant_data.py restore` with the newest verified backup (see participant_data.md). |
 | `rehearsal_tunnel.py`: "the tunnel did not reach the server" | The new `trycloudflare.com` name was not yet resolvable from this computer. Run the script again (each start gets a new address). If it keeps failing, the network may block trycloudflare.com. |
 | `rehearsal_tunnel.py`: "port 8780 is already in use" | A rehearsal or preview server is still running there. Stop it, or pass `--port`. |
+| `funnel_server.py`: "Funnel is not enabled on your tailnet" | First use: open the printed `login.tailscale.com` link, approve, and start again (it waits 5 minutes). |
+| `funnel_server.py`: "Tailscale already shares something" | A Serve or Funnel entry is left over, possibly from an interrupted start. Look at it with `tailscale serve status --json`; if it is not something you need, `tailscale funnel reset`, then start again. |
+| `funnel_server.py`: "the study cannot be published while participant-facing material is unfinished" | A placeholder is left (listed in the message; `preflight.py` shows the same as warnings). Replace it; there is no override. |
+| `funnel_server.py`: "Tailscale is not running and signed in" | Open the Tailscale app and sign in. |

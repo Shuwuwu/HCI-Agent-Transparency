@@ -105,6 +105,7 @@ Capability skills:
 | `migrate_legacy_storage.py` | One-time migration of the retired storage (`src/data/participants/participants.db`, schema 4, and the `src/data/interaction_logs/` files) into `data/participants/development.sqlite3`: archives every legacy file in a verified tar.gz, copies all rows, stores each participant's stage sequence (checked against their fingerprint), imports the participant trials' events in their original order with `origin = 'legacy'`, and verifies counts, integrity and foreign keys. Dry run by default; `--apply` refuses an existing target. Deletes nothing. Already applied (2026-11-26). |
 | `interaction_log.py` | The interaction event vocabulary: validates each event's fields (server-only types refused from the browser) and summarises a trial's stored events into measures (`python3 -B src/scripts/interaction_log.py --db PATH [--participant ID]` prints them per trial). Stores nothing itself. |
 | `participant_server.py` | Serves the experiment flow and the scenario content (`src/participant_ui/`). A participant is given one link, `/p/<token>`, and every request after it identifies them by that token alone: which scenario and which transparency condition they are shown comes from their record and their current stage (`participant_flow.py`), so no participant URL contains a stimulus folder or a condition and neither can be edited. The content routes serve `low.json`/`high.json`, the workspace before the agent ran and the hash-checked skill documentation, and only for a stage that is actually showing a scenario; `POST /api/log` takes interaction events. Only the eligible stimuli of the active corpus are servable (default: the corpus the experiment configuration names; `--corpus` overrides it). The researcher routes (`/`, `/chat`, and the `s=<folder>` form of the content routes) are off unless `--researcher-preview` is passed. Every response carries security headers (no caching, no referrer, no framing, a Content-Security-Policy allowing only the server's own files), and the server listens on this computer only: another `--host` needs `--allow-network`, and `--researcher-preview` is refused off 127.0.0.1. |
+| `funnel_server.py` | Remote study sessions: publishes `participant_server.py` (default `study.json`; any configuration, so the setup can be tested on `rehearsal.json` first) at this computer's fixed Tailscale Funnel address, `https://<host>.<tailnet>.ts.net`, with TLS ending on this computer. The server stays on 127.0.0.1 with the configuration's own database and its backups, without `--researcher-preview`. Refuses to publish when Tailscale is not signed in or already shares anything, the port is taken, the database is missing, or, for the study, a consent, questionnaire or completion-screen placeholder is left. Checks the researcher routes answer 404 locally and at the public address. Never prints link tokens. Ctrl+C closes the funnel, clears its configuration and stops the server (shutdown backup). Reuses `rehearsal_tunnel.py`'s route checks and `preflight.check_materials`. See `docs/running_the_study.md`. |
 | `rehearsal_tunnel.py` | Remote rehearsal only: starts `participant_server.py` for a simulated configuration (default `rehearsal.json`; the study configuration is refused, and the database is always the configuration's own) on a free local port without `--researcher-preview`, checks that the researcher routes answer 404, opens a temporary Cloudflare Quick Tunnel (`cloudflared`, an HTTPS `trycloudflare.com` address) to that port alone, repeats the check through the tunnel and prints the rehearsal links with the tunnel address. Ctrl+C closes the tunnel and stops the server. See `docs/running_the_study.md`. |
 | `presentation_edits.py` | Loads `src/data/presentation_edits.json` and applies its exact text replacements to a stimulus's served fields (`user_request`, `final_response`), refusing any edit whose text does not occur the stated number of times. Shared by `participant_server.py` (served views, startup check `check_presentation_edits`) and `review_stimuli.py` (check A5). |
 | `stimulus_text.py` | The wording rules of the action log (action sentence, shown arguments, outcome summary per tool); never copies free text from results. |
@@ -136,7 +137,7 @@ runs the script command shown, nothing more; the scripts' own safeguards apply u
 
 | Port | Used by |
 |---|---|
-| 8765 | the participant flow: `serve-development`, `serve-rehearsal`, `serve-study` (one at a time; the printed participant links use this port) |
+| 8765 | the participant flow: `serve-development`, `serve-rehearsal`, `serve-study`, `funnel-rehearsal`, `funnel-study` (one at a time; the printed participant links use this port) |
 | 8771 | `review-simulated` |
 | 8772 | `review-study` |
 | 8773 | `review-validation` |
@@ -154,13 +155,15 @@ runs the script command shown, nothing more; the scripts' own safeguards apply u
 | `make review-study` | The same for the study corpus (`study.json`) on port 8772. |
 | `make review-validation` | The same for the validation fixture (`validation.json`) on port 8773. |
 | `make tunnel` | `preflight.py --config .../rehearsal.json --port 8780`, then `rehearsal_tunnel.py --port 8780`: the remote rehearsal behind a Cloudflare Quick Tunnel (needs `cloudflared`; see `docs/running_the_study.md`). |
+| `make funnel-rehearsal` | `make preflight-rehearsal`, then `funnel_server.py --experiment-config .../rehearsal.json --port 8765`: the rehearsal published over Tailscale Funnel, to test the remote setup with simulated data (needs the Tailscale app, signed in). |
+| `make funnel-study` | `make preflight-study`, then `funnel_server.py --experiment-config .../study.json --port 8765`: the study published over Tailscale Funnel for remote sessions. Refused while a participant-facing placeholder is left. |
 
 Options: `NO_BACKUP=1` adds `--no-backup` to `serve-development`, `serve-rehearsal` and `tunnel`; `make` refuses
-it for `serve-study`, as the server does. `PYTHON=...` picks the interpreter (default `python3`, 3.10 or newer).
+it for `serve-study` and the `funnel-*` targets, which always back the database up. `PYTHON=...` picks the interpreter (default `python3`, 3.10 or newer).
 
 Safeguards: no target passes `--db`, so each server uses the database its configuration names, and development,
 rehearsal and study data stay separate. No target passes `--host` or `--allow-network`, so every server listens on
-`127.0.0.1` only. Only the `review-*` targets pass `--researcher-preview`, always with the development
+`127.0.0.1` only; only `tunnel` and `funnel-*` make one reachable from other computers, through their scripts' checks. Only the `review-*` targets pass `--researcher-preview`, always with the development
 configuration. Every `serve-*` and `review-*` target refuses to start if its port is taken. Stop a server with
 Ctrl+C in its terminal: `make` passes the interrupt on and waits, so the server writes its shutdown backup exactly
 as when it is started directly.
@@ -195,6 +198,7 @@ python3 -B src/scripts/participant_server.py --experiment-config src/data/experi
 python3 -B src/scripts/participant_server.py --researcher-preview      # also /chat?s=<folder>&c=low|high and the stimulus index at /
 python3 -B src/scripts/participant_server.py --researcher-preview --corpus src/data/corpora/validation.json   # the simulated unsafe stimulus (validation corpus)
 python3 -B src/scripts/participant_server.py --researcher-preview --corpus src/data/corpora/simulated.json    # the 12 simulated unsafe stimuli, for their manual review
+python3 -B src/scripts/funnel_server.py --experiment-config src/data/experiment_configs/rehearsal.json   # remote sessions over Tailscale Funnel (default config: study.json); Ctrl+C closes the funnel and stops the server
 python3 -B src/scripts/rehearsal_tunnel.py   # remote rehearsal: the rehearsal server behind a temporary Cloudflare Quick Tunnel (HTTPS); Ctrl+C stops both
 .venv-agentdojo/bin/python -B src/scripts/build_simulated_stimulus.py   # rebuild the simulated fixture (no API call)
 .venv-agentdojo/bin/python -B src/scripts/assess_reference_recordings.py [--check]   # reference assessment of the recorded attacked runs (no API call)
