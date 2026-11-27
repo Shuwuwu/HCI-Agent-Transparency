@@ -17,7 +17,7 @@ We will collect your responses to the questions asked throughout the study and t
 
 ## How will we protect your privacy?
 
-Study data will be stored on [secure storage platform] and accessed by the research team, consisting of two computer science students at the University of Waterloo. Study data will be retained for at least one year after its last use.
+Study data will be transmitted over an encrypted HTTPS connection and stored on a password-protected, encrypted computer. Backups will be stored on University of Waterloo-managed OneDrive. Access will be restricted to the research team, consisting of two computer science students at the University of Waterloo. Study data will be retained for at least one year after its last use.
 
 ## What are the risks of participating in this study?
 
