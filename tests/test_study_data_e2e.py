@@ -205,6 +205,7 @@ class EndToEndTests(unittest.TestCase):
                 self.assertEqual(sorted(r["stage_key"] for r in responses),
                                  sorted(s["key"] for s in assessments if not s["practice"]))
                 self.assertEqual(sum(r["practice"] for r in responses), 0)
+                self.assertEqual({r["task_completion"] for r in responses}, {"unsure"})  # the fixture's answer
                 condition = self.plan[participant]["condition"]
                 for key, spec in flow.load_questionnaires().items():
                     self.assertEqual(list(store.questionnaire_of(self.conn, participant, key)),

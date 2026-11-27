@@ -11,6 +11,7 @@ Each test server is its own Handler subclass rather than a mutation of participa
 attributes are global: the tests can then run in any order alongside tests/test_participant_server.py.
 """
 
+import copy
 import json
 import shutil
 import sys
@@ -111,7 +112,8 @@ class FlowServer:
     def answers_for(stage, **overrides):
         """A complete, valid set of answers for an assessment stage, as the form would send them."""
         questions = {q["id"]: q for q in stage["assessment"]["questions"]}
-        answers = {"performed_safely": questions["performed_safely"]["options"][0]["id"], "confidence": 3,
+        answers = {"task_completion": questions["task_completion"]["options"][0]["id"],
+                   "performed_safely": questions["performed_safely"]["options"][0]["id"], "confidence": 3,
                    "reasoning": "A test answer.", "sources": [questions["sources"]["options"][0]["id"]],
                    "sha256": stage["assessment"]["sha256"]}
         answers.update(overrides)
@@ -518,10 +520,10 @@ class AssessmentTests(unittest.TestCase):
         participant = participant_with("high")
         plan = {s["key"]: s for s in ep.plan_for(CONFIG, participant, PAYLOAD)["stages"]}
         self.srv.walk(participant, until="trial_01_assessment")
-        self.assertEqual(self.srv.answer(participant, performed_safely="no", confidence=2, reasoning="  why  ",
-                                         sources=["activity", "request"])[0], 200)
+        self.assertEqual(self.srv.answer(participant, task_completion="unsure", performed_safely="no", confidence=2,
+                                         reasoning="  why  ", sources=["activity", "request"])[0], 200)
         self.srv.walk(participant, until="trial_02_assessment")
-        self.assertEqual(self.srv.answer(participant, confidence=5)[0], 200)
+        self.assertEqual(self.srv.answer(participant, task_completion="no", confidence=5)[0], 200)
         rows = self.rows(participant)
         first, second = rows["trial_01_assessment"], rows["trial_02_assessment"]
         for key, row in (("trial_01_assessment", first), ("trial_02_assessment", second)):
@@ -534,6 +536,7 @@ class AssessmentTests(unittest.TestCase):
         self.assertEqual(first["sources"], ["request", "activity"])  # stored in the order offered
         self.assertEqual(first["sources_offered"], ["request", "activity", "response", "workspace", "skills", "other"])
         self.assertEqual(first["sources_other"], "")
+        self.assertEqual((first["task_completion"], second["task_completion"]), ("unsure", "no"))
         self.assertEqual(second["confidence"], 5)
         self.assertNotIn("practice_assessment", rows)
         self.assertEqual(self.experimental_view(participant), ["trial_01_assessment", "trial_02_assessment"])
@@ -541,7 +544,8 @@ class AssessmentTests(unittest.TestCase):
     def test_an_incomplete_or_malformed_answer_is_refused_and_nothing_is_stored(self):
         participant = participant_with("low")
         self.srv.walk(participant, until="trial_01_assessment")
-        for bad in ({"confidence": None}, {"confidence": 0}, {"confidence": 6}, {"confidence": "3"},
+        for bad in ({"task_completion": None}, {"task_completion": "maybe"}, {"task_completion": ["yes"]},
+                    {"confidence": None}, {"confidence": 0}, {"confidence": 6}, {"confidence": "3"},
                     {"confidence": True}, {"confidence": 2.5}, {"performed_safely": None},
                     {"performed_safely": "maybe"}, {"reasoning": "   "}, {"reasoning": "x" * 4001},
                     {"sources": []}, {"sources": ["request", "request"]}, {"sources": ["nonsense"]},
@@ -566,29 +570,77 @@ class AssessmentTests(unittest.TestCase):
         self.assertEqual(self.srv.answer(low, sources=["activity"])[0], 400)
         self.assertEqual(self.rows(low), {})
 
-    def test_other_is_offered_last_and_saved_with_or_without_a_description(self):
+    def test_task_completion_is_asked_first_with_the_files_wording_in_both_conditions(self):
+        """The question added to assessment.json is served first, worded and offered exactly as in the file (whose
+        wording key is "label"), identically in both conditions and on the display-only practice."""
+        raw = json.loads(flow.ASSESSMENT_PATH.read_text(encoding="utf-8"))["task_completion"]
+        served = {}
+        for condition in ("low", "high"):
+            participant = participant_with(condition)
+            for key in ("practice_assessment", "trial_01_assessment"):
+                self.srv.walk(participant, until=key)
+                questions = self.srv.stage(participant)["stage"]["assessment"]["questions"]
+                self.assertEqual([q["id"] for q in questions], list(flow.QUESTIONS))
+                served[condition, key] = questions[0]
+        self.assertEqual(served["low", "trial_01_assessment"],
+                         {"id": "task_completion", "text": raw["label"], "required": raw["required"],
+                          "options": [{"id": o["id"], "label": o["label"]} for o in raw["options"]]})
+        self.assertEqual([o["label"] for o in raw["options"]], ["Yes", "No", "Not sure"])
+        self.assertEqual(len({json.dumps(q, sort_keys=True) for q in served.values()}), 1)
+
+    def test_a_task_completion_the_database_cannot_store_stops_the_loading(self):
+        raw = json.loads(flow.ASSESSMENT_PATH.read_text(encoding="utf-8"))
+        broken = [("options", [{"id": "yes", "label": "Yes"}, {"id": "partly", "label": "Partly"}]),
+                  ("options", [{"id": "yes", "label": "Yes"}, {"id": "yes", "label": "Yes"}]), ("options", []),
+                  ("required", "yes"), ("type", "multiple_choice"), ("label", "  ")]
+        folder = Path(tempfile.mkdtemp())
+        for field, value in broken:
+            with self.subTest(field=field, value=value):
+                spec = copy.deepcopy(raw)
+                spec["task_completion"][field] = value
+                path = folder / "assessment.json"
+                path.write_text(json.dumps(spec), encoding="utf-8")
+                with self.assertRaises(ValueError):
+                    flow.load_assessment(path)
+        self.assertEqual(set(o["id"] for o in raw["task_completion"]["options"]), set(store.TASK_COMPLETION_ANSWERS))
+
+    def test_other_is_offered_last_and_needs_a_description(self):
+        """The shipped questions require a description with "Other" (assessment.json: specify_required true)."""
+        shipped = flow.load_assessment()["sources"]["options"][-1]
+        self.assertEqual((shipped["id"], shipped["specify_required"]), ("other", True))
         for condition in ("low", "high"):
             participant = participant_with(condition)
             self.srv.walk(participant, until="trial_01_assessment")
             stage = self.srv.stage(participant)["stage"]
             options = next(q for q in stage["assessment"]["questions"] if q["id"] == "sources")["options"]
-            self.assertEqual((options[-1]["id"], options[-1]["label"]), ("other", "Other (optional description)"))
+            self.assertEqual((options[-1]["id"], options[-1]["label"]), ("other", shipped["label"]))
+            self.assertTrue(options[-1]["specify_required"])  # the form labels the field optional only when false
         low, high = participant_with("low"), participant_with("high")
-        # A description is never stored without "Other", and it keeps its length limit.
+        # A description is never stored without "Other", keeps its length limit, and cannot be left out or blank.
         for bad in ({"sources": ["request"], "sources_other": "text without Other"},
-                    {"sources": ["other"], "sources_other": "x" * 501}, {"sources": ["other"], "sources_other": 5}):
+                    {"sources": ["other"], "sources_other": "x" * 501}, {"sources": ["other"], "sources_other": 5},
+                    {"sources": ["other"], "sources_other": ""}, {"sources": ["other"], "sources_other": "   "}):
             with self.subTest(bad=bad):
                 self.assertEqual(self.srv.answer(low, **bad)[0], 400)
         self.assertEqual(self.rows(low), {})
-        # "Other" alone (an empty or blank description) is a complete answer and is saved.
-        self.assertEqual(self.srv.answer(low, sources=["other"], sources_other="   ")[0], 200)
-        row = self.rows(low)["trial_01_assessment"]
-        self.assertEqual((row["sources"], row["sources_other"]), (["other"], ""))
-        # A description, when given, is saved with it.
+        # With a description, it is saved (trimmed), and "Other" stays last in the stored order.
         self.assertEqual(self.srv.answer(high, sources=["other", "skills"], sources_other="  a news article  ")[0], 200)
         row = self.rows(high)["trial_01_assessment"]
         self.assertEqual((row["sources"], row["sources_other"]), (["skills", "other"], "a news article"))
         self.assertEqual(row["sources_offered"][-1], "other")
+
+    def test_an_optional_other_description_may_be_left_blank(self):
+        """A question file that sets specify_required false accepts "Other" with no description."""
+        spec = copy.deepcopy(flow.load_assessment())
+        spec["sources"]["options"][-1]["specify_required"] = False
+        answers = {"task_completion": "yes", "performed_safely": "yes", "confidence": 3, "reasoning": "why",
+                   "sources": ["other"],
+                   "sources_other": "   ", "sha256": spec["sha256"]}
+        clean = flow.validate_answers(answers, spec, "low")
+        self.assertEqual((clean["sources"], clean["sources_other"]), (["other"], ""))
+        spec["sources"]["options"][-1]["specify_required"] = True
+        with self.assertRaises(flow.AssessmentError):
+            flow.validate_answers(answers, spec, "low")
 
     def test_submitting_an_assessment_again_keeps_the_first_answers(self):
         participant = participant_with("low")

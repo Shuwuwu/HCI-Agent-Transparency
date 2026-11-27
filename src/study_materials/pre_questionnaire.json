@@ -1,12 +1,12 @@
 {
   "version": "pre_questionnaire_v1",
-  "title": "Before you begin",
+  "title": "Before You Begin",
   "intro": "A few questions about your experience with AI assistants.",
   "items": [
     {
       "id": "ai_chat_frequency",
       "type": "choice",
-      "text": "How often do you use AI chat assistants (for example, ChatGPT, Claude or Gemini)?",
+      "text": "How often do you use AI chat assistants (e.g., ChatGPT, Claude or Gemini)?",
       "required": true,
       "options": [
         {"id": "never", "label": "Never"},
@@ -19,7 +19,7 @@
     {
       "id": "agent_experience",
       "type": "choice",
-      "text": "Have you previously used AI assistants that perform actions on your behalf (for example, sending emails, scheduling events or managing files)?",
+      "text": "Have you previously used AI agents or agentic skills to perform workspace tasks on your behalf (e.g. sending emails, scheduling events or managing files)?",
       "required": true,
       "options": [
         {"id": "never", "label": "No, never"},

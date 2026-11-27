@@ -120,7 +120,7 @@ class SchemaV5Tests(unittest.TestCase):
     """Schema version 5: the stage-sequence snapshot, the events table and the constraints on stored answers."""
 
     RESPONSE = {"trial_id": "P001-t01", "practice": False, "stimulus": "s", "condition": "low",
-                "performed_safely": "yes", "confidence": 3, "reasoning": "r", "sources": ["request"],
+                "task_completion": "yes", "performed_safely": "yes", "confidence": 3, "reasoning": "r", "sources": ["request"],
                 "sources_other": "", "sources_offered": ["request"], "questions_sha256": "0" * 64}
 
     def setUp(self):
@@ -164,14 +164,15 @@ class SchemaV5Tests(unittest.TestCase):
                          len(ep.plan_for(CONFIG, FIRST, PAYLOAD)["stages"]))
 
     def test_out_of_range_answers_are_refused_by_the_database(self):
-        for field, value in (("confidence", 9), ("performed_safely", "maybe"), ("condition", "medium")):
+        for field, value in (("confidence", 9), ("performed_safely", "maybe"), ("condition", "medium"),
+                             ("task_completion", "maybe")):
             with self.subTest(field=field), self.assertRaises(sqlite3.IntegrityError):
                 store.record_response(self.conn, FIRST, "trial_01_assessment", {**self.RESPONSE, field: value})
             self.conn.rollback()
         self.assertIsNone(store.response_of(self.conn, FIRST, "trial_01_assessment"))
         with self.assertRaises(sqlite3.IntegrityError):  # record_response normalises the flag; the table checks it
             self.conn.execute("INSERT INTO responses VALUES (?, 'k', 't', 2, 's', 'low', 'no', 3, 'r', '[]', '[]', "
-                              "'', 'h', 'now')", (FIRST,))
+                              "'', 'h', 'now', NULL)", (FIRST,))
 
     def test_unknown_event_types_and_origins_are_refused_by_the_database(self):
         insert = ("INSERT INTO events (participant_id, trial_id, stage_key, practice, seq, type, origin, server_time) "
@@ -274,7 +275,8 @@ class SchemaV9Tests(unittest.TestCase):
     def test_a_version_8_database_is_upgraded_with_its_events_kept(self):
         path, before = self.make_version_8()
         conn = store.connect(path)
-        self.assertEqual(conn.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()[0], "9")
+        self.assertEqual(conn.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()[0],
+                         str(store.SCHEMA_VERSION))
         self.assertEqual([dict(r) for r in conn.execute("SELECT * FROM events ORDER BY event_id")], before)
         self.assertEqual(self.item_view(conn)["seq"], 2)  # numbering continues after the kept events
         self.assertEqual(conn.execute("SELECT events FROM trial_summary WHERE trial_id = ?",
@@ -290,6 +292,64 @@ class SchemaV9Tests(unittest.TestCase):
         self.assertEqual([dict(r) for r in conn.execute("SELECT * FROM events ORDER BY event_id")], before)
         self.item_view(conn)
         for sql in ("DELETE FROM events", "UPDATE events SET duration_ms = 1"):
+            with self.subTest(sql=sql), self.assertRaises(sqlite3.IntegrityError):
+                conn.execute(sql)
+            conn.rollback()
+
+
+class SchemaV10Tests(unittest.TestCase):
+    """Schema version 10: responses.task_completion, added to an existing database without changing its rows (they
+    keep NULL, meaning the question was not asked), and the trial_summary view showing it."""
+
+    OLD_RESPONSE = {"trial_id": f"{FIRST}-t01", "practice": False, "stimulus": "s", "condition": "low",
+                    "task_completion": None, "performed_safely": "yes", "confidence": 4, "reasoning": "r",
+                    "sources": ["request"], "sources_other": "", "sources_offered": ["request"],
+                    "questions_sha256": "0" * 64}
+
+    def make_version_9(self, environment=None):
+        """A database in the version 9 layout (no task_completion column, the old trial_summary) holding one
+        response; returns its path and that response as stored."""
+        path = temp_db()
+        conn = store.connect(path)
+        store.enrol(conn, CONFIG, FIRST, PAYLOAD)
+        store.record_response(conn, FIRST, "trial_01_assessment", self.OLD_RESPONSE)
+        old_views = store.VIEWS.replace("r.task_completion, ", "")
+        self.assertNotEqual(old_views, store.VIEWS)
+        conn.executescript("DROP VIEW participant_overview; DROP VIEW trial_summary; DROP VIEW experimental_events;"
+                           "ALTER TABLE responses DROP COLUMN task_completion;" + old_views)
+        if environment == "study":
+            conn.execute("UPDATE participants SET simulated = 0")
+            conn.execute("INSERT INTO meta (key, value) VALUES ('environment', 'study')")
+            conn.executescript(store.STUDY_TRIGGERS)
+        conn.execute("UPDATE meta SET value = '9' WHERE key = 'schema_version'")
+        conn.commit()
+        before = dict(conn.execute("SELECT * FROM responses").fetchone())
+        self.assertNotIn("task_completion", before)
+        conn.close()
+        return path, before
+
+    def test_a_version_9_database_gains_the_column_with_its_answers_kept(self):
+        path, before = self.make_version_9()
+        conn = store.connect(path)
+        self.assertEqual(conn.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()[0], "10")
+        after = dict(conn.execute("SELECT * FROM responses").fetchone())
+        self.assertEqual(after, {**before, "task_completion": None})  # every stored value unchanged
+        self.assertEqual([r[1] for r in conn.execute("PRAGMA table_info(responses)")], list(store.RESPONSE_COLUMNS))
+        summary = conn.execute("SELECT * FROM trial_summary WHERE trial_id = ?", (f"{FIRST}-t01",)).fetchone()
+        self.assertIn("task_completion", summary.keys())  # the view was re-created with the new column
+        self.assertIsNone(summary["task_completion"])
+        stored = store.record_response(conn, FIRST, "trial_02_assessment",
+                                       {**self.OLD_RESPONSE, "trial_id": f"{FIRST}-t02", "task_completion": "unsure"})
+        self.assertEqual(stored["task_completion"], "unsure")
+        with self.assertRaises(sqlite3.IntegrityError):  # the added column keeps its CHECK
+            store.record_response(conn, FIRST, "trial_03_assessment",
+                                  {**self.OLD_RESPONSE, "trial_id": f"{FIRST}-t03", "task_completion": "maybe"})
+
+    def test_a_version_9_study_database_stays_append_only_after_the_upgrade(self):
+        path, before = self.make_version_9("study")
+        conn = store.connect(path, "study")
+        self.assertEqual(dict(conn.execute("SELECT * FROM responses").fetchone()), {**before, "task_completion": None})
+        for sql in ("DELETE FROM responses", "UPDATE responses SET task_completion = 'yes'"):
             with self.subTest(sql=sql), self.assertRaises(sqlite3.IntegrityError):
                 conn.execute(sql)
             conn.rollback()
@@ -522,7 +582,8 @@ class ResetTests(unittest.TestCase):
 
     def test_a_simulated_participant_restarts_at_consent_with_the_same_link(self):
         store.record_response(self.conn, FIRST, "practice_assessment", {
-            "trial_id": "x", "practice": True, "stimulus": "s", "condition": "low", "performed_safely": "yes",
+            "trial_id": "x", "practice": True, "stimulus": "s", "condition": "low", "task_completion": None,
+            "performed_safely": "yes",
             "confidence": 3, "reasoning": "r", "sources": ["request"], "sources_other": "", "sources_offered": ["request"],
             "questions_sha256": "0" * 64})
         cleared = store.reset(self.conn, CONFIG, FIRST, PAYLOAD)

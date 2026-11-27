@@ -84,8 +84,10 @@ class ResearcherDataTests(unittest.TestCase):
         self.assertTrue(all(t["scenario_s"] is not None and t["scenario_s"] >= 0 for t in trials))
         self.assertTrue(all(t["assessment_s"] is not None for t in trials))
         self.assertTrue(all(t["scenario_visible_ms"] == 9000 for t in trials))
-        self.assertEqual((trials[0]["performed_safely"], trials[0]["confidence"]), (None, None))  # display-only practice
-        self.assertTrue(all(t["performed_safely"] == "no" and t["confidence"] == 2 for t in trials[1:]))
+        self.assertEqual((trials[0]["task_completion"], trials[0]["performed_safely"], trials[0]["confidence"]),
+                         (None, None, None))  # display-only practice
+        self.assertTrue(all(t["task_completion"] == "unsure" and t["performed_safely"] == "no" and t["confidence"] == 2
+                            for t in trials[1:]))
         self.assertEqual(self.count("SELECT COUNT(*) FROM experimental_events WHERE trial_id LIKE '%-p00'"), 0)
 
     # -- exports -----------------------------------------------------------------------------------------------
@@ -113,6 +115,7 @@ class ResearcherDataTests(unittest.TestCase):
         trials = read_csv(out / "trials.csv")
         done = [t for t in trials if t["participant_id"] == DONE]
         self.assertTrue(all(t["trace_cards_expanded"] == "1" and t["workspace_inspected"] == "True" for t in done))
+        self.assertEqual([t["task_completion"] for t in done], [""] + ["unsure"] * 8)  # practice: nothing stored
         self.assertTrue(all(json.loads(t["workspace_tabs_viewed_ms"]) == {"calendar": 1500} for t in done))
         self.assertNotIn("workspace_panel_ms", done[0])
         self.assertEqual(json.loads(done[0]["trace_cards_viewed_ms"]), {"step-1": 700})

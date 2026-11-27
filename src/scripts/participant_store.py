@@ -23,9 +23,14 @@ Purpose:
 
     Assessment responses. The answers a participant gives after each conversation (`responses`): one row per
     assessment stage, keyed by participant and stage, carrying the trial id, a `practice` flag, the stimulus and
-    condition the trial showed, the four answers (with the optional description given with "Other" in
-    `sources_other`, empty when there is none), the information sources that were offered, and the SHA-256 of the question text. The practice row is flagged so analysis can leave it out; the `experimental_responses`
-    view is the responses without it. Only the first submission of a stage is kept.
+    condition the trial showed, the five answers (whether the user's request was completed, `task_completion`;
+    whether the assistant behaved safely; confidence; the reasoning; the information sources, with the description
+    given with "Other" in `sources_other`, empty when "Other" was not chosen or, under a question that leaves it
+    optional, left blank), the information sources that were offered, and the SHA-256 of the question text.
+    `task_completion` was added in schema version 10: rows stored before then keep NULL there, meaning the
+    question was not asked. The practice row is flagged so analysis can leave it out (the practice questions are
+    now display-only and store nothing); the `experimental_responses` view is the responses without it. Only the
+    first submission of a stage is kept.
 
     Stage sequence. At enrolment the participant's whole stage sequence is copied into `plan_stages` (scenario,
     stimulus, stimulus version, condition, practice flag and trial ids, in order), so the database alone says
@@ -60,7 +65,7 @@ Outputs:
     configuration provenance, stage fingerprint, timestamps), `plan_stages` (their stage sequence, one row per
     stage), `progress` (one row per stage a participant has entered, with its completion time), `consents` (at
     most one row per participant: when they agreed, and the consent text and its hash), `responses` (one row per
-    completed assessment), `events` (interaction events), `questionnaire_responses` (both questionnaires, one row
+    completed experimental assessment), `events` (interaction events), `questionnaire_responses` (both questionnaires, one row
     per item asked) and the view `experimental_responses` (responses without the practice). CHECK constraints
     refuse out-of-range answers, unknown event types and conditions. Researcher views (no link tokens):
     `participant_overview` (one row per participant: condition, consent, how far they are, counts), `trial_summary`
@@ -105,10 +110,15 @@ TOKEN_BYTES = 24  # 32 URL-safe characters
 #    replace the JSON-lines log files) and CHECK constraints on responses; 6: questionnaire_responses;
 # 7: the researcher views participant_overview, trial_summary and experimental_events (VIEWS);
 # 8: questionnaire_responses.stage_key (the pre-study questionnaire is stored in the same table);
-# 9: the event type workspace_item_view (the events table is rebuilt, since SQLite cannot change a CHECK).
-SCHEMA_VERSION = 9
+# 9: the event type workspace_item_view (the events table is rebuilt, since SQLite cannot change a CHECK);
+# 10: responses.task_completion (NULL in rows stored before the question was asked) and trial_summary showing it.
+SCHEMA_VERSION = 10
 STAGE_KINDS = ("consent", "scenario", "assessment", "questionnaire", "completion")  # as experiment_plan.STAGE_KINDS
 CONDITIONS = ("low", "high")
+# The answers responses.task_completion accepts: the option ids of assessment.json's task_completion question
+# (participant_flow.load_assessment refuses a file whose options are not among these), and '' for the question
+# left unanswered where the file makes it optional.
+TASK_COMPLETION_ANSWERS = ("yes", "no", "unsure")
 # Every interaction event type the database accepts. interaction_log.EVENT_FIELDS validates the fields of each
 # type and must name exactly these (tests/test_interaction_log.py checks it); session_start and stage_load are
 # written by the server only.
@@ -139,14 +149,19 @@ CREATE TABLE IF NOT EXISTS responses (
     reasoning        TEXT NOT NULL,
     sources          TEXT NOT NULL,         -- JSON list of the selected source ids, in the order offered
     sources_offered  TEXT NOT NULL,         -- JSON list of the source ids this participant could choose from
-    sources_other    TEXT NOT NULL DEFAULT '', -- the optional description given with "Other"; '' when none
+    sources_other    TEXT NOT NULL DEFAULT '', -- the description given with "Other"; '' when "Other" not chosen
     questions_sha256 TEXT NOT NULL,         -- of src/study_materials/assessment.json as served
     submitted_at     TEXT NOT NULL,
+    -- Added in version 10, last so a fresh table and an upgraded one have the same columns in the same order.
+    -- NULL: a row stored before the question was asked.
+    task_completion  TEXT CHECK (task_completion IS NULL OR task_completion IN {_in(('',) + TASK_COMPLETION_ANSWERS)}),
     PRIMARY KEY (participant_id, stage_key)
 );"""
 RESPONSE_COLUMNS = ("participant_id", "stage_key", "trial_id", "practice", "stimulus", "condition",
                     "performed_safely", "confidence", "reasoning", "sources", "sources_offered", "sources_other",
-                    "questions_sha256", "submitted_at")
+                    "questions_sha256", "submitted_at", "task_completion")
+TASK_COMPLETION_COLUMN = ("task_completion", f"TEXT CHECK (task_completion IS NULL OR task_completion IN "
+                                             f"{_in(('',) + TASK_COMPLETION_ANSWERS)})")
 
 # The events table on its own, so the version 9 upgrade (_rebuild_events) can re-create it.
 EVENTS_TABLE = f"""CREATE TABLE IF NOT EXISTS events (
@@ -261,7 +276,7 @@ SELECT s.participant_id, s.trial_id, s.trial_ordinal,
             AND e.trial_id = s.trial_id AND e.type = 'scenario_visible') AS scenario_visible_ms,
        ap.entered_at AS assessment_entered_at, ap.completed_at AS assessment_completed_at,
        ROUND((julianday(ap.completed_at) - julianday(ap.entered_at)) * 86400, 3) AS assessment_s,
-       r.performed_safely, r.confidence, r.reasoning, r.sources, r.sources_other, r.sources_offered,
+       r.task_completion, r.performed_safely, r.confidence, r.reasoning, r.sources, r.sources_other, r.sources_offered,
        r.questions_sha256, r.submitted_at,
        (SELECT COUNT(*) FROM events e WHERE e.participant_id = s.participant_id AND e.trial_id = s.trial_id
             AND e.type = 'stage_load') AS stage_loads,
@@ -367,11 +382,14 @@ def connect(path: Path, environment: str | None = None) -> sqlite3.Connection:
         _add_column_if_missing(conn, "responses", "sources_other", "TEXT NOT NULL DEFAULT ''")  # version 4
         _add_column_if_missing(conn, "questionnaire_responses", "stage_key",
                                "TEXT NOT NULL DEFAULT 'questionnaire'")  # version 8
+        _add_column_if_missing(conn, "responses", *TASK_COMPLETION_COLUMN)  # version 10: NULL in existing rows
         conn.commit()
         if int(row["value"]) < 5:
             _rebuild_responses(conn, path)
         if int(row["value"]) < 9:
             _rebuild_events(conn, path)
+        if int(row["value"]) < 10:
+            _recreate_views(conn, path)
         conn.execute("UPDATE meta SET value = ? WHERE key = 'schema_version'", (str(SCHEMA_VERSION),))
         conn.commit()
     _check_environment(conn, path, environment)
@@ -477,6 +495,25 @@ def _rebuild_events(conn: sqlite3.Connection, path: Path) -> None:
     except sqlite3.DatabaseError as exc:
         conn.rollback()
         raise StoreError(f"{path}: cannot upgrade the events table to schema version 9: {exc}") from exc
+
+
+def _recreate_views(conn: sqlite3.Connection, path: Path) -> None:
+    """Version 10: re-create the researcher views (VIEWS) so trial_summary shows responses.task_completion. A
+    view keeps the definition it was created with, and CREATE VIEW IF NOT EXISTS leaves an existing one alone, so
+    an upgraded database would otherwise keep the old column list. Views hold no data; nothing stored changes.
+    All or nothing: on any error the database is left as it was and StoreError is raised."""
+    views = [line.split()[5] for line in VIEWS.splitlines() if line.startswith("CREATE VIEW")]
+    try:
+        conn.execute("BEGIN")
+        for view in views:
+            conn.execute(f"DROP VIEW IF EXISTS {view}")
+        for statement in VIEWS.split(";"):  # the view definitions contain no semicolons of their own
+            if statement.strip():
+                conn.execute(statement)
+        conn.commit()
+    except sqlite3.DatabaseError as exc:
+        conn.rollback()
+        raise StoreError(f"{path}: cannot upgrade the researcher views to schema version 10: {exc}") from exc
 
 
 def _add_column_if_missing(conn: sqlite3.Connection, table: str, column: str, declaration: str) -> None:
@@ -624,8 +661,8 @@ def record_consent(conn: sqlite3.Connection, participant: str, consent_sha256: s
     return consent_of(conn, participant)
 
 
-RESPONSE_FIELDS = ("trial_id", "practice", "stimulus", "condition", "performed_safely", "confidence", "reasoning",
-                   "sources", "sources_other", "sources_offered", "questions_sha256")
+RESPONSE_FIELDS = ("trial_id", "practice", "stimulus", "condition", "task_completion", "performed_safely",
+                   "confidence", "reasoning", "sources", "sources_other", "sources_offered", "questions_sha256")
 
 
 def record_response(conn: sqlite3.Connection, participant: str, stage_key: str, response: dict,

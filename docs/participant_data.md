@@ -81,7 +81,8 @@ or with `brew install --cask db-browser-for-sqlite`.
    - `trial_summary`: one row per trial (practice included, marked by `trial_type`). It holds the scenario,
      stimulus version (`practice`, `safe` or `unsafe`), stimulus folder and condition. It also has when the
      scenario and its assessment were entered and completed, plus `scenario_s`, `assessment_s` and
-     `scenario_visible_ms`. Then come the four answers and the number of page loads and events.
+     `scenario_visible_ms`. Then come the answers (`task_completion`, `performed_safely`, `confidence`,
+     `reasoning`, `sources`, `sources_other`) and the number of page loads and events.
    - `experimental_responses` and `experimental_events`: answers and events without the practice trial.
 3. **Filter by participant.** Type the participant ID (for example `P001`) in the filter box above the
    `participant_id` column.
@@ -102,7 +103,7 @@ SELECT * FROM events             WHERE participant_id = 'P001' ORDER BY trial_id
 How each experimental trial went, for all participants:
 
 ```sql
-SELECT participant_id, trial_ordinal, stimulus_version, condition, performed_safely, confidence,
+SELECT participant_id, trial_ordinal, stimulus_version, condition, task_completion, performed_safely, confidence,
        scenario_s, scenario_visible_ms, assessment_s
 FROM trial_summary WHERE trial_type = 'experimental' ORDER BY participant_id, trial_ordinal;
 ```
@@ -133,7 +134,7 @@ Do not edit data in DB Browser. In a study database, the triggers refuse edits a
 | `plan_stages` | stage of a participant's sequence | `stage_index`, `stage_key`, `kind`, `trial_id`, `trial_ordinal`, `practice`, `scenario`, `stimulus_version`, `stimulus`, `condition` |
 | `progress` | stage a participant has entered | `entered_at` (first arrival), `completed_at` |
 | `consents` | participant who agreed | `agreed_at`, `consent_sha256`, `consent_text` (the exact text agreed to) |
-| `responses` | completed experimental assessment (the practice questions are display-only and store nothing; rows with `practice` = 1 exist only from the earlier interactive practice) | `performed_safely`, `confidence` (1–5), `reasoning`, `sources` and `sources_offered` (JSON lists), `sources_other`, `questions_sha256`, `submitted_at` |
+| `responses` | completed experimental assessment (the practice questions are display-only and store nothing; rows with `practice` = 1 exist only from the earlier interactive practice) | `task_completion` (`yes`, `no` or `unsure`; NULL in rows stored before schema version 10, when the question was not asked), `performed_safely`, `confidence` (1–5), `reasoning`, `sources` and `sources_offered` (JSON lists), `sources_other` (the description required with "Other"; `''` when "Other" was not chosen), `questions_sha256`, `submitted_at` |
 | `events` | interaction event | `trial_id`, `stage_key`, `practice`, `seq` (order of arrival within the trial), `type`, `origin` (`browser`, `server`, or `legacy` for events imported from the retired files), `tab`, `item_id`, `skill_id`, `card_id`, `duration_ms`, `client_ms` (browser clock), `server_time` |
 | `questionnaire_responses` | participant and questionnaire item asked | `stage_key` (`pre_questionnaire` or `questionnaire`, the post-study one), `item_id`, `answer` (`''` for an optional item left blank), `questionnaire_sha256`, `submitted_at` |
 | `meta` | setting | `schema_version`, `environment`, `legacy_import` |
@@ -172,7 +173,7 @@ on every run, so never edit them; change nothing but the database, and only thro
 | File | One row per | Notes |
 |---|---|---|
 | `participants.csv` | participant | `participant_overview` |
-| `trials.csv` | trial | `trial_summary`, plus the measures of `interaction_log.summarize`: Skills tab and skill-document use, `workspace_inspected` (the participant chose a tab or opened an item, the Skills tab or a skill document; the panel being open by default never counts), tabs and items (items opened, and `workspace_items_viewed_ms`, the viewing time per item as `{tab: {item_id: ms}}`), activity cards expanded and viewed. Dict-valued measures are JSON. `trial_type` is `practice` or `experimental`. |
+| `trials.csv` | trial | `trial_summary` (including the answers, with `task_completion`), plus the measures of `interaction_log.summarize`: Skills tab and skill-document use, `workspace_inspected` (the participant chose a tab or opened an item, the Skills tab or a skill document; the panel being open by default never counts), tabs and items (items opened, and `workspace_items_viewed_ms`, the viewing time per item as `{tab: {item_id: ms}}`), activity cards expanded and viewed. Dict-valued measures are JSON. `trial_type` is `practice` or `experimental`. |
 | `progress.csv` | stage entered | stage kind, trial and `trial_type` |
 | `events.csv` | event | with `trial_type` |
 | `questionnaire.csv` | participant and item asked | long format, both questionnaires, with `stage_key`; `answer` coding below |

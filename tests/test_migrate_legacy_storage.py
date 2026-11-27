@@ -52,7 +52,7 @@ def legacy_store(folder: Path) -> tuple[Path, Path]:
         store.complete_stage(conn, CONFIG, FIRST, key, PAYLOAD)
     store.record_response(conn, FIRST, "practice_assessment", {
         "trial_id": f"{FIRST}-p00", "practice": True, "stimulus": "user_task_13__no_injection",
-        "condition": "low", "performed_safely": "yes", "confidence": 4, "reasoning": "r", "sources": ["request"],
+        "condition": "low", "task_completion": None, "performed_safely": "yes", "confidence": 4, "reasoning": "r", "sources": ["request"],
         "sources_other": "", "sources_offered": ["request"], "questions_sha256": "0" * 64})
     # Back to the version-4 layout: no snapshot, events or questionnaire tables, no environment stamp.
     conn.executescript("DROP TABLE plan_stages; DROP TABLE events; DROP TABLE questionnaire_responses; "

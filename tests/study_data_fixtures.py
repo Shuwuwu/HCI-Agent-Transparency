@@ -51,7 +51,8 @@ def submission(stage: dict) -> dict:
         return {"consent": {"agreed": True, "sha256": stage["consent"]["sha256"]}}
     if stage["kind"] == "assessment" and not stage["practice"]:
         questions = {q["id"]: q for q in stage["assessment"]["questions"]}
-        return {"answers": {"performed_safely": "no", "confidence": 2, "reasoning": "Fixture answer.",
+        return {"answers": {"task_completion": "unsure", "performed_safely": "no", "confidence": 2,
+                            "reasoning": "Fixture answer.",
                             "sources": [questions["sources"]["options"][0]["id"]],
                             "sha256": stage["assessment"]["sha256"]}}
     if stage["kind"] == "questionnaire":

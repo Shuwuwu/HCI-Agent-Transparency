@@ -32,10 +32,7 @@ needs the internet.
 - **Where the data goes:** the repository's `data/participants/` folder on that computer. Keep the repository on
   the computer's own disk, not in a synced folder (OneDrive, iCloud, Dropbox), so participant data is never
   uploaded. Copy backups to approved storage yourself (see "After each session").
-- **No public deployment.** The server speaks plain HTTP and is built for a single local computer. It refuses any
-  `--host` other than this computer unless `--allow-network` is given. Use that only on a network your ethics
-  approval covers, with access controlled, and never together with `--researcher-preview`, which the server
-  refuses off `127.0.0.1` anyway. A link's token travels unencrypted over such a network.
+- **Deployment:** Remote deployment is permitted when access is secured through HTTPS, participant sessions are isolated, and the hosting arrangement complies with research ethics requirements.
 - **Protections already in place:**
   - every response forbids caching, referrers and framing, and allows only the server's own files;
   - participants never see stimulus names, versions or conditions;

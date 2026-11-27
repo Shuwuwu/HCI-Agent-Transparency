@@ -26,9 +26,10 @@ Inputs:
     written as a task-list item ("- [ ] I agree to ..."). It is read on every request, so the text served and the
     text recorded are always the current file.
 
-    Assessment. Every assessment stage, practice and experimental alike, shows the same four questions in the same
-    order: whether the assistant performed the task safely, confidence (1-5, no default), the reasoning, and the
-    information sources that influenced the judgment. The sources offered are those the participant's view
+    Assessment. Every assessment stage, practice and experimental alike, shows the same five questions in the same
+    order: whether the user's request was completed successfully (task_completion: Yes / No / Not sure), whether
+    the assistant's behaviour was safe, confidence (1-5, no default), the reasoning, and the information sources
+    that influenced the judgment. Their wording and options are those of src/study_materials/assessment.json. The sources offered are those the participant's view
     actually contains (the assistant's activity only where the action log is shown). An experimental
     assessment's answers are validated here, never trusted from the browser, and stored in the same transaction
     as the stage completion (participant_store.record_response), against the participant id and the trial id.
@@ -93,7 +94,8 @@ PRE_QUESTIONNAIRE_PATH = ep.ROOT / "src" / "study_materials" / "pre_questionnair
 # The file each questionnaire stage (experiment_plan.QUESTIONNAIRE_STAGES) is asked from.
 QUESTIONNAIRES = {ep.PRE_QUESTIONNAIRE_KEY: PRE_QUESTIONNAIRE_PATH, ep.POST_QUESTIONNAIRE_KEY: QUESTIONNAIRE_PATH}
 QUESTIONNAIRE_TYPES = ("scale", "choice", "text")
-QUESTIONS = ("performed_safely", "confidence", "reasoning", "sources")  # the order they are asked in
+# The order the questions are asked in (the order of assessment.json).
+QUESTIONS = ("task_completion", "performed_safely", "confidence", "reasoning", "sources")
 # Which conditions show each optional part of the interface; a source marked "shown_with" one of these parts is
 # offered only to participants whose view contains it.
 SHOWN_WITH = {"activity_log": ("high",)}
@@ -129,15 +131,33 @@ class AssessmentError(ValueError):
 def load_assessment(path=ASSESSMENT_PATH) -> dict:
     """The assessment questions: the parsed file plus its "sha256", which each stored response records.
 
-    Raises ValueError if a question is missing, the confidence scale is not a range of whole numbers with anchors
-    inside it, an option list is empty or repeats an id, or a source names an unknown "shown_with" part, so a
-    broken file stops the server at startup (participant_server.main) instead of at a participant's first trial.
+    Every question's wording is returned under "text". task_completion has its wording under "label" in the file
+    (and "type": "single_choice"); the loader copies it to "text", so the file itself, and its hash, stay as they
+    are.
+
+    Raises ValueError if a question is missing or has no wording, the confidence scale is not a range of whole
+    numbers with anchors inside it, an option list is empty or repeats an id, task_completion is not a single
+    choice with a true/false "required" and options the database accepts (participant_store
+    .TASK_COMPLETION_ANSWERS), or a source names an unknown "shown_with" part, so a broken file stops the server
+    at startup (participant_server.main) instead of at a participant's first trial.
     """
     raw = Path(path).read_bytes()
     spec = json.loads(raw)
     missing = [q for q in QUESTIONS if q not in spec]
     if missing:
         raise ValueError(f"{path}: missing questions {missing}")
+    for q in QUESTIONS:
+        wording = spec[q].get("text", spec[q].get("label"))
+        if not isinstance(wording, str) or not wording.strip():
+            raise ValueError(f"{path}: {q} needs its wording under \"text\" (or \"label\")")
+        spec[q]["text"] = wording
+    completion = spec["task_completion"]
+    answers = [o.get("id") for o in completion.get("options", [])]
+    if (completion.get("type", "single_choice") != "single_choice" or not isinstance(completion.get("required"), bool)
+            or not answers or len(set(answers)) != len(answers)
+            or not set(answers) <= set(store.TASK_COMPLETION_ANSWERS)):
+        raise ValueError(f"{path}: task_completion must be a single choice with a true/false required and distinct "
+                         f"options among {store.TASK_COMPLETION_ANSWERS}")
     scale = spec["confidence"]
     if not (isinstance(scale.get("min"), int) and isinstance(scale.get("max"), int) and scale["min"] < scale["max"]
             and all(scale["min"] <= int(k) <= scale["max"] for k in scale.get("anchors", {}))):
@@ -173,21 +193,26 @@ def assessment_for(stage: dict, spec: dict | None = None) -> dict:
          **({"specify": True, "specify_required": o.get("specify_required", True), "max_chars": o["max_chars"]}
             if o.get("specify") else {})}
         for o in offered_sources(spec, stage["condition"])]}
+    completion = spec["task_completion"]
+    sent = {"sources": sources,
+            "task_completion": {"text": completion["text"], "required": completion["required"],
+                                "options": [{"id": o["id"], "label": o["label"]} for o in completion["options"]]}}
     return {"intro": spec["intro"], "sha256": spec["sha256"],
-            "questions": [{"id": q, **(sources if q == "sources" else spec[q])} for q in QUESTIONS]}
+            "questions": [{"id": q, **sent.get(q, spec[q])} for q in QUESTIONS]}
 
 
 def validate_answers(answers, spec: dict, condition: str) -> dict:
     """The submitted answers, checked and normalised, or AssessmentError.
 
-    `answers` is what the browser sent: {"performed_safely", "confidence", "reasoning", "sources", "sources_other",
-    "sha256"}.
-    performed_safely must be one of the options; confidence a whole number on the scale (a bool, a string or a
+    `answers` is what the browser sent: {"task_completion", "performed_safely", "confidence", "reasoning",
+    "sources", "sources_other", "sha256"}.
+    task_completion must be one of its options (Yes / No / Not sure), or missing only where the file makes the
+    question optional (stored as ''); performed_safely must be one of the options; confidence a whole number on the scale (a bool, a string or a
     missing value is refused, so nothing is ever recorded by default); reasoning text no longer than max_chars
     (surrounding whitespace removed); sources distinct ids from the sources offered in `condition`, returned in
     the order offered; sources_other the description of the source marked "specify" ("Other"): required when
-    that source is chosen only if it is marked "specify_required" (the default; the shipped questions set it to
-    false, so "Other" is saved with or without a description), and refused when the source is not chosen, so a
+    that source is chosen only if it is marked "specify_required" (the default, and what the shipped questions
+    set, so "Other" is refused without a description; with false it is saved with or without one), and refused when the source is not chosen, so a
     stored description always belongs to a chosen "Other". A required question left unanswered is refused. The hash must match the current questions,
     so an answer is never stored against wording the participant did not see.
     """
@@ -195,6 +220,11 @@ def validate_answers(answers, spec: dict, condition: str) -> dict:
         raise AssessmentError("answers must be an object")
     if answers.get("sha256") != spec["sha256"]:
         raise AssessmentError("the questions changed after the page was loaded")
+    completion = answers.get("task_completion")
+    if completion is None and not spec["task_completion"]["required"]:
+        completion = ""
+    elif not isinstance(completion, str) or completion not in {o["id"] for o in spec["task_completion"]["options"]}:
+        raise AssessmentError("task_completion must be one of the options")
     safely = answers.get("performed_safely")
     if safely is None and not spec["performed_safely"]["required"]:
         safely = ""
@@ -231,7 +261,7 @@ def validate_answers(answers, spec: dict, condition: str) -> dict:
             raise AssessmentError("the other information is too long")
     elif other:
         raise AssessmentError("sources_other is only accepted with the source that asks to specify")
-    return {"performed_safely": safely, "confidence": confidence, "reasoning": reasoning,
+    return {"task_completion": completion, "performed_safely": safely, "confidence": confidence, "reasoning": reasoning,
             "sources": [s for s in offered if s in chosen], "sources_other": other, "sources_offered": offered}
 
 

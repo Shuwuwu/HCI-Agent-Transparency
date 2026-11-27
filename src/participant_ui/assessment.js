@@ -2,12 +2,13 @@
  * Purpose:
  *   The questions a participant answers after each conversation, as one reusable form: the practice questions and
  *   every trial's assessment are drawn by this same component, so the wording, order and layout are identical
- *   everywhere; only the heading differs. The four questions, in order:
- *     1. whether the assistant performed the requested task safely (Yes / No);
- *     2. confidence, on a five-stop slider whose stops are radio buttons, so nothing is selected until the
+ *   everywhere; only the heading differs. The five questions, in order:
+ *     1. whether the user's request was completed successfully (one choice among the options the server sends);
+ *     2. whether the assistant's behaviour was safe (Yes / No);
+ *     3. confidence, on a five-stop slider whose stops are radio buttons, so nothing is selected until the
  *        participant picks a stop: a rating is never recorded by default;
- *     3. the reasoning (free text);
- *     4. the information that influenced the answer (checkboxes; only the options the server sends). An option
+ *     4. the reasoning (free text);
+ *     5. the information that influenced the answer (checkboxes; only the options the server sends). An option
  *        marked "specify" (Other) shows a text field while it is ticked; the text is required only when the
  *        option is also marked "specify_required".
  *   The form only collects and checks answers for the participant's benefit; the server checks them again and is
@@ -24,7 +25,8 @@
  * Outputs:
  *   The form drawn into `container`. render() returns {collect, showErrors, showMessage}:
  *     collect()          {answers, errors}: answers as POST /api/stage/complete expects them
- *                        ({performed_safely, confidence, reasoning, sources, sources_other, sha256}) and the
+ *                        ({task_completion, performed_safely, confidence, reasoning, sources, sources_other,
+ *                        sha256}) and the
  *                        list of questions
  *                        still unanswered or invalid ([{id, message}]).
  *     showErrors(errors) marks those questions, describes the problem next to each, and focuses the first.
@@ -46,6 +48,7 @@
   }
 
   const MESSAGES = {
+    task_completion: "Please choose one option.",
     performed_safely: "Please choose Yes or No.",
     confidence: "Please choose a rating on the scale.",
     reasoning: "Please explain your reasoning.",
@@ -78,12 +81,16 @@
     return wrap;
   }
 
+  /** A row of radio buttons, one per option the server sends, none selected at first. */
+  function singleChoice(set, id, q) {
+    const row = el("div", "q-choices q-inline");
+    q.options.forEach((o) => row.appendChild(choice("radio", id, o.id, o.label, id + "-" + o.id)));
+    set.appendChild(row);
+  }
+
   const BUILDERS = {
-    performed_safely(set, id, q) {
-      const row = el("div", "q-choices q-inline");
-      q.options.forEach((o) => row.appendChild(choice("radio", id, o.id, o.label, id + "-" + o.id)));
-      set.appendChild(row);
-    },
+    task_completion: singleChoice,
+    performed_safely: singleChoice,
     // A slider of discrete stops. Each stop is a radio button (keyboard: arrow keys; screen readers announce the
     // number and its anchor), and no stop starts selected.
     confidence(set, id, q) {
@@ -119,7 +126,7 @@
       q.options.forEach((o) => {
         const item = choice("checkbox", id, o.id, o.label, id + "-" + o.id);
         list.appendChild(item);
-        if (o.specify) list.appendChild(specifyField(item.querySelector("input"), id + "-" + o.id, o.max_chars));
+        if (o.specify) list.appendChild(specifyField(item.querySelector("input"), id + "-" + o.id, o.max_chars, o.specify_required));
       });
       set.appendChild(list);
     },
@@ -127,8 +134,9 @@
 
   /** The text field of an option that asks the participant to specify, shown while `box` is ticked. Once it has
    *  appeared, unticking keeps its line (invisible) rather than removing it, so the page cannot shorten and jump
-   *  under the participant's pointer. The text is kept if the box is ticked again, but sent only while ticked. */
-  function specifyField(box, id, maxChars) {
+   *  under the participant's pointer. The text is kept if the box is ticked again, but sent only while ticked.
+   *  The field is labelled optional only when the option does not require the text (`required` false). */
+  function specifyField(box, id, maxChars, required) {
     const wrap = el("div", "q-specify");
     wrap.hidden = true;
     const input = el("input", "q-specify-input");
@@ -136,8 +144,8 @@
     input.id = id + "-text";
     input.name = id + "-text";
     input.maxLength = maxChars;
-    input.placeholder = "Description (optional)";
-    input.setAttribute("aria-label", "Description of the other information (optional)");
+    input.placeholder = required ? "Description" : "Description (optional)";
+    input.setAttribute("aria-label", "Description of the other information" + (required ? "" : " (optional)"));
     wrap.appendChild(input);
     box.addEventListener("change", () => {
       if (box.checked) {
@@ -208,6 +216,7 @@
     }
 
     function collect() {
+      const completion = picked("task_completion", "radio")[0];
       const safely = picked("performed_safely", "radio")[0];
       const rating = picked("confidence", "radio")[0];
       const reasoning = sets.reasoning.querySelector("textarea").value.trim();
@@ -218,6 +227,7 @@
       const otherOption = byId.sources.options.find((o) => o.specify && sources.includes(o.id));
       const otherTicked = !!otherOption;
       const errors = [];
+      if (!completion && byId.task_completion.required) errors.push({ id: "task_completion" });
       if (!safely && byId.performed_safely.required) errors.push({ id: "performed_safely" });
       if (!rating) errors.push({ id: "confidence" }); // a rating is never recorded by default
       if (!reasoning && byId.reasoning.required) errors.push({ id: "reasoning" });
@@ -227,7 +237,8 @@
       }
       errors.forEach((e) => { e.message = e.message || MESSAGES[e.id]; });
       return {
-        answers: { performed_safely: safely, confidence: rating ? Number(rating) : null, reasoning: reasoning,
+        answers: { task_completion: completion, performed_safely: safely,
+                   confidence: rating ? Number(rating) : null, reasoning: reasoning,
                    sources: sources, sources_other: otherTicked ? other : "", sha256: spec.sha256 },
         errors: errors,
       };
