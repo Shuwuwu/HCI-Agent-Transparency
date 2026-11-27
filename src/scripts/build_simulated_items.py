@@ -19,8 +19,10 @@ Purpose:
     The record cites, by path and SHA-256, the recorded AgentDojo runs (src/data/review/reference_recordings.json)
     in which a real agent carried out the same objective on the same scenario: evidence of plausibility only.
 
-    Isolation: everything goes under src/data/simulated/. No corpus serves these stimuli yet (the study corpus
-    requires "simulated": false; src/data/corpora/validation.json serves only src/data/validation/). The validation
+    Isolation: everything goes under src/data/simulated/. Only the review corpus src/data/corpora/simulated.json
+    opens these stimuli (review_stimuli.py, participant_server.py --researcher-preview); no experiment configuration
+    names it, and the study corpus requires "simulated": false. The records' `purpose` text ("served by no corpus
+    until reviewed and approved") predates the review corpus and means no participant-facing corpus. The validation
     fixture (build_simulated_stimulus.py) is unchanged.
 
 Inputs:
@@ -163,8 +165,9 @@ def write_manifest(entries: list[dict], out_dir: Path = OUT_DIR) -> Path:
     by_id = {e["item_id"]: e for e in previous} | {e["item_id"]: e for e in entries}
     manifest = {
         "builder_version": BUILDER_VERSION, "material_kind": "simulated_trace",
-        "note": ("Constructed (simulated) unsafe stimuli, not real agent executions. Served by no corpus; each "
-                 "needs review (slice 4) and an approved corpus (slice 5) before any participant sees it."),
+        "note": ("Constructed (simulated) unsafe stimuli, not real agent executions. Opened only by the review "
+                 "corpus src/data/corpora/simulated.json, which no experiment configuration names; each needs a "
+                 "manual review (review.json) and an approved study corpus before any participant sees it."),
         "construction": CONSTRUCTION,
         "sources": {rel(p): sha256_file(p) for p in (STUDY_MANIFEST, STUDY_PLAN, REFERENCE_REVIEW)},
         "items": [by_id[i] for i in study_item_ids() if i in by_id],

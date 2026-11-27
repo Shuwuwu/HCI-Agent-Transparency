@@ -12,7 +12,8 @@
       "A6": "The high condition's actions equal the execution record's tool calls, in order.",
       "A7": "The served workspace is the before state only, and its replay matched every saved tool result.",
       "A8": "Every skill of the execution loads (hash-checked) and has documentation text.",
-      "A9": "No researcher-only identifier (folder name, stimulus id, run id, item id, strategy or condition name) appears in anything served to a participant for this stimulus."
+      "A9": "No researcher-only identifier (folder name, stimulus id, run id, item id, strategy or condition name) appears in anything served to a participant for this stimulus.",
+      "A10": "Provenance: the execution record matches the SHA-256 in the stimulus provenance. For a simulated record also: its safe run and every skill file match their SHA-256, the recorded attack calls open the trace, its inclusion check passed, and its material kind (if given) is simulated_trace."
     },
     "manual": {
       "M1": "The user request is clear on its own.",
@@ -62,6 +63,10 @@
           "detail": "no skills, or an empty skill document"
         },
         "A9": {
+          "pass": true,
+          "detail": ""
+        },
+        "A10": {
           "pass": true,
           "detail": ""
         }
@@ -123,6 +128,10 @@
         "A9": {
           "pass": true,
           "detail": ""
+        },
+        "A10": {
+          "pass": true,
+          "detail": ""
         }
       },
       "automated_pass": true,
@@ -180,6 +189,10 @@
           "detail": "no skills, or an empty skill document"
         },
         "A9": {
+          "pass": true,
+          "detail": ""
+        },
+        "A10": {
           "pass": true,
           "detail": ""
         }
@@ -241,6 +254,10 @@
         "A9": {
           "pass": true,
           "detail": ""
+        },
+        "A10": {
+          "pass": true,
+          "detail": ""
         }
       },
       "automated_pass": true,
@@ -298,6 +315,10 @@
           "detail": "no skills, or an empty skill document"
         },
         "A9": {
+          "pass": true,
+          "detail": ""
+        },
+        "A10": {
           "pass": true,
           "detail": ""
         }
@@ -359,6 +380,10 @@
         "A9": {
           "pass": true,
           "detail": ""
+        },
+        "A10": {
+          "pass": true,
+          "detail": ""
         }
       },
       "automated_pass": true,
@@ -416,6 +441,10 @@
           "detail": "no skills, or an empty skill document"
         },
         "A9": {
+          "pass": true,
+          "detail": ""
+        },
+        "A10": {
           "pass": true,
           "detail": ""
         }
@@ -477,6 +506,10 @@
         "A9": {
           "pass": true,
           "detail": ""
+        },
+        "A10": {
+          "pass": true,
+          "detail": ""
         }
       },
       "automated_pass": true,
@@ -534,6 +567,10 @@
           "detail": "no skills, or an empty skill document"
         },
         "A9": {
+          "pass": true,
+          "detail": ""
+        },
+        "A10": {
           "pass": true,
           "detail": ""
         }
@@ -595,6 +632,10 @@
         "A9": {
           "pass": true,
           "detail": ""
+        },
+        "A10": {
+          "pass": true,
+          "detail": ""
         }
       },
       "automated_pass": true,
@@ -652,6 +693,10 @@
           "detail": "no skills, or an empty skill document"
         },
         "A9": {
+          "pass": true,
+          "detail": ""
+        },
+        "A10": {
           "pass": true,
           "detail": ""
         }
@@ -713,6 +758,10 @@
         "A9": {
           "pass": true,
           "detail": ""
+        },
+        "A10": {
+          "pass": true,
+          "detail": ""
         }
       },
       "automated_pass": true,
@@ -770,6 +819,10 @@
           "detail": "no skills, or an empty skill document"
         },
         "A9": {
+          "pass": true,
+          "detail": ""
+        },
+        "A10": {
           "pass": true,
           "detail": ""
         }
@@ -831,6 +884,10 @@
         "A9": {
           "pass": true,
           "detail": ""
+        },
+        "A10": {
+          "pass": true,
+          "detail": ""
         }
       },
       "automated_pass": true,
@@ -888,6 +945,10 @@
           "detail": "no skills, or an empty skill document"
         },
         "A9": {
+          "pass": true,
+          "detail": ""
+        },
+        "A10": {
           "pass": true,
           "detail": ""
         }
@@ -949,6 +1010,10 @@
         "A9": {
           "pass": true,
           "detail": ""
+        },
+        "A10": {
+          "pass": true,
+          "detail": ""
         }
       },
       "automated_pass": true,
@@ -1006,6 +1071,10 @@
           "detail": "no skills, or an empty skill document"
         },
         "A9": {
+          "pass": true,
+          "detail": ""
+        },
+        "A10": {
           "pass": true,
           "detail": ""
         }
@@ -1067,6 +1136,10 @@
         "A9": {
           "pass": true,
           "detail": ""
+        },
+        "A10": {
+          "pass": true,
+          "detail": ""
         }
       },
       "automated_pass": true,
@@ -1126,6 +1199,10 @@
         "A9": {
           "pass": true,
           "detail": ""
+        },
+        "A10": {
+          "pass": true,
+          "detail": ""
         }
       },
       "automated_pass": true,
@@ -1183,6 +1260,10 @@
           "detail": "no skills, or an empty skill document"
         },
         "A9": {
+          "pass": true,
+          "detail": ""
+        },
+        "A10": {
           "pass": true,
           "detail": ""
         }

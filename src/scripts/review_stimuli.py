@@ -1,9 +1,10 @@
 """
 Purpose:
     A reproducible review of the stimuli of a corpus, and the record of its status. Two parts:
-      * AUTOMATED checks (A1-A9), recomputed every time, that a stimulus is complete, consistent between the
-        low and high transparency conditions, faithful to the execution record behind it, and free of
-        researcher-only information in anything a participant can receive;
+      * AUTOMATED checks (A1-A10), recomputed every time, that a stimulus is complete, consistent between the
+        low and high transparency conditions, faithful to the execution record behind it, free of
+        researcher-only information in anything a participant can receive, and traceable to hashed sources
+        (for a simulated record also: its safe run, skills, attack calls and inclusion verdict);
       * a MANUAL checklist (M1-M7) that only a researcher can answer (is the final response consistent with the
         actions, is the wording neutral, is the classification right). This script never fills it in: answers are
         recorded with --mark, together with a hash of the stimulus content, so a stimulus that changes after its
@@ -60,6 +61,9 @@ AUTOMATED = {
     "A8": "Every skill of the execution loads (hash-checked) and has documentation text.",
     "A9": "No researcher-only identifier (folder name, stimulus id, run id, item id, strategy or condition name) "
           "appears in anything served to a participant for this stimulus.",
+    "A10": "Provenance: the execution record matches the SHA-256 in the stimulus provenance. For a simulated record "
+           "also: its safe run and every skill file match their SHA-256, the recorded attack calls open the trace, "
+           "its inclusion check passed, and its material kind (if given) is simulated_trace.",
 }
 MANUAL = {
     "M1": "The user request is clear on its own.",
@@ -95,7 +99,9 @@ def load_context(folder: str) -> dict:
            "workspace_file": (ws_dir / "workspace.json").is_file(), "eligible": ps.is_eligible(folder),
            "listed": folder in ps.list_stimulus_ids()}
     ctx["prov"] = json.loads((stim_dir / "provenance.json").read_text(encoding="utf-8"))
-    ctx["record"] = json.loads((ps.ROOT / ctx["prov"]["source"]["file"]).read_text(encoding="utf-8"))
+    record_bytes = (ps.ROOT / ctx["prov"]["source"]["file"]).read_bytes()
+    ctx["record"] = json.loads(record_bytes)
+    ctx["record_sha256"] = hashlib.sha256(record_bytes).hexdigest()
     ctx["ws_prov"] = (json.loads((ws_dir / "provenance.json").read_text(encoding="utf-8"))
                       if (ws_dir / "provenance.json").is_file() else None)
     ctx["low"], ctx["high"] = ps.participant_view(folder, "low"), ps.participant_view(folder, "high")
@@ -115,7 +121,8 @@ def researcher_only_identifiers(ctx: dict) -> list[str]:
     record, prov = ctx["record"], ctx["prov"]
     names = {ctx["folder"], prov.get("stimulus_id"), record.get("run_id"), record.get("condition"),
              (record.get("injection") or {}).get("item_id"), (record.get("injection") or {}).get("strategy"),
-             "important_instructions", "tool_knowledge", "skills-v4b", "inj-v1", "simulated-ui-validation"}
+             "important_instructions", "tool_knowledge", "skills-v4b", "inj-v1", "simulated-ui-validation",
+             "simulated-v1", "simulated_trace"}
     return sorted(n for n in names if n)
 
 
@@ -125,8 +132,46 @@ def _result(ok: bool, detail: str = "") -> dict:
     return {"pass": bool(ok), "detail": detail}
 
 
+def file_matches(path: str | None, digest: str | None) -> bool:
+    """True if a repository-relative file exists and has this SHA-256."""
+    if not path or not digest or not (ps.ROOT / path).is_file():
+        return False
+    return hashlib.sha256((ps.ROOT / path).read_bytes()).hexdigest() == digest
+
+
+def provenance_problems(ctx: dict) -> list[str]:
+    """What A10 finds wrong with a stimulus's provenance (empty list: complete and verifiable).
+
+    Every stimulus: its execution record must match the SHA-256 the stimulus provenance recorded. A simulated record
+    (constructed, not executed) must also carry what makes it reproducible and honest: the genuine safe run it was
+    built from and every skill file, each matching its SHA-256; the attack calls, which must be the first tool calls
+    of the trace (the construction inserts them before the agent's first reply); an inclusion check that passed; and,
+    when the record states a material kind, "simulated_trace"."""
+    record, problems = ctx["record"], []
+    if ctx.get("record_sha256") != ctx["prov"]["source"].get("sha256"):
+        problems.append("the execution record does not match the SHA-256 in the stimulus provenance")
+    if not record.get("simulated"):
+        return problems
+    simulation = record.get("simulation") or {}
+    safe = simulation.get("safe_run") or {}
+    if not file_matches(safe.get("file"), safe.get("sha256")):
+        problems.append("the safe run is missing or does not match its SHA-256")
+    if not record.get("skills") or not all(file_matches(s.get("file"), s.get("sha256")) for s in record["skills"]):
+        problems.append("a skill file is missing or does not match its SHA-256")
+    attack = simulation.get("attack_calls") or []
+    calls = [{"function": c["function"], "args": c["args"]}
+             for m in record["trace"] if m["role"] == "assistant" for c in m.get("tool_calls") or []]
+    if not attack or calls[:len(attack)] != attack:
+        problems.append("the recorded attack calls are missing or do not open the trace")
+    if (simulation.get("inclusion_check") or {}).get("included") is not True:
+        problems.append("the inclusion check is missing or did not pass")
+    if record.get("material_kind", "simulated_trace") != "simulated_trace":
+        problems.append(f"material kind {record['material_kind']!r} on a simulated record")
+    return problems
+
+
 def run_checks(ctx: dict) -> dict:
-    """The automated checks A1-A9 on a loaded context: {check id: {"pass", "detail"}}."""
+    """The automated checks A1-A10 on a loaded context: {check id: {"pass", "detail"}}."""
     low, high, record = ctx["low"], ctx["high"], ctx["record"]
     trace = high.get("trace", [])
     actions = [s for s in trace if s["type"] == "action"]
@@ -154,6 +199,8 @@ def run_checks(ctx: dict) -> dict:
     text = served_text(ctx)
     leaks = [n for n in researcher_only_identifiers(ctx) if n in text]
     out["A9"] = _result(not leaks, f"served text contains: {leaks}" if leaks else "")
+    problems = provenance_problems(ctx)
+    out["A10"] = _result(not problems, "; ".join(problems))
     return out
 
 

@@ -21,6 +21,7 @@ from participant_http import preview_handler  # noqa: E402
 
 STUDY = ROOT / "src" / "data" / "corpora" / "study.json"
 VALIDATION = ROOT / "src" / "data" / "corpora" / "validation.json"
+SIMULATED = ROOT / "src" / "data" / "corpora" / "simulated.json"
 ALL_PASS = {k: "pass" for k in rv.MANUAL}
 
 
@@ -29,7 +30,7 @@ class RealDataTests(unittest.TestCase):
         ps.use_corpus(STUDY)
 
     def test_every_check_passes_for_every_stimulus_of_both_corpora(self):
-        for path, count in ((STUDY, 20), (VALIDATION, 1)):
+        for path, count in ((STUDY, 20), (VALIDATION, 1), (SIMULATED, 12)):
             ps.use_corpus(path)
             record = rv.review_corpus()
             self.assertEqual(len(record["stimuli"]), count)
@@ -41,11 +42,12 @@ class RealDataTests(unittest.TestCase):
     def test_classifications(self):
         ps.use_corpus(STUDY)
         self.assertEqual({e["classification"] for e in rv.review_corpus()["stimuli"].values()}, {"safe"})
-        ps.use_corpus(VALIDATION)
-        self.assertEqual({e["classification"] for e in rv.review_corpus()["stimuli"].values()}, {"unsafe-simulated"})
+        for path in (VALIDATION, SIMULATED):
+            ps.use_corpus(path)
+            self.assertEqual({e["classification"] for e in rv.review_corpus()["stimuli"].values()}, {"unsafe-simulated"})
 
     def test_committed_review_records_are_up_to_date(self):
-        for path in (STUDY, VALIDATION):
+        for path in (STUDY, VALIDATION, SIMULATED):
             ps.use_corpus(path)
             saved = rv.read_record(ps.CORPUS["review_path"])
             self.assertIsNotNone(saved, f"run review_stimuli.py --write for {path.name}")
@@ -119,6 +121,49 @@ class DefectDetectionTests(unittest.TestCase):
         self.assertIn("A9", self.failing(lambda c: c["low"].update(final_response="see " + folder)))
         self.assertIn("A9", self.failing(lambda c: c["workspace"]["account"].update(note=run_id)))
         self.assertIn("A9", self.failing(lambda c: next(iter(c["skill_docs"].values())).update(markdown="tool_knowledge")))
+
+    def test_a10_record_differs_from_its_provenance_hash(self):
+        self.assertIn("A10", self.failing(lambda c: c.update(record_sha256="0" * 64)))
+
+
+class SimulatedProvenanceTests(unittest.TestCase):
+    """A10 on a simulated stimulus: each part of a constructed record's provenance is required."""
+
+    @classmethod
+    def setUpClass(cls):
+        ps.use_corpus(SIMULATED)
+        cls.good = rv.load_context("user_task_9__g4_ii_w3v3")
+
+    @classmethod
+    def tearDownClass(cls):
+        ps.use_corpus(STUDY)
+
+    def problems(self, mutate):
+        ctx = copy.deepcopy(self.good)
+        mutate(ctx)
+        return rv.provenance_problems(ctx)
+
+    def test_the_unmodified_context_passes(self):
+        self.assertEqual(self.problems(lambda c: None), [])
+        self.assertEqual(rv.run_checks(copy.deepcopy(self.good))["A10"]["pass"], True)
+
+    def test_each_missing_or_wrong_part_fails(self):
+        sim = lambda c: c["record"]["simulation"]  # noqa: E731
+        cases = {
+            "safe run": lambda c: sim(c)["safe_run"].update(sha256="0" * 64),
+            "skill file": lambda c: c["record"]["skills"][0].update(sha256="0" * 64),
+            "attack calls": lambda c: sim(c)["attack_calls"].reverse(),
+            "no attack calls": lambda c: sim(c).update(attack_calls=[]),
+            "inclusion check": lambda c: sim(c)["inclusion_check"].update(included=False),
+            "material kind": lambda c: c["record"].update(material_kind="recorded_execution"),
+        }
+        for name, mutate in cases.items():
+            self.assertEqual(len(self.problems(mutate)), 1, name)
+
+    def test_a9_flags_the_simulated_labels(self):
+        ctx = copy.deepcopy(self.good)
+        ctx["low"]["final_response"] += " simulated_trace"
+        self.assertFalse(rv.run_checks(ctx)["A9"]["pass"])
 
 
 class StatusAndMarkTests(unittest.TestCase):

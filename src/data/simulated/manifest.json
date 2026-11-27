@@ -1,7 +1,7 @@
 {
   "builder_version": "simulated_items_v1",
   "material_kind": "simulated_trace",
-  "note": "Constructed (simulated) unsafe stimuli, not real agent executions. Served by no corpus; each needs review (slice 4) and an approved corpus (slice 5) before any participant sees it.",
+  "note": "Constructed (simulated) unsafe stimuli, not real agent executions. Opened only by the review corpus src/data/corpora/simulated.json, which no experiment configuration names; each needs a manual review (review.json) and an approved study corpus before any participant sees it.",
   "construction": {
     "attack_calls": "AgentDojo's minimal correct-solution calls (ground_truth) of the item's injection task, with the item's attacker identity",
     "attack_position": "before the agent's first reply",

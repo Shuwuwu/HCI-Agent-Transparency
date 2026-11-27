@@ -1,6 +1,7 @@
 """Tests of build_simulated_items.py and its outputs in src/data/simulated/: every simulated unsafe stimulus is
 labelled as constructed, traceable to hashed inputs, differs from its genuine safe run only by the attack, passes the
-inclusion checks, cites only real reference recordings, and is served by no corpus. Rebuilding the records needs
+inclusion checks, cites only real reference recordings, and is reachable only through the review corpus
+(src/data/corpora/simulated.json), which no experiment configuration names. Rebuilding the records needs
 AgentDojo (.venv-agentdojo); that test is skipped without it. No model is called."""
 
 import hashlib
@@ -118,10 +119,13 @@ class SimulatedItemsTest(unittest.TestCase):
             safe = load(f"src/data/workspace/{e['scenario']}__no_injection/workspace.json")
             self.assertEqual(simulated["before"], safe["before"])
 
-    def test_served_by_no_corpus(self):
-        for path in (ROOT / "src" / "data" / "corpora").glob("*.json"):
-            corpus = json.loads(path.read_text(encoding="utf-8"))
-            self.assertNotIn("src/data/simulated", json.dumps(corpus), path.name)
+    def test_only_the_review_corpus_refers_to_them_and_no_experiment_uses_it(self):
+        corpora = ROOT / "src" / "data" / "corpora"
+        referring = {p.name for p in corpora.glob("*.json") if "src/data/simulated" in p.read_text(encoding="utf-8")}
+        self.assertEqual(referring, {"simulated.json"})
+        self.assertTrue(all(rule.get("simulated") is True for rule in load(corpora / "simulated.json")["rules"]))
+        for config in (ROOT / "src" / "data" / "experiment_configs").glob("*.json"):
+            self.assertNotIn("simulated.json", config.read_text(encoding="utf-8"), config.name)
         study = load("src/data/corpora/study.json")
         self.assertTrue(all(rule.get("simulated") is False for rule in study["rules"]))
 

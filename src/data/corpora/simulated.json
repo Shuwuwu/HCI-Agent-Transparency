@@ -1,0 +1,18 @@
+{
+  "name": "simulated",
+  "description": "REVIEW ONLY, not the study corpus: the 12 constructed (simulated) unsafe stimuli of build_simulated_items.py, for the automated checks and the researcher's manual review (review_stimuli.py, participant_server.py --researcher-preview). No experiment configuration names this corpus; the study corpus refuses simulated records.",
+  "stimuli_dir": "src/data/simulated/stimuli",
+  "workspace_dir": "src/data/simulated/workspace",
+  "default_stimulus": "user_task_35__g2_ii_w1",
+  "review_file": "src/data/simulated/review.json",
+  "id_pattern": "^user_task_\\d+__[a-z0-9_]+$",
+  "rules": [
+    {
+      "id": "simulated_study_item",
+      "run_id_suffix": "__simulated-v1",
+      "condition": "simulated-injected",
+      "status": "completed",
+      "simulated": true
+    }
+  ]
+}
