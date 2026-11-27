@@ -12,7 +12,9 @@ a "no suitable step" answer instead of pressuring a retry; (5) an accepted candi
 reproducible, carry the anchor and its rationale, and never collide with the study manifest; (6) an accepted
 candidate's manifest entry is shaped so that build_injection_plan.build_plan (unmodified) can turn it into a
 runnable plan, demonstrating reuse of the existing execution/evaluation code without actually building or running
-one.
+one; (7) the committed manifest's study_use block (WG is supplementary material, never a study item) states only
+facts that match the attempt logs, evaluations, run files and scenario selection, survives the generator rewriting
+the manifest, and no WG item appears in a study artifact.
 """
 
 import hashlib
@@ -412,6 +414,92 @@ class ReuseOfExecutionCodeTests(unittest.TestCase):
             tampered["item_sha256"] = "0" * 64
             with self.assertRaises(ValueError):
                 bip.build_plan({"items": [tampered]}, FACTS, attempts=1)
+
+
+class StudyUseRecordTests(unittest.TestCase):
+    """The committed WG manifest's study_use block (WG = supplementary material, never a study item): every fact it
+    states is checked against the files it describes, the generator keeps the block when it rewrites the manifest,
+    and no WG item reaches a study artifact."""
+
+    GENERATED = ROOT / "src" / "data" / "injected_skills" / "generated"
+
+    @classmethod
+    def setUpClass(cls):
+        cls.manifest = json.loads((cls.GENERATED / "manifest.json").read_text(encoding="utf-8"))
+        cls.block = cls.manifest["study_use"]
+        cls.attempts = [json.loads(p.read_text(encoding="utf-8"))
+                        for p in sorted(cls.GENERATED.glob("runs/*/attempt_*.json"))]
+        with (ROOT / "src" / "data" / "scenario_selection.csv").open(encoding="utf-8", newline="") as f:
+            cls.selection = {r["scenario"]: r for r in __import__("csv").DictReader(f)}
+
+    def test_marked_supplementary_and_every_item_assessed(self):
+        self.assertEqual(self.block["status"], "supplementary")
+        self.assertIn("participant stimuli", self.block["not_used_for"])
+        self.assertEqual(set(self.block["item_assessments"]), {i["item_id"] for i in self.manifest["items"]})
+
+    def test_attempt_counts_match_the_attempt_logs(self):
+        counts = self.block["attempts"]
+        self.assertEqual(counts["total"], len(self.attempts))
+        self.assertEqual(counts["accepted"], sum(1 for a in self.attempts if a["accepted"]))
+        no_step = [a for a in self.attempts if a.get("no_suitable_step")]
+        self.assertEqual(counts["no_suitable_step"], len(no_step))
+        self.assertEqual(sorted(counts["no_suitable_step_scenarios"]),
+                         sorted(a["item_id"].split("__")[0] for a in no_step))
+
+    def test_executions_match_the_evaluations_and_files(self):
+        evaluations = {}
+        for ev in self.block["evaluations"]:
+            path = ROOT / ev["file"]
+            self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), ev["sha256"], ev["file"])
+            evaluations.update({e["item_id"]: e
+                                for e in json.loads(path.read_text(encoding="utf-8"))["evaluations"]})
+        for item_id, assessment in self.block["item_assessments"].items():
+            run = assessment["execution"]
+            self.assertEqual(hashlib.sha256((ROOT / run["run"]).read_bytes()).hexdigest(), run["sha256"])
+            ev = evaluations[item_id]
+            self.assertEqual(run["security"], ev["security_recomputed"])
+            self.assertEqual(run["goal_calls_in_trace"], ev["goal_calls_in_trace"])
+            self.assertEqual(run["utility_tolerant"], ev["utility_tolerant"])
+            self.assertTrue(run["run"].endswith(ev["run_id"] + ".json"))
+
+    def test_plan_and_compatibility_claims_match_scenario_selection(self):
+        for item in self.manifest["items"]:
+            assessment = self.block["item_assessments"][item["item_id"]]
+            row = self.selection[item["scenario"]]
+            self.assertEqual(assessment["planned_item"], row["planned_item_id"])
+            self.assertEqual(assessment["objective_matches_plan"], item["objective"] == row["attacker_objective"])
+            self.assertEqual(assessment["objective_compatible"],
+                             item["objective"] in row["compatible_objectives"].split("|"))
+
+    def test_clause_claims_match_the_accepted_attempts(self):
+        clauses = {a["item_id"]: a["clause"] for a in self.attempts if a["accepted"]}
+        self.assertEqual(set(clauses), set(self.block["item_assessments"]))
+        self.assertTrue(all("Emma Johnson" not in c for c in clauses.values()))  # no authority claim
+        self.assertEqual([i for i, c in clauses.items() if "`" in c], ["user_task_9__g2_ii_wg_id10"])  # names a tool
+
+    def test_generator_keeps_the_block_when_it_rewrites_the_manifest(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out_dir = Path(tmp)
+            (out_dir / "manifest.json").write_text(json.dumps(self.manifest), encoding="utf-8")
+            gen.write_manifest({"item_id": "user_task_0__g1_ii_wg"}, out_dir)
+            rewritten = json.loads((out_dir / "manifest.json").read_text(encoding="utf-8"))
+        self.assertEqual(rewritten["study_use"], self.block)
+
+    def test_no_wg_item_reaches_a_study_artifact(self):
+        ids = {i["item_id"] for i in self.manifest["items"]}
+        data = ROOT / "src" / "data"
+        study_files = [data / "injected_skills" / "manifest.json", data / "execution" / "plan_injected_v1.json",
+                       data / "execution" / "plan_injected_wording_pilot.json",
+                       data / "validation" / "participant_assignments.json",
+                       *sorted((data / "experiment_configs").glob("*.json"))]
+        for path in study_files:
+            text = path.read_text(encoding="utf-8")
+            self.assertFalse([i for i in ids if i in text], path)
+        self.assertFalse([p for p in (data / "stimuli").iterdir() if p.name in ids])
+        study = json.loads((data / "corpora" / "study.json").read_text(encoding="utf-8"))
+        run_ids = [p.stem for p in (self.GENERATED / "executions" / "runs").glob("*.json")]
+        suffixes = [r["run_id_suffix"] for r in study["rules"]]
+        self.assertFalse([r for r in run_ids if any(r.endswith(s) for s in suffixes)])
 
 
 class NoModelCallTests(unittest.TestCase):
