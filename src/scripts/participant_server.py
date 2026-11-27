@@ -687,7 +687,10 @@ def main():
     flow.load_assessment()  # likewise the assessment questions
     flow.load_questionnaire()  # and the post-study questionnaire
     use_corpus(args.corpus if args.corpus is not None else config["corpus_path"])
-    check_practice_presentation(config)
+    if Path(CORPUS["path"]).resolve() == Path(config["corpus_path"]).resolve():
+        # The practice is served from the configuration's own corpus. A --corpus that differs (a researcher preview
+        # of the validation or simulated corpus) need not contain it, so the check applies only to that corpus.
+        check_practice_presentation(config)
     db_path = args.db or config["database_path"]
     if not db_path.is_file():
         parser.error(f"{db_path} does not exist: enrol participants first (participant_store.py --enrol-all)")

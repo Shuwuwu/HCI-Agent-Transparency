@@ -223,6 +223,36 @@ class HardeningTest(unittest.TestCase):
         self.assertEqual(preview.returncode, 2)
         self.assertIn("127.0.0.1 only", preview.stderr)
 
+    def test_a_researcher_preview_of_another_corpus_starts(self):
+        """--corpus may name a corpus without the practice stimulus (validation, simulated): the practice check
+        applies only to the configuration's own corpus, so the preview server starts instead of stopping."""
+        import socket
+        import tempfile
+        import participant_store as store
+        with tempfile.TemporaryDirectory() as tmp, socket.socket() as probe:
+            probe.bind(("127.0.0.1", 0))
+            port = probe.getsockname()[1]
+            probe.close()
+            db = Path(tmp) / "development.sqlite3"
+            store.connect(db, "development").close()
+            for corpus in ("validation.json", "simulated.json"):
+                proc = subprocess.Popen(  # -u: unbuffered, so the "Serving on" line arrives at once
+                    [sys.executable, "-B", "-u", str(ps.ROOT / "src" / "scripts" / "participant_server.py"),
+                     "--researcher-preview", "--corpus", str(ps.ROOT / "src" / "data" / "corpora" / corpus),
+                     "--port", str(port), "--db", str(db), "--no-backup"],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                try:
+                    lines = []
+                    for line in proc.stdout:  # ends at "Serving on", or at EOF if the server stopped at startup
+                        lines.append(line)
+                        if line.startswith("Serving on"):
+                            break
+                    self.assertTrue(lines and lines[-1].startswith("Serving on"),
+                                    (corpus, lines, proc.poll() is not None and proc.stderr.read()))
+                finally:
+                    proc.terminate()
+                    proc.communicate(timeout=10)
+
 
 if __name__ == "__main__":
     unittest.main()
