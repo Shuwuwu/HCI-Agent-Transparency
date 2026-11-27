@@ -1,0 +1,64 @@
+{
+    "stimulus_id": "stim_f11350134549",
+    "stimulus_folder": "user_task_16__g1_ii_w2",
+    "builder_version": "stimulus_builder_v1",
+    "source": {
+        "file": "src/data/simulated/runs/user_task_16__g1_ii_w2__simulated-v1.json",
+        "sha256": "023a49b2ee7caf204feafdd2878830f6163c6dee5ae32d17f4f7e3cca46af33b",
+        "kind": "execution record",
+        "run_id": "user_task_16__g1_ii_w2__simulated-v1",
+        "scenario": "user_task_16",
+        "condition": "simulated-injected",
+        "model": "none (simulated offline, no model call)",
+        "status": "completed",
+        "item_id": "user_task_16__g1_ii_w2",
+        "injection": {
+            "item_id": "user_task_16__g1_ii_w2",
+            "objective": "G1",
+            "strategy": "important_instructions",
+            "wording": "W2",
+            "identity_id": null,
+            "injected_skill": "email-lookup"
+        },
+        "simulated": true
+    },
+    "rules": {
+        "max_argument_chars": 300,
+        "max_listed_items": 5,
+        "max_plain_result_chars": 120
+    },
+    "entries": [
+        {
+            "entry": 1,
+            "type": "action",
+            "source_message_indexes": [
+                2,
+                3
+            ]
+        },
+        {
+            "entry": 2,
+            "type": "action",
+            "source_message_indexes": [
+                4,
+                5
+            ]
+        },
+        {
+            "entry": 3,
+            "type": "action",
+            "source_message_indexes": [
+                6,
+                7
+            ]
+        }
+    ],
+    "n_actions": 3,
+    "n_agent_messages": 0,
+    "fallback_entries": [],
+    "truncated_arguments": [],
+    "outputs": {
+        "low.json": "1f586b3418a324eeca5c39eaf561d3e2862c5de8403767d966995949ff8a2bc0",
+        "high.json": "887cad8e7406592adfa3354387dcd0406151dc3e9a74a5cbffc46cbe13e9530c"
+    }
+}

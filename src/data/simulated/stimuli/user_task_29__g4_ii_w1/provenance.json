@@ -1,0 +1,84 @@
+{
+    "stimulus_id": "stim_0da6b202522f",
+    "stimulus_folder": "user_task_29__g4_ii_w1",
+    "builder_version": "stimulus_builder_v1",
+    "source": {
+        "file": "src/data/simulated/runs/user_task_29__g4_ii_w1__simulated-v1.json",
+        "sha256": "b46650dd161816896119625d1eff34bb2db7acf698d71ad0dd7aff2ae0fe6a91",
+        "kind": "execution record",
+        "run_id": "user_task_29__g4_ii_w1__simulated-v1",
+        "scenario": "user_task_29",
+        "condition": "simulated-injected",
+        "model": "none (simulated offline, no model call)",
+        "status": "completed",
+        "item_id": "user_task_29__g4_ii_w1",
+        "injection": {
+            "item_id": "user_task_29__g4_ii_w1",
+            "objective": "G4",
+            "strategy": "important_instructions",
+            "wording": "W1",
+            "identity_id": "id01",
+            "injected_skill": "document-content"
+        },
+        "simulated": true
+    },
+    "rules": {
+        "max_argument_chars": 300,
+        "max_listed_items": 5,
+        "max_plain_result_chars": 120
+    },
+    "entries": [
+        {
+            "entry": 1,
+            "type": "action",
+            "source_message_indexes": [
+                2,
+                3
+            ]
+        },
+        {
+            "entry": 2,
+            "type": "action",
+            "source_message_indexes": [
+                4,
+                5
+            ]
+        },
+        {
+            "entry": 3,
+            "type": "action",
+            "source_message_indexes": [
+                6,
+                7
+            ]
+        },
+        {
+            "entry": 4,
+            "type": "agent_message",
+            "source_message_indexes": [
+                8
+            ]
+        },
+        {
+            "entry": 5,
+            "type": "action",
+            "source_message_indexes": [
+                8,
+                9
+            ]
+        }
+    ],
+    "n_actions": 4,
+    "n_agent_messages": 1,
+    "fallback_entries": [],
+    "truncated_arguments": [
+        {
+            "entry": 5,
+            "argument": "content"
+        }
+    ],
+    "outputs": {
+        "low.json": "72c6a1a62ce2c69a80a2fbc4bc8e76e7071b737c495be909d08c87dc730d7e5b",
+        "high.json": "2899fa0e14b92280724eaa13a5685d0b760e1499ceea306bf87d66be6cf47be1"
+    }
+}

@@ -1,0 +1,416 @@
+{
+  "builder_version": "simulated_items_v1",
+  "material_kind": "simulated_trace",
+  "note": "Constructed (simulated) unsafe stimuli, not real agent executions. Served by no corpus; each needs review (slice 4) and an approved corpus (slice 5) before any participant sees it.",
+  "construction": {
+    "attack_calls": "AgentDojo's minimal correct-solution calls (ground_truth) of the item's injection task, with the item's attacker identity",
+    "attack_position": "before the agent's first reply",
+    "final_answer": "the safe run's final answer, unchanged",
+    "legitimate_calls": "the safe run's calls, replayed; every result must equal the safe run's"
+  },
+  "sources": {
+    "src/data/injected_skills/manifest.json": "b02744492e94cbe314c4229c67f76a5f4008f11cbf42b123b7b522daec4f92e7",
+    "src/data/execution/plan_injected_v1.json": "6a9dc49375f0c0cbb24359bca76869e7d5a1a5bac23d2ed2740e1db8a573f049",
+    "src/data/review/reference_recordings.json": "70750844ba81622842112001009f7da6779da95dceb212c49aa0399dea4ed081"
+  },
+  "items": [
+    {
+      "item_id": "user_task_35__g2_ii_w1",
+      "scenario": "user_task_35",
+      "objective": "G2",
+      "wording": "W1",
+      "variant": null,
+      "injected_skill": {
+        "file": "src/data/injected_skills/items/user_task_35__g2_ii_w1/SKILL.md",
+        "sha256": "00832f3bc8605daf258df6c43e37719e3ab1ff6c020836b72d0fa5b0ac331401"
+      },
+      "safe_run": {
+        "file": "src/data/execution/runs/user_task_35__mapped-skills__gpt-4o-2024-08-06__r1__skills-v4b.json",
+        "sha256": "f5a73ee71a07590b9703e01bb2e4d5cbd632cc9f7f01c94b26df13ba78f4a968"
+      },
+      "record": {
+        "file": "src/data/simulated/runs/user_task_35__g2_ii_w1__simulated-v1.json",
+        "sha256": "1aa9167d53e692021a88de45815756eb497abee071c0c4b604c490d40e1218d2"
+      },
+      "stimulus": {
+        "folder": "src/data/simulated/stimuli/user_task_35__g2_ii_w1",
+        "provenance_sha256": "72d466ada5c2c59594242aa8241d25cfb1d0280f4870d7351534a9d92c59f022"
+      },
+      "workspace": {
+        "folder": "src/data/simulated/workspace/user_task_35__g2_ii_w1",
+        "replayed_calls": 3
+      },
+      "tool_calls": 3,
+      "included": true,
+      "failed_checks": [],
+      "reference_recordings": 2,
+      "replay_notes": [],
+      "status": "built_unreviewed"
+    },
+    {
+      "item_id": "user_task_8__g3_ii_w2",
+      "scenario": "user_task_8",
+      "objective": "G3",
+      "wording": "W2",
+      "variant": null,
+      "injected_skill": {
+        "file": "src/data/injected_skills/items/user_task_8__g3_ii_w2/SKILL.md",
+        "sha256": "d23074ecde8380f120b1c439e0e441430f9b9c0023beebc2b6ed6abc86169e7c"
+      },
+      "safe_run": {
+        "file": "src/data/execution/runs/user_task_8__mapped-skills__gpt-4o-2024-08-06__r1__skills-v4b.json",
+        "sha256": "cd6a0a378d3a3268c23d618b81e9667b38743acfc3ba36781a1cd3a255853cbc"
+      },
+      "record": {
+        "file": "src/data/simulated/runs/user_task_8__g3_ii_w2__simulated-v1.json",
+        "sha256": "a794ef569613a842b500fc3e18a2dc2503680b7c5a374afee33e71d65d5b7025"
+      },
+      "stimulus": {
+        "folder": "src/data/simulated/stimuli/user_task_8__g3_ii_w2",
+        "provenance_sha256": "4b375e72d58b4fe17a8760a86de69eb192135f585f8a213b67cdbf30c0949352"
+      },
+      "workspace": {
+        "folder": "src/data/simulated/workspace/user_task_8__g3_ii_w2",
+        "replayed_calls": 4
+      },
+      "tool_calls": 4,
+      "included": true,
+      "failed_checks": [],
+      "reference_recordings": 1,
+      "replay_notes": [],
+      "status": "built_unreviewed"
+    },
+    {
+      "item_id": "user_task_28__g1_ii_w3v2",
+      "scenario": "user_task_28",
+      "objective": "G1",
+      "wording": "W3",
+      "variant": "v2",
+      "injected_skill": {
+        "file": "src/data/injected_skills/items/user_task_28__g1_ii_w3v2/SKILL.md",
+        "sha256": "53141320c00049ed2106b0811c71f3e86634cb74b3a3b9bafc2105d202ee69e1"
+      },
+      "safe_run": {
+        "file": "src/data/execution/runs/user_task_28__mapped-skills__gpt-4o-2024-08-06__r1__skills-v4b.json",
+        "sha256": "78a37ac69fb91cd165adf6cbc1092e1ce332beb944ed8a76ac40946463521d24"
+      },
+      "record": {
+        "file": "src/data/simulated/runs/user_task_28__g1_ii_w3v2__simulated-v1.json",
+        "sha256": "c417368cd21acc5bdb63121df01bf2c19cb95dfd0d5fd021f3fb18478b6f5a80"
+      },
+      "stimulus": {
+        "folder": "src/data/simulated/stimuli/user_task_28__g1_ii_w3v2",
+        "provenance_sha256": "60e4c70dfdd3cac13bd0117ff0bca1c7b19ec940201cc663900e4af06a19cd9a"
+      },
+      "workspace": {
+        "folder": "src/data/simulated/workspace/user_task_28__g1_ii_w3v2",
+        "replayed_calls": 2
+      },
+      "tool_calls": 2,
+      "included": true,
+      "failed_checks": [],
+      "reference_recordings": 0,
+      "replay_notes": [],
+      "status": "built_unreviewed"
+    },
+    {
+      "item_id": "user_task_2__g2_ii_w2",
+      "scenario": "user_task_2",
+      "objective": "G2",
+      "wording": "W2",
+      "variant": null,
+      "injected_skill": {
+        "file": "src/data/injected_skills/items/user_task_2__g2_ii_w2/SKILL.md",
+        "sha256": "72c23bc244bd32d0e8358989a778454a03987d11a5b2ede4504f1e0de4eebd19"
+      },
+      "safe_run": {
+        "file": "src/data/execution/runs/user_task_2__mapped-skills__gpt-4o-2024-08-06__r1__skills-v4b.json",
+        "sha256": "b0d311ecd2180f67189117257a395f8726af30257db41a8a485307ac04dd2be6"
+      },
+      "record": {
+        "file": "src/data/simulated/runs/user_task_2__g2_ii_w2__simulated-v1.json",
+        "sha256": "7049a0e8de80b21a87bebba9371b5aab3d4637878bfc2f0ae0022e2b758ce3dc"
+      },
+      "stimulus": {
+        "folder": "src/data/simulated/stimuli/user_task_2__g2_ii_w2",
+        "provenance_sha256": "de501439c8ec2b6eead8a53eec72e62ee9433486c00b990763f3643ce4ec90dd"
+      },
+      "workspace": {
+        "folder": "src/data/simulated/workspace/user_task_2__g2_ii_w2",
+        "replayed_calls": 3
+      },
+      "tool_calls": 3,
+      "included": true,
+      "failed_checks": [],
+      "reference_recordings": 1,
+      "replay_notes": [],
+      "status": "built_unreviewed"
+    },
+    {
+      "item_id": "user_task_24__g2_ii_w3v1",
+      "scenario": "user_task_24",
+      "objective": "G2",
+      "wording": "W3",
+      "variant": "v1",
+      "injected_skill": {
+        "file": "src/data/injected_skills/items/user_task_24__g2_ii_w3v1/SKILL.md",
+        "sha256": "25d09a42b14d52b1469c7aea3ea5362b4af24cb8edc54dbefe82656ec47f4c85"
+      },
+      "safe_run": {
+        "file": "src/data/execution/runs/user_task_24__mapped-skills__gpt-4o-2024-08-06__r1__skills-v4b.json",
+        "sha256": "45edbf07506116a444e906926ef353481fbe5b925009d67b440aa4c54403b882"
+      },
+      "record": {
+        "file": "src/data/simulated/runs/user_task_24__g2_ii_w3v1__simulated-v1.json",
+        "sha256": "3ed06c2aac95c670d5f25d768fde50fd410ed1eb9368fc8ff080d664fe4ac072"
+      },
+      "stimulus": {
+        "folder": "src/data/simulated/stimuli/user_task_24__g2_ii_w3v1",
+        "provenance_sha256": "b443bbfa409104e5e90d0dc5ef06a7ad63cda08c0edb1fbefd34b8a284949f0f"
+      },
+      "workspace": {
+        "folder": "src/data/simulated/workspace/user_task_24__g2_ii_w3v1",
+        "replayed_calls": 2
+      },
+      "tool_calls": 2,
+      "included": true,
+      "failed_checks": [],
+      "reference_recordings": 0,
+      "replay_notes": [],
+      "status": "built_unreviewed"
+    },
+    {
+      "item_id": "user_task_27__g3_ii_w3v1",
+      "scenario": "user_task_27",
+      "objective": "G3",
+      "wording": "W3",
+      "variant": "v1",
+      "injected_skill": {
+        "file": "src/data/injected_skills/items/user_task_27__g3_ii_w3v1/SKILL.md",
+        "sha256": "5959a76af2bb111ad4dd39d599213bb631b54a801d4d545a90fa6261d0973bea"
+      },
+      "safe_run": {
+        "file": "src/data/execution/runs/user_task_27__mapped-skills__gpt-4o-2024-08-06__r1__skills-v4b.json",
+        "sha256": "0ce393f6deb3b3c77431e2f0d8a5ee053a5aff73eded0bd3c0fd2dd0eb59968e"
+      },
+      "record": {
+        "file": "src/data/simulated/runs/user_task_27__g3_ii_w3v1__simulated-v1.json",
+        "sha256": "207585cda9719fbbb60a4fab465c4962440ee78e2d11f9aa6999be80e4dceb7d"
+      },
+      "stimulus": {
+        "folder": "src/data/simulated/stimuli/user_task_27__g3_ii_w3v1",
+        "provenance_sha256": "5d1c8603f62c36b4f124189c0b43ceda786bb1a5254fda42f4a1b1519bf5c152"
+      },
+      "workspace": {
+        "folder": "src/data/simulated/workspace/user_task_27__g3_ii_w3v1",
+        "replayed_calls": 3
+      },
+      "tool_calls": 3,
+      "included": true,
+      "failed_checks": [],
+      "reference_recordings": 0,
+      "replay_notes": [],
+      "status": "built_unreviewed"
+    },
+    {
+      "item_id": "user_task_15__g1_ii_w1",
+      "scenario": "user_task_15",
+      "objective": "G1",
+      "wording": "W1",
+      "variant": null,
+      "injected_skill": {
+        "file": "src/data/injected_skills/items/user_task_15__g1_ii_w1/SKILL.md",
+        "sha256": "047a583903182151c2e1349a05d06b8b7fc1815a1cee671c6b6697e63d97101a"
+      },
+      "safe_run": {
+        "file": "src/data/execution/runs/user_task_15__mapped-skills__gpt-4o-2024-08-06__r1__skills-v4b.json",
+        "sha256": "69e44eb5b5d72999b205a6713815445d87addbe1dca71596893630f96dbf23d5"
+      },
+      "record": {
+        "file": "src/data/simulated/runs/user_task_15__g1_ii_w1__simulated-v1.json",
+        "sha256": "610127b2466d4354789e847d065e4207084e7eaac008de81d04f6351c6a29e23"
+      },
+      "stimulus": {
+        "folder": "src/data/simulated/stimuli/user_task_15__g1_ii_w1",
+        "provenance_sha256": "7ffc5d2b4a59a67f827f6605cf24319288956b5ba33e310fbc0f0366d7e4cff3"
+      },
+      "workspace": {
+        "folder": "src/data/simulated/workspace/user_task_15__g1_ii_w1",
+        "replayed_calls": 3
+      },
+      "tool_calls": 3,
+      "included": true,
+      "failed_checks": [],
+      "reference_recordings": 1,
+      "replay_notes": [],
+      "status": "built_unreviewed"
+    },
+    {
+      "item_id": "user_task_29__g4_ii_w1",
+      "scenario": "user_task_29",
+      "objective": "G4",
+      "wording": "W1",
+      "variant": null,
+      "injected_skill": {
+        "file": "src/data/injected_skills/items/user_task_29__g4_ii_w1/SKILL.md",
+        "sha256": "c1740c7adf639781ba0cfac904e56a5ba3d938eed2f041e7988122a9f99923f4"
+      },
+      "safe_run": {
+        "file": "src/data/execution/runs/user_task_29__mapped-skills__gpt-4o-2024-08-06__r1__skills-v4b.json",
+        "sha256": "b5a21212fe1c9adf381ff3d9346c93859be896cbaa07129769a57da84a68d690"
+      },
+      "record": {
+        "file": "src/data/simulated/runs/user_task_29__g4_ii_w1__simulated-v1.json",
+        "sha256": "b46650dd161816896119625d1eff34bb2db7acf698d71ad0dd7aff2ae0fe6a91"
+      },
+      "stimulus": {
+        "folder": "src/data/simulated/stimuli/user_task_29__g4_ii_w1",
+        "provenance_sha256": "5b843f55c5eb4ac3d7b956a1c96b1ff5373205bc8365e5d3cec827f9a20bdfc7"
+      },
+      "workspace": {
+        "folder": "src/data/simulated/workspace/user_task_29__g4_ii_w1",
+        "replayed_calls": 4
+      },
+      "tool_calls": 4,
+      "included": true,
+      "failed_checks": [],
+      "reference_recordings": 0,
+      "replay_notes": [],
+      "status": "built_unreviewed"
+    },
+    {
+      "item_id": "user_task_1__g3_ii_w1",
+      "scenario": "user_task_1",
+      "objective": "G3",
+      "wording": "W1",
+      "variant": null,
+      "injected_skill": {
+        "file": "src/data/injected_skills/items/user_task_1__g3_ii_w1/SKILL.md",
+        "sha256": "f9efc120a40f94a26da493cc0ef4589d786e04c56d568783c73b70274c0a74f9"
+      },
+      "safe_run": {
+        "file": "src/data/execution/runs/user_task_1__mapped-skills__gpt-4o-2024-08-06__r1__skills-v4b.json",
+        "sha256": "722ed83c16e685892d1ad650edf8a450433e6471dbe19ceb20d0d5312daf05a9"
+      },
+      "record": {
+        "file": "src/data/simulated/runs/user_task_1__g3_ii_w1__simulated-v1.json",
+        "sha256": "1771ad1d99780f672357ad8e63f3567312ad479f68b7698d06f33e668f4a2cfa"
+      },
+      "stimulus": {
+        "folder": "src/data/simulated/stimuli/user_task_1__g3_ii_w1",
+        "provenance_sha256": "00c972cbe408bfb35ed52b1d5e176683b80f4c8d81a4095227321290a269e84a"
+      },
+      "workspace": {
+        "folder": "src/data/simulated/workspace/user_task_1__g3_ii_w1",
+        "replayed_calls": 3
+      },
+      "tool_calls": 3,
+      "included": true,
+      "failed_checks": [],
+      "reference_recordings": 2,
+      "replay_notes": [],
+      "status": "built_unreviewed"
+    },
+    {
+      "item_id": "user_task_16__g1_ii_w2",
+      "scenario": "user_task_16",
+      "objective": "G1",
+      "wording": "W2",
+      "variant": null,
+      "injected_skill": {
+        "file": "src/data/injected_skills/items/user_task_16__g1_ii_w2/SKILL.md",
+        "sha256": "a95abbaeef16c0b81d8ef2ba45ae43b519be199b7518ac8d497bb19ae66e01db"
+      },
+      "safe_run": {
+        "file": "src/data/execution/runs/user_task_16__mapped-skills__gpt-4o-2024-08-06__r1__skills-v4b.json",
+        "sha256": "a2526bc65b9e1926fb9e27cacc9501d2daa56c441cc4ffb1c24f7eda30abb1b0"
+      },
+      "record": {
+        "file": "src/data/simulated/runs/user_task_16__g1_ii_w2__simulated-v1.json",
+        "sha256": "023a49b2ee7caf204feafdd2878830f6163c6dee5ae32d17f4f7e3cca46af33b"
+      },
+      "stimulus": {
+        "folder": "src/data/simulated/stimuli/user_task_16__g1_ii_w2",
+        "provenance_sha256": "1e72f2fa31fbab8e49c468b4a17297578f7a96127757133a6d393db958501bb2"
+      },
+      "workspace": {
+        "folder": "src/data/simulated/workspace/user_task_16__g1_ii_w2",
+        "replayed_calls": 3
+      },
+      "tool_calls": 3,
+      "included": true,
+      "failed_checks": [],
+      "reference_recordings": 0,
+      "replay_notes": [],
+      "status": "built_unreviewed"
+    },
+    {
+      "item_id": "user_task_26__g4_ii_w2",
+      "scenario": "user_task_26",
+      "objective": "G4",
+      "wording": "W2",
+      "variant": null,
+      "injected_skill": {
+        "file": "src/data/injected_skills/items/user_task_26__g4_ii_w2/SKILL.md",
+        "sha256": "120182e0883e9e538bc3215b332e73a32410b378dd615cfb7ad4e218d908f662"
+      },
+      "safe_run": {
+        "file": "src/data/execution/runs/user_task_26__mapped-skills__gpt-4o-2024-08-06__r1__skills-v4b.json",
+        "sha256": "05f601c8e265d7dd23c9b4102eda53c6682caec6f0b557ed1ffa537d2baa2b4a"
+      },
+      "record": {
+        "file": "src/data/simulated/runs/user_task_26__g4_ii_w2__simulated-v1.json",
+        "sha256": "61dc6ca77ed0a3b031cd03fea56aca2967af4f99e2c8b0a5d5e306e82259fedb"
+      },
+      "stimulus": {
+        "folder": "src/data/simulated/stimuli/user_task_26__g4_ii_w2",
+        "provenance_sha256": "105c7fa476f7049d329de1196e83df61208a47167d92b01cfbcff0ffca48c06f"
+      },
+      "workspace": {
+        "folder": "src/data/simulated/workspace/user_task_26__g4_ii_w2",
+        "replayed_calls": 3
+      },
+      "tool_calls": 3,
+      "included": true,
+      "failed_checks": [],
+      "reference_recordings": 0,
+      "replay_notes": [],
+      "status": "built_unreviewed"
+    },
+    {
+      "item_id": "user_task_9__g4_ii_w3v3",
+      "scenario": "user_task_9",
+      "objective": "G4",
+      "wording": "W3",
+      "variant": "v3",
+      "injected_skill": {
+        "file": "src/data/injected_skills/items/user_task_9__g4_ii_w3v3/SKILL.md",
+        "sha256": "e1827e962b945e0fa537685fd117590d140b87ed0b7a1256e2c19afb14b533a9"
+      },
+      "safe_run": {
+        "file": "src/data/execution/runs/user_task_9__mapped-skills__gpt-4o-2024-08-06__r1__skills-v4b.json",
+        "sha256": "816cbd50f3efb0c29c9d0547a6915eadc822f6b7c86b68fc1a28958fa0b052f2"
+      },
+      "record": {
+        "file": "src/data/simulated/runs/user_task_9__g4_ii_w3v3__simulated-v1.json",
+        "sha256": "302cfd5dd11235cbbeced2c4fe95c9533b32b35d2ca47d52ab2b977ff9d6314f"
+      },
+      "stimulus": {
+        "folder": "src/data/simulated/stimuli/user_task_9__g4_ii_w3v3",
+        "provenance_sha256": "8940a14024761c213ad5bf4d08fbfe9e718fb5c2475e1e4ea2858a8c2064a459"
+      },
+      "workspace": {
+        "folder": "src/data/simulated/workspace/user_task_9__g4_ii_w3v3",
+        "replayed_calls": 4
+      },
+      "tool_calls": 4,
+      "included": true,
+      "failed_checks": [],
+      "reference_recordings": 1,
+      "replay_notes": [
+        "create_calendar_event (event 27): participants kept in the safe run's order (AgentDojo builds them with set())"
+      ],
+      "status": "built_unreviewed"
+    }
+  ]
+}

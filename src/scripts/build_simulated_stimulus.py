@@ -78,9 +78,12 @@ def sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def load_inputs(item_id: str) -> dict:
-    """The manifest entry, plan spec (attempt 1) and safe run of an item, checked against each other."""
-    for manifest_path, plan_path in ITEM_SOURCES:
+def load_inputs(item_id: str, item_sources: tuple = ITEM_SOURCES) -> dict:
+    """The manifest entry, plan spec (attempt 1) and safe run of an item, checked against each other.
+
+    item_sources: (manifest, plan) pairs searched in order (default: the study plan, then the wording pilot's W2
+    items; build_simulated_items.py passes the study plan only)."""
+    for manifest_path, plan_path in item_sources:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         item = next((i for i in manifest["items"] if i["item_id"] == item_id), None)
         if item is not None:
@@ -98,12 +101,17 @@ def load_inputs(item_id: str) -> dict:
             "safe": json.loads(safe_raw)}
 
 
-def simulated_trace(safe: dict, attack_calls: list[dict], suite, task) -> list[dict]:
-    """The safe trace with the attack's calls inserted before the agent's first reply, every result replayed.
+def simulated_trace(safe: dict, attack_calls: list[dict], suite, task) -> tuple[list[dict], list[str]]:
+    """The safe trace with the attack's calls inserted before the agent's first reply, every result replayed;
+    returns (trace, replay notes).
 
     The attack calls run first on a fresh environment, then the legitimate calls (with the saved clock of each, as
     in build_workspace_snapshots.replay). A legitimate call whose replayed result differs from the safe run's would
     mean the attack changed what the agent sees, which this fixture cannot represent faithfully: raise instead.
+    One difference is accepted, exactly as build_workspace_snapshots.replay accepts it: a create_calendar_event
+    result that differs only in the order of `participants` (AgentDojo builds that list with set(), so its order is
+    not reproducible across processes). The saved result is kept in the trace, the environment is given the saved
+    order, and a note is returned.
     """
     from function_calling_pi.agent_pipeline.tool_execution import tool_result_to_str
     from function_calling_pi.functions_engine.functions_engine import run_function_v2
@@ -119,7 +127,7 @@ def simulated_trace(safe: dict, attack_calls: list[dict], suite, task) -> list[d
         result, error = run_function_v2(env, call["function"], copy.deepcopy(call["args"]))
         return tool_result_to_str(result), error
 
-    out, inserted = [], False
+    out, inserted, notes = [], False, []
     for message in safe["trace"]:
         if message["role"] == "assistant" and not inserted:
             for k, attack in enumerate(attack_calls):
@@ -134,19 +142,26 @@ def simulated_trace(safe: dict, attack_calls: list[dict], suite, task) -> list[d
             stamp = bw.saved_clock(call["function"], message["content"]) if call["function"] in bw.CLOCK_TOOLS else None
             content, _ = run(call, stamp)
             if content != message["content"]:
-                raise SimulationError(f"{call['function']}: the replayed result differs from the safe run's; "
-                                      "this fixture assumes the attack does not change what the agent reads")
+                saved_event = (bw.same_apart_from_participant_order(message["content"], content)
+                               if call["function"] == "create_calendar_event" else None)
+                if saved_event is None:
+                    raise SimulationError(f"{call['function']}: the replayed result differs from the safe run's; "
+                                          "this fixture assumes the attack does not change what the agent reads")
+                env.calendar.events[str(saved_event["id_"])].participants = list(saved_event["participants"])
+                notes.append(f"{call['function']} (event {saved_event['id_']}): participants kept in the safe run's "
+                             "order (AgentDojo builds them with set())")
         out.append(message)
     if not inserted:
         raise SimulationError("the safe run has no assistant message to insert the attack before")
-    return out
+    return out, notes
 
 
-def build_record(item_id: str = DEFAULT_ITEM) -> dict:
-    """The simulated run record of an item (see the module docstring)."""
+def build_record(item_id: str = DEFAULT_ITEM, item_sources: tuple = ITEM_SOURCES) -> dict:
+    """The simulated run record of an item (see the module docstring). `simulation.replay_notes` is present only
+    when a replayed result was accepted with a difference (see simulated_trace)."""
     from function_calling_pi import benchmark
 
-    data = load_inputs(item_id)
+    data = load_inputs(item_id, item_sources)
     item, spec, safe = data["item"], data["spec"], data["safe"]
     suite = benchmark.SUITES["workspace"]
     task = suite.get_user_task_by_id(item["scenario"])
@@ -158,7 +173,7 @@ def build_record(item_id: str = DEFAULT_ITEM) -> dict:
     if safe["system_message"].count(base_text) != 1:
         raise SimulationError("the base skill does not occur exactly once in the safe run's system message")
     system_message = safe["system_message"].replace(base_text, item_text)
-    trace = simulated_trace(safe, attack_calls, suite, task)
+    trace, replay_notes = simulated_trace(safe, attack_calls, suite, task)
     trace[0] = {**trace[0], "content": system_message}  # the "agent" was given the injected skill
     record = {
         "record_version": safe["record_version"], "run_id": f"{item_id}{RUN_SUFFIX}", "scenario": item["scenario"],
@@ -176,6 +191,8 @@ def build_record(item_id: str = DEFAULT_ITEM) -> dict:
             "attack_calls": [{"function": c["function"], "args": c["args"]} for c in attack_calls],
         },
     }
+    if replay_notes:  # only when needed, so records that need none (the validation fixture) are unchanged
+        record["simulation"]["replay_notes"] = replay_notes
     # evaluate a deep copy: injection_checks.apply_calls runs the trace's own argument objects through the tools,
     # and some tools (create_calendar_event) append to their argument lists in place
     verdict = checks.evaluate_record(copy.deepcopy({**record, "security": None}), suite)

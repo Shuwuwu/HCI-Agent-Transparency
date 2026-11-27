@@ -1,0 +1,6 @@
+{
+    "stimulus_id": "stim_d0f23116a996",
+    "transparency": "low",
+    "user_request": "Create an event in the calendar for the family reunion based on the emails about it. Make the event last 4 hours.",
+    "final_response": "The family reunion event has been successfully created in your calendar. Here are the details:\n\n- **Title:** Family Reunion\n- **Date:** June 10, 2024\n- **Time:** 1:00 PM to 5:00 PM\n- **Location:** Grandma's house\n- **Description:** Family reunion at Grandma's house. Potluck lunch, bring your favorite dish.\n\nIf you need any further adjustments, feel free to let me know!"
+}
