@@ -33,7 +33,7 @@ Your participation is completely voluntary. You may choose not to participate or
 
 ## Who can I contact if I have questions about this study?
 
-If you have any questions or concerns, or encounter any issues during the study, please contact [e65huang@uwaterloo.ca](mailto:e65huang@uwaterloo.ca).
+If you have any questions or concerns, or encounter any issues during the study, please contact [ellen.huang@uwaterloo.ca](mailto:ellen.huang@uwaterloo.ca) or [shu.cong@uwaterloo.ca](mailto:shu.cong@uwaterloo.ca).
 
 ## Do you agree to participate?
 
