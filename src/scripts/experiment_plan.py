@@ -23,7 +23,9 @@ Inputs:
                                   file directly in data/participants/. The development and study configurations
                                   name different files, so test participants never share the study's database,
         simulated                 true only for a development configuration that accepts a simulated
-                                  assignments file (planned, not yet passing, unsafe items),
+                                  assignments file (planned, not yet passing, unsafe items). This is not the
+                                  "simulated" flag of an execution record (a constructed trace): the study
+                                  configuration, whose unsafe stimuli are constructed traces, is false,
         trials_per_participant    how many of the assignment's trials to use, counted from the first,
         safe_stimulus_suffix      appended to a scenario id to name its safe stimulus folder,
         rehearsal                 optional, simulated configurations only: {"unsafe_trials": "safe_substitute",

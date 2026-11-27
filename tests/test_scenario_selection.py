@@ -150,14 +150,15 @@ class AllocationTests(unittest.TestCase):
             next(i for i in synthetic_items() if i["objective"] == "G2")]
         self.assertIsNone(ss.choose_final_set(one_g2, RESULT["pairs"]))  # a list needs two items per objective overall
 
-    def test_attrition_table_is_monotone_and_relaxed_is_not_worse(self):
-        strict = ss.feasibility_by_attrition(RESULT["allocation"], ROWS, RESULT["pairs"])
-        relaxed = ss.feasibility_by_attrition(RESULT["allocation"], ROWS, RESULT["pairs"], strict=False)
-        p = [r["probability"] for r in strict]
-        self.assertEqual(p, sorted(p))
-        for a, b in zip(strict, relaxed):
-            self.assertLessEqual(a["probability"], b["probability"] + 1e-12)
-            self.assertTrue(0 <= a["probability"] <= 1)
+    def test_review_sensitivity_agrees_with_stage_two(self):
+        strict = ss.review_sensitivity(RESULT["allocation"], ROWS, RESULT["pairs"])
+        relaxed = ss.review_sensitivity(RESULT["allocation"], ROWS, RESULT["pairs"], strict=False)
+        self.assertEqual(strict["patterns"], 2 ** 12)
+        self.assertTrue(0 < strict["feasible"] <= relaxed["feasible"] <= strict["patterns"])
+        self.assertTrue(set(relaxed["essential"]) <= set(strict["essential"]))
+        for s in RESULT["allocation"]:  # an essential item is exactly one whose rejection alone leaves no final set
+            final = ss.stage2(RESULT, verdicts(**{s: (True, "rejected")}))["final"]
+            self.assertEqual(final is None, s in strict["essential"], s)
 
 
 class ArtifactTests(unittest.TestCase):
@@ -184,7 +185,8 @@ class ArtifactTests(unittest.TestCase):
         doc = ss.DOC_PATH.read_text(encoding="utf-8")
         for needle in ("our adaptation", "not an AgentDojo or SkillJect template", "G0", "ambiguous",
                        "before any written criteria existed", "No independent reviewer", "tool_knowledge",
-                       "important_instructions", "may have influenced the picks"):
+                       "important_instructions", "may have influenced the picks", "constructed (simulated) traces",
+                       "carried out the user's task but never", "The design is fragile"):
             self.assertIn(needle, doc)
         self.assertNotIn("{{", doc)
 

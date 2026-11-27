@@ -71,7 +71,6 @@ SEED = "cs889-selection-v1"
 DUPLICATE_THRESHOLD = 0.5
 N_CANDIDATES, N_FINAL = 12, 8
 COMPOUND_PREFIX = "Perform the following tasks in the order they are given"
-MAX_ATTEMPTS = 3
 
 RULES = [
     ("R1", "Pool", "systematic",
@@ -441,25 +440,23 @@ def choose_final_set(passing: list[dict], pairs: list[tuple[str, str]], strict: 
     return best
 
 
-def feasibility_by_attrition(allocation: dict, rows: dict, pairs: list, rates=(0.2, 0.35, 0.5, 0.7),
-                             strict: bool = True) -> list[dict]:
-    """Exact probability that a valid final set exists when each item passes with 1-(1-p)^3 (p = per-attempt rate).
+def review_sensitivity(allocation: dict, rows: dict, pairs: list, strict: bool = True) -> dict:
+    """How robust the design is to manual review: every planned item can only drop out by being rejected (the
+    simulated items all pass their automated checks), so enumerate every reviewed/rejected pattern of the 12 items.
 
-    Enumerates every pass/fail pattern of the candidate items; feasibility of a pattern does not depend on p.
+    Returns {"patterns": 2^n, "feasible": patterns that still allow a valid final set,
+             "essential": [scenarios whose rejection alone leaves no valid final set]}. No pass rate is assumed.
     """
     wordings, strategies = planned_wordings(allocation), planned_strategies(allocation)
     items = [{"scenario": s, "area": rows[s]["area"], "difficulty": rows[s]["difficulty"], "rank": rows[s]["rank"],
               **plan_fields(a)} for s, a in allocation.items()]
-    feasible = {}
+    feasible = 0
     for mask in range(1 << len(items)):
         chosen = [items[i] for i in range(len(items)) if mask >> i & 1]
-        feasible[mask] = len(chosen) >= N_FINAL and choose_final_set(chosen, pairs, strict, wordings, True, strategies) is not None
-    out = []
-    for p in rates:
-        q = 1 - (1 - p) ** MAX_ATTEMPTS
-        total = sum(q ** bin(m).count("1") * (1 - q) ** (len(items) - bin(m).count("1")) for m, ok in feasible.items() if ok)
-        out.append({"per_attempt": p, "item_pass": q, "probability": total})
-    return out
+        feasible += len(chosen) >= N_FINAL and choose_final_set(chosen, pairs, strict, wordings, True, strategies) is not None
+    essential = [i["scenario"] for i in items
+                 if choose_final_set([j for j in items if j is not i], pairs, strict, wordings, True, strategies) is None]
+    return {"patterns": 1 << len(items), "feasible": feasible, "essential": sorted(essential, key=task_number)}
 
 
 class Stage2Error(RuntimeError):
@@ -650,17 +647,16 @@ def sections(result: dict, st2: dict, facts: dict) -> dict[str, str]:
     full = choose_final_set(all_items, result["pairs"], wordings=planned_wordings(result["allocation"]),
                               strategies=planned_strategies(result["allocation"]))
     out["full_feasible"] = (
-        "If all 12 candidate items pass their runs, a valid final set exists: scenarios " + ", ".join(full["scenarios"]) +
+        "If all 12 candidate items are marked reviewed, a valid final set exists: scenarios " + ", ".join(full["scenarios"]) +
         "; list A unsafe " + ", ".join(full["A"]) + "; list B unsafe " + ", ".join(full["B"]) + "."
-        if full else "**Even if all 12 candidate items pass, no valid final set exists under the constraints.**")
-    strict_rates = feasibility_by_attrition(alloc, rows, result["pairs"])
-    relaxed_rates = feasibility_by_attrition(alloc, rows, result["pairs"], strict=False)
-    out["attrition"] = md_table(
-        ["Per-attempt pass rate (assumed)", "Item passes within 3 attempts",
-         "Chance of a valid final set: planned design (3 different strategy-wording combinations in each list)",
-         "Chance: relaxed design (every wording of the plan in each list)"],
-        [[a["per_attempt"], f"{a['item_pass']:.2f}", f"{a['probability']:.2f}", f"{b['probability']:.2f}"]
-         for a, b in zip(strict_rates, relaxed_rates)])
+        if full else "**Even if all 12 candidate items are reviewed, no valid final set exists under the constraints.**")
+    strict, relaxed = (review_sensitivity(alloc, rows, result["pairs"], strict=flag) for flag in (True, False))
+    out["review_sensitivity"] = md_table(
+        ["Design", "Review outcomes (each item reviewed or rejected)", "Outcomes that still allow a valid final set",
+         "Items whose rejection alone leaves no valid final set"],
+        [[name, r["patterns"], r["feasible"], ", ".join(r["essential"]) or "none"]
+         for name, r in (("planned (3 different strategy-wording combinations in each list)", strict),
+                         ("relaxed (every wording of the plan in each list)", relaxed))])
     if st2["ran"]:
         final, info = st2["final"], st2["info"].values()
         reviewed = sum(i["passing"] for i in info)

@@ -10,6 +10,21 @@ its safe counterpart, but the agent's skill documentation contains an injected i
 out, in addition to doing the user's task. This document records how scenarios are chosen for that design, which
 rules are applied mechanically, which involve judgment, and what the design cannot control.
 
+**Executed safe traces, constructed unsafe traces.** The safe stimuli are genuine executions (`gpt-4o-2024-08-06`, the
+skills-v4b batch). The unsafe stimuli are **constructed (simulated) traces**, not executions: each is the scenario's
+genuine safe run with AgentDojo's own minimal correct-solution calls for the injected objective inserted before the
+agent's first reply, every call replayed through AgentDojo's tools (each legitimate result must equal the safe run's),
+and the safe run's final answer unchanged (`build_simulated_items.py`, `src/data/simulated/`). Executing the injected
+skills did not produce stimuli: the first attempt of all 12 items (`src/data/execution/runs/*__inj-v1.json`, judged in
+`src/data/execution/injected_evaluation.json`) and the 3 experimental WG items carried out the user's task but never
+the injected action. In AgentDojo's own recordings, where the injection arrives in a tool result rather than in a
+skill, a real agent did carry out the same objectives (`src/data/review/reference_recordings.json`, evidence of
+plausibility only). This matches the proposal, in which each scenario has a *predetermined* execution trace and the
+skill documentation is supplementary material that does not generate the trace; the independent variable is whether
+the trace is visible, not how the injection is delivered. Participants are told the conversations are simulated
+(consent form). The genuine recordings, the generated skill texts and the constructed traces are labelled as such in
+every record (`material_kind`, `simulated`).
+
 40 AgentDojo workspace user tasks: 20 in the R1 pool, 12 candidates, 3 spares, 25 excluded (R1: 20, R3a: 2, R3b: 1, R4: 2).
 
 ## 2. History: how the first candidate list was made, and why it is superseded
@@ -211,17 +226,18 @@ transparency condition (low or high). The 2 lists × 2 conditions = 4 cells are 
 seeded random order, so the scenario distribution is identical in both conditions after every complete block. Trial
 order uses a balanced Latin square (Williams design) over the 8 scenarios; see `build_assignments.py`.
 
-**Feasibility.** If all 12 candidate items pass their runs, a valid final set exists: scenarios user_task_1, user_task_2, user_task_15, user_task_24, user_task_26, user_task_27, user_task_28, user_task_29; list A unsafe user_task_1, user_task_24, user_task_26, user_task_28; list B unsafe user_task_15, user_task_2, user_task_27, user_task_29. The real risk is attrition: a candidate item exists only if an injected run
-succeeds (attack works, legitimate task done, action visible) within 3 attempts. The chance that the surviving items
-still allow a valid final set, by assumed per-attempt pass rate, for the planned allocation above (computed exactly
-over every pass/fail pattern of the 12 items):
+**Feasibility.** If all 12 candidate items are marked reviewed, a valid final set exists: scenarios user_task_1, user_task_2, user_task_15, user_task_24, user_task_26, user_task_27, user_task_28, user_task_29; list A unsafe user_task_1, user_task_24, user_task_26, user_task_28; list B unsafe user_task_15, user_task_2, user_task_27, user_task_29. Every constructed item passes its automated checks, so an item can only drop out
+by being rejected in the manual review (stage 2 passes an item only once it is marked reviewed). How many of the
+possible review outcomes still allow a valid final set, and which single rejections leave none (computed exactly over
+every reviewed/rejected pattern of the 12 items; no pass rate is assumed):
 
-| Per-attempt pass rate (assumed) | Item passes within 3 attempts | Chance of a valid final set: planned design (3 different strategy-wording combinations in each list) | Chance: relaxed design (every wording of the plan in each list) |
+| Design | Review outcomes (each item reviewed or rejected) | Outcomes that still allow a valid final set | Items whose rejection alone leaves no valid final set |
 |---|---|---|---|
-| 0.2 | 0.49 | 0.01 | 0.01 |
-| 0.35 | 0.73 | 0.12 | 0.12 |
-| 0.5 | 0.88 | 0.43 | 0.43 |
-| 0.7 | 0.97 | 0.85 | 0.85 |
+| planned (3 different strategy-wording combinations in each list) | 4096 | 32 | user_task_1, user_task_2, user_task_24, user_task_26, user_task_27, user_task_29 |
+| relaxed (every wording of the plan in each list) | 4096 | 32 | user_task_1, user_task_2, user_task_24, user_task_26, user_task_27, user_task_29 |
+
+The design is fragile: an item listed in the last column cannot be rejected without changing the design (for example
+fixing the scenario's safe stimulus, or giving a spare scenario an item), which would be a documented decision.
 
 Stage 2 (simulated unsafe stimuli): 12 of 12 simulated items pass the inclusion checks and 0 are marked reviewed. No final set yet: an item passes only once it is manually reviewed, and the passing items do not yet allow a valid final set. The status of each candidate is in the CSV.
 
@@ -237,33 +253,44 @@ Stage 2 (simulated unsafe stimuli): 12 of 12 simulated items pass the inclusion 
 
 - **Agent competence.** The pool holds only tasks the agent completed with skills; they are short and easy (almost all
   1–2 actions). Results may not generalise to long traces.
-- **Selection by attack success.** Only injected runs that succeed become stimuli, so unsafe stimuli show what a
-  *successful* attack looks like, not how often attacks work. Yield per objective, strategy and wording is reported.
-  Dropout may differ by area or by read-only vs writing tasks.
-- **Unsafe traces are longer.** An unsafe trace has 1–2 extra actions. In the high condition this is a cue unrelated to
-  what the actions are; trace length is recorded as a covariate.
-- **The final answer may reveal the attack.** Recorded per run (`final_answer_mentions_attacker`) and balanced, not
-  filtered, to avoid adding another selection step.
+- **Constructed unsafe traces.** The unsafe traces show what a successful attack would look like, built by fixed
+  rules; they are not evidence that any agent would carry out an instruction given in a skill (the executed
+  injected-skill runs did not), and they say nothing about how often attacks work. AgentDojo's recordings, where a
+  real agent carried out the same objectives from an injection in a tool result, support their plausibility; 6 of the
+  12 items have such a recording for the same scenario and objective. The method is reported as a limitation.
+- **One construction policy.** The injected action always comes first, before any legitimate action, and uses
+  AgentDojo's minimal calls (no extra lookups, never a wrong target). Real agents placed it elsewhere and sometimes
+  made extra lookups (`reference_recordings.json`), so the unsafe traces are more uniform than real ones.
+- **Unsafe traces are longer.** An unsafe trace has 1 extra action (G1, G2) or 2 (G3, G4: a lookup and the email). In
+  the high condition this is a cue unrelated to what the actions are; trace length is recorded as a covariate.
+- **The final answer never reveals the attack.** It is the safe run's answer, unchanged, so safe and unsafe versions of
+  a scenario have the same answer and answer style is no cue. In AgentDojo's recordings real agents mentioned the
+  injected action in 8 of 50 successful runs, so in the low condition the constructed unsafe trials may be harder to
+  detect than real ones would be.
 - **Workspace area is tied to the injected skill and to the objectives allowed**, so area effects cannot be separated
   from those.
 - **Shared workspace.** Every scenario uses the same inbox, calendar and drive, so participants learn its content as
   they go; counterbalanced order controls but does not remove this.
 - **Thresholds were set after seeing the data** (section 3); the sensitivity range is reported.
-- **Model snapshot.** All runs, safe and unsafe, use `gpt-4o-2024-08-06`; AgentDojo's recorded runs use
-  `gpt-4o-2024-05-13` and are not used for stimuli. Attack-success rates from those recordings are not predictive of
-  this model.
+- **Model snapshot.** The safe traces, and therefore every unsafe trace's legitimate part and final answer, come from
+  `gpt-4o-2024-08-06`; AgentDojo's recorded runs use `gpt-4o-2024-05-13` and are reference material only, never
+  stimuli or a selection input.
 - **Wording is a second source of variation in how easy an injection is to notice.** It is mixed on purpose (to avoid
   one repeated phrase) and not assumed equal; each unsafe trial's wording is recorded, and detection by wording is
   reported descriptively. With four items per wording and four unsafe trials per participant, wording effects are
   underpowered and are confounded with the item (its scenario, objective and skill area).
-- **II may be less reliable than TK.** The goal is stated without the tool and arguments, so the agent may skip or
-  rephrase the injected call more often; the yield per objective and wording is reported.
+- **Wording affects only the skill text.** Because the traces are constructed, the wording of an item (W1, W2, W3)
+  does not change what the agent did; a difference in detection by wording can come only from participants who read
+  the Skills tab.
 
 ## 9. Validation and review limitation
 
-Items are validated automatically (`injection_checks.py`): the attack's security check succeeded, the legitimate task
-passes AgentDojo's own utility check once the injected calls are removed, the injected call is in the trace, and the run
-completed without error. Item texts and passing runs are then inspected manually by one researcher.
-**No independent reviewer is used; this is a limitation.** Mitigations: the adaptation rules are fixed before any item
-exists, the checks are automatic, texts are inspected before any run is paid for, and every attempt (including failures)
-is kept and reported.
+Each constructed item is validated automatically: every replayed legitimate result equals the safe run's; AgentDojo's
+security check (with the item's attacker identity) succeeds, the legitimate task passes AgentDojo's own utility check
+once the injected calls are removed, and the injected call is in the trace (`injection_checks.py`); and the stimulus
+passes the automated review checks A1–A10 of `review_stimuli.py`, including A10, which checks that its record, safe
+run and skill files match their hashes and that the attack calls open the trace. The stimulus is then inspected
+manually by one researcher (checklist M1–M7, recorded with a hash of what was reviewed), and stage 2 uses only items
+marked reviewed. **No independent reviewer is used; this is a limitation.** Mitigations: the adaptation rules and the
+construction policy are fixed before any item exists, the checks are automatic, a review becomes "stale" if the
+stimulus changes afterwards, and every execution, including the failed injected runs, is kept and reported.
