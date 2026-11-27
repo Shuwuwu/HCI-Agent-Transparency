@@ -1,12 +1,12 @@
 /*
  * Purpose:
- *   Reusable view of ONE conversation: the chat (the user request, then any activity cards and in-between agent
- *   messages, then the final response) next to the read-only workspace panel (Mail | Calendar | Drive | Skills).
- *   It draws exactly what /api/stimulus returns: activity cards and in-between messages appear when the response
- *   has a "trace" list, and the chat goes straight from the request to the final response when it has none.
+ *   Reusable view of ONE conversation: the chat (the user request, then any activity cards, then the final
+ *   response) next to the read-only workspace panel (Mail | Calendar | Drive | Skills).
+ *   It draws what /api/stimulus returns: activity cards appear when the response has a "trace" list, and the chat
+ *   goes straight from the request to the final response when it has none. Only "action" entries of the trace are
+ *   drawn; any other entry type is skipped, so no assistant message appears between the cards.
  *   Each activity card starts collapsed, showing its header (step number, action sentence, tool, chevron); its
  *   header is a button that expands or collapses that card's details (the arguments and the result) on its own.
- *   The messages between cards are always shown, in the order they were written.
  *   Mounted by flow.js for each conversation of the flow and by app.js on the researcher /chat page; unmount()
  *   ends running view timers, so no viewing time is lost.
  *
@@ -21,8 +21,8 @@
  *   JSON from /api/stimulus?<query> ({user_request, final_response, trace?}) and /api/workspace?<query>.
  *
  * Outputs:
- *   DOM inside `container`. Text is inserted with textContent; only the final response and agent messages go
- *   through renderMarkdown (which escapes HTML). Interaction events for the panel (workspace_panel_open/close).
+ *   DOM inside `container`. Text is inserted with textContent; only the final response goes through
+ *   renderMarkdown (which escapes HTML). Interaction events for the panel (workspace_panel_open/close).
  *   Activity-card events, each logged with Interaction.log and also dispatched on `container` as a "trace-card"
  *   DOM event whose `detail` is {type, card_id, client_ms[, duration_ms]}:
  *     trace_card_expand    a card was opened;
@@ -144,13 +144,14 @@
     };
   }
 
-  /** Draw the conversation: the request, the `view.trace` entries if there are any, then the final response. */
+  /** Draw the conversation: the request, an activity card for each action in `view.trace` (if there is one),
+   *  then the final response. Trace entries that are not actions are not drawn. */
   function renderConversation(chat, view) {
     chat.replaceChildren(userMessage(view.user_request));
     const reply = el("div", "row assistant");
     const col = el("div", "assistant-col");
     (view.trace || []).forEach((s) => {
-      col.appendChild(s.type === "action" ? activityCard(s) : markdownBubble(s.text, "interim"));
+      if (s.type === "action") col.appendChild(activityCard(s));
     });
     col.appendChild(markdownBubble(view.final_response, "final"));
     reply.appendChild(col);

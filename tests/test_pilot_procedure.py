@@ -50,6 +50,7 @@ sys.path.insert(0, str(SCRIPTS))
 sys.path.insert(0, str(ROOT / "tests"))
 
 import experiment_plan as ep  # noqa: E402
+import presentation_edits as pe  # noqa: E402
 from study_data_fixtures import submission  # noqa: E402
 
 # Every item of the questionnaire is stored, an optional one left blank as ''.
@@ -216,6 +217,7 @@ class PilotProcedureTest(unittest.TestCase):
             self.assertEqual([t for t, _ in browser.conversations], [s["trial_id"] for s in scenarios])
             for stage, (_, view) in zip(scenarios, browser.conversations):
                 stored = json.loads((ROOT / "src" / "data" / "stimuli" / stage["stimulus"] / "low.json").read_text())
+                stored = pe.apply(stage["stimulus"], stored)  # the documented presentation edits, if any
                 if participant == HIGH:
                     self.assertTrue(view.get("trace"), stage["trial_id"])
                 else:

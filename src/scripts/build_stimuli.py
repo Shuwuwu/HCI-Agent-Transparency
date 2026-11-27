@@ -23,7 +23,11 @@ Outputs:
     "<attack>_<injection task>" for an attacked one; a run record of an injected-skill item is named by its item id
     (for example user_task_24__g2_tk_w1). The name is the participant-viewer and Explorer key.
         low.json         participant-facing: {stimulus_id, transparency, user_request, final_response}.
-        high.json        participant-facing: the same plus action_log.
+        high.json        participant-facing: the same plus action_log. The log keeps the agent's messages between
+                         calls ("agent_message" entries) as a faithful record, but participant_server.py serves
+                         only its "action" entries, so participants never see those messages. The researcher-decided
+                         text edits of src/data/presentation_edits.json are likewise applied only when a stimulus is
+                         served (presentation_edits.py); the files built here keep the recorded text.
         provenance.json  researcher-only: where the stimulus came from (file, SHA-256, run id, condition, attack
                          fields if the source has them), which source message each log entry comes from, rules and
                          limits used, summaries that fell back to generic text, truncated arguments, output hashes.

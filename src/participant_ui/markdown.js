@@ -1,7 +1,7 @@
 /*
  * Purpose:
  *   Minimal, dependency-free Markdown-to-HTML renderer for the agent's final
- *   response (and interim agent messages) in the participant chatbot UI.
+ *   response in the participant chatbot UI.
  *
  * Inputs:
  *   A Markdown string. Supported: headings, paragraphs, bold, italic, inline

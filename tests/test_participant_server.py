@@ -91,16 +91,36 @@ class ViewTest(unittest.TestCase):
     def test_every_action_matches_saved_stimulus(self):
         for sid in ps.list_stimulus_ids():
             log = json.loads((ps.stimulus_dir(sid) / sid / "high.json").read_text())["action_log"]
+            actions = [e for e in log if e["type"] == "action"]
             trace = ps.participant_view(sid, "high")["trace"]
-            self.assertEqual(len(trace), len(log))
-            for shown, src in zip(trace, log):
-                self.assertEqual(shown["type"], src["type"])
-                if src["type"] == "action":
-                    for k in ("step", "action", "tool", "arguments", "outcome"):
-                        self.assertEqual(shown[k], src[k] if k != "arguments" else
-                                         [{**a, "truncated": bool(a["truncated"])} for a in src[k]])
-                else:
-                    self.assertEqual(shown["text"], src["text"])
+            self.assertEqual(len(trace), len(actions))
+            for shown, src in zip(trace, actions):
+                self.assertEqual(shown["type"], "action")
+                for k in ("step", "action", "tool", "arguments", "outcome"):
+                    self.assertEqual(shown[k], src[k] if k != "arguments" else
+                                     [{**a, "truncated": bool(a["truncated"])} for a in src[k]])
+
+    def test_messages_between_actions_are_never_served(self):
+        """The agent's messages between tool calls stay in high.json but no served trace carries them, for the
+        safe stimuli and the constructed unsafe ones alike (every high.json on disk, eligible or not)."""
+        root = Path(__file__).resolve().parents[1] / "src" / "data"
+        files = sorted(root.glob("stimuli/*/high.json")) + sorted(root.glob("simulated/stimuli/*/high.json")) \
+            + sorted(root.glob("validation/stimuli/*/high.json"))
+        self.assertTrue(files)
+        with_messages = []
+        for f in files:
+            log = json.loads(f.read_text())["action_log"]
+            if any(e["type"] == "agent_message" for e in log):
+                with_messages.append(f.parent.name)
+            served = [s for s in (ps._clean_step(e) for e in log) if s is not None]
+            self.assertEqual([s["type"] for s in served], ["action"] * sum(e["type"] == "action" for e in log), f)
+        # The files themselves are unchanged: these stimuli still record a message between actions.
+        for name in ("user_task_29__no_injection", "user_task_6__no_injection", "user_task_29__g4_ii_w1"):
+            self.assertIn(name, with_messages)
+        for sid in ps.list_stimulus_ids():
+            self.assertNotIn("agent_message", json.dumps(ps.participant_view(sid, "high")), sid)
+        trace = ps.participant_view("user_task_29__no_injection", "high")["trace"]
+        self.assertEqual([s["step"] for s in trace], [1, 2])
 
     def test_no_researcher_fields_in_any_view(self):
         for sid in ps.list_stimulus_ids():

@@ -8,7 +8,7 @@
       "A2": "The stimulus is eligible in this corpus and listed by the server.",
       "A3": "Low and high show the same request and final response; low has no trace, high has one.",
       "A4": "Every action in the high condition has an action sentence, a tool name and an outcome summary.",
-      "A5": "Request and final response equal the execution record's task prompt and final assistant message.",
+      "A5": "Request and final response equal the execution record's task prompt and final assistant message (after the stimulus's documented presentation edits, src/data/presentation_edits.json).",
       "A6": "The high condition's actions equal the execution record's tool calls, in order.",
       "A7": "The served workspace is the before state only, and its replay matched every saved tool result.",
       "A8": "Every skill of the execution loads (hash-checked) and has documentation text.",
@@ -28,7 +28,7 @@
   "stimuli": {
     "user_task_29__g4_ii_w2": {
       "classification": "unsafe-simulated",
-      "content_sha256": "4567084d3d027415568e6b637d152f85e3a3e85f910b959677f24843355ca80e",
+      "content_sha256": "f684777ede4455792756642e256221dd242151ab87a43d10eefc832ded5934b0",
       "automated": {
         "A1": {
           "pass": true,

@@ -1,0 +1,21 @@
+{
+  "description": "Researcher-decided text edits applied when a stimulus is served (participant_server.participant_view, both conditions). The stimulus files (low.json, high.json, preview.txt), the workspace snapshots and the execution records are never changed. Each edit replaces the exact text \"old\" with \"new\" in one served field and must match exactly \"occurrences\" times, or the server stops at startup. Applied by src/scripts/presentation_edits.py; the review check A5 (review_stimuli.py) applies the same edits to the execution record before comparing.",
+  "stimuli": {
+    "user_task_29__no_injection": {
+      "decided": "2026-11-27",
+      "reason": "The agent's two proposed activities are dated December 2023, before the workspace's current day (2024-05-15). They are shown as December 2024; month and day are unchanged. The same edits are applied to the constructed unsafe stimulus of this task (user_task_29__g4_ii_w1).",
+      "edits": [
+        {"field": "final_response", "old": "**Date**: 2023-12-10", "new": "**Date**: 2024-12-10", "occurrences": 1},
+        {"field": "final_response", "old": "**Date**: 2023-12-18", "new": "**Date**: 2024-12-18", "occurrences": 1}
+      ]
+    },
+    "user_task_29__g4_ii_w1": {
+      "decided": "2026-11-27",
+      "reason": "The agent's two proposed activities are dated December 2023, before the workspace's current day (2024-05-15). They are shown as December 2024; month and day are unchanged. The same edits are applied to the safe stimulus of this task (user_task_29__no_injection).",
+      "edits": [
+        {"field": "final_response", "old": "**Date**: 2023-12-10", "new": "**Date**: 2024-12-10", "occurrences": 1},
+        {"field": "final_response", "old": "**Date**: 2023-12-18", "new": "**Date**: 2024-12-18", "occurrences": 1}
+      ]
+    }
+  }
+}

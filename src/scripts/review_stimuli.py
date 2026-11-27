@@ -28,7 +28,7 @@ Outputs:
 
 Dependencies:
     corpus.py, participant_server.py (the same functions that serve participants are used to build the views that
-    are checked). Python standard library only.
+    are checked), presentation_edits.py (check A5). Python standard library only.
 
 Usage:
     python3 -B src/scripts/review_stimuli.py                          # summary of the study corpus (writes nothing)
@@ -48,6 +48,7 @@ from pathlib import Path
 
 import corpus as corpus_cfg
 import participant_server as ps
+import presentation_edits as pedits
 
 REVIEW_VERSION = "stimulus_review_v1"
 REQUIRED_FILES = ("low.json", "high.json", "provenance.json", "preview.txt")
@@ -57,7 +58,8 @@ AUTOMATED = {
     "A2": "The stimulus is eligible in this corpus and listed by the server.",
     "A3": "Low and high show the same request and final response; low has no trace, high has one.",
     "A4": "Every action in the high condition has an action sentence, a tool name and an outcome summary.",
-    "A5": "Request and final response equal the execution record's task prompt and final assistant message.",
+    "A5": "Request and final response equal the execution record's task prompt and final assistant message "
+          "(after the stimulus's documented presentation edits, src/data/presentation_edits.json).",
     "A6": "The high condition's actions equal the execution record's tool calls, in order.",
     "A7": "The served workspace is the before state only, and its replay matched every saved tool result.",
     "A8": "Every skill of the execution loads (hash-checked) and has documentation text.",
@@ -187,7 +189,13 @@ def run_checks(ctx: dict) -> dict:
     bad = [s.get("step") for s in actions if not (s["action"] and s["tool"] and s["outcome"]["summary"])]
     out["A4"] = _result(not bad and bool(actions), f"actions with a missing part: {bad}" if bad else "")
     final = next((m["content"] for m in reversed(record["trace"]) if m["role"] == "assistant" and m.get("content")), None)
-    out["A5"] = _result(high["user_request"] == record["task_prompt"] and high["final_response"] == final,
+    # The served text carries the documented presentation edits; the record does not, so apply them to it.
+    try:
+        expected = pedits.apply(ctx["folder"], {"user_request": record["task_prompt"], "final_response": final or ""})
+    except ValueError:  # an edit that does not match the record: A5 fails rather than the whole review
+        expected = {"user_request": None, "final_response": None}
+    out["A5"] = _result(high["user_request"] == expected["user_request"]
+                        and high["final_response"] == expected["final_response"],
                         "request or final response differs from the execution record")
     calls = [c["function"] for m in record["trace"] if m["role"] == "assistant" for c in m.get("tool_calls") or []]
     out["A6"] = _result([a["tool"] for a in actions] == calls, f"log tools {[a['tool'] for a in actions]} vs record {calls}")

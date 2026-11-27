@@ -10,7 +10,6 @@ body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui,-ap
 .user-bubble{background:var(--user);color:var(--user-text);max-width:80%;border-bottom-right-radius:4px;white-space:pre-wrap}
 .assistant-col{display:flex;flex-direction:column;gap:8px;max-width:100%;min-width:0}
 .assistant-bubble{background:var(--surface);border:1px solid var(--line);border-bottom-left-radius:4px}
-.assistant-bubble.interim{color:var(--muted)}
 .assistant-bubble>:first-child{margin-top:0}.assistant-bubble>:last-child{margin-bottom:0}
 .assistant-bubble ul,.assistant-bubble ol{padding-left:1.4em;margin:.4em 0}
 .assistant-bubble code{background:var(--bg);padding:1px 5px;border-radius:4px;font-size:.9em}

@@ -469,8 +469,8 @@ def scenario_target(conn: sqlite3.Connection, config: ep.Config, participant: st
 def omit_trace_steps(view: dict, steps) -> dict:
     """A copy of a participant view without the action-log cards numbered `steps`, the rest renumbered from 1.
 
-    `view` is what participant_server.participant_view returns. Only action entries carry a step number; the
-    assistant's notes between actions are kept in place. A view without a trace (the low condition) and an empty
+    `view` is what participant_server.participant_view returns (its trace holds action entries only; any other
+    entry type would be kept in place unnumbered). A view without a trace (the low condition) and an empty
     `steps` come back unchanged. The stimulus files are never touched: this is a presentation change applied when
     the practice is served (scenario_target), so the files keep matching a fresh build of the execution record.
     Raises ValueError if a step to omit is not an action of the view, so a mistyped configuration cannot hide the

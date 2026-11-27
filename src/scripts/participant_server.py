@@ -11,7 +11,9 @@ Inputs:
     build_stimuli.py; default corpus: src/data/stimuli). Folder names are descriptive development identifiers; the
     server only requires that they match the corpus's id pattern. The stimulus
     id "stim_<hash>" stays inside the files and provenance only. Only these two
-    files are ever sent to participants.
+    files are ever sent to participants, with the text edits of
+    src/data/presentation_edits.json applied (presentation_edits.py; the files
+    themselves are not changed).
     <stimulus folder>/provenance.json and the execution record it points to
     (src/data/execution/runs/<run_id>.json) are read ONLY to decide eligibility
     (see is_eligible); nothing from them is sent to the browser.
@@ -38,8 +40,9 @@ Outputs:
         /p/<token>                      the flow page; an unknown token is answered 404
         /api/stage?t=<token>            the stage to show now (no stimulus identity); records the arrival
         /api/stimulus?t=<token>         the current scenario stage's sanitized JSON, in that participant's
-                                        condition (the trace is present only in the high condition; on the
-                                        practice stage, without the configuration's practice.omit_steps)
+                                        condition (the trace, action steps only, is present only in the high
+                                        condition; on the practice stage, without the configuration's
+                                        practice.omit_steps)
         /api/workspace?t=<token>        read-only workspace BEFORE the agent ran (same in both conditions)
         /api/skills?t=<token>           the agent's skills for this trial: id, name, description
         /api/skill?t=<token>&k=<skill>  one skill's documentation (Markdown), on request
@@ -67,7 +70,8 @@ Dependencies:
     Python standard library only. Reads the files produced by build_stimuli.py. interaction_log.py (event
     validation), corpus.py (corpus configuration and eligibility rules), participant_flow.py (token
     to stage resolution), participant_store.py (participant records and progress), experiment_plan.py (the stage
-    sequence, through participant_flow), participant_data.py (the backups made at startup and shutdown).
+    sequence, through participant_flow), participant_data.py (the backups made at startup and shutdown),
+    presentation_edits.py (researcher-decided text edits applied to served stimuli).
 
 Usage:
     python3 -B src/scripts/participant_server.py [--port 8765] [--host 127.0.0.1]
@@ -105,6 +109,7 @@ import interaction_log as ilog
 import participant_data as pdata
 import participant_flow as flow
 import participant_store as store
+import presentation_edits as pedits
 
 ROOT = Path(__file__).resolve().parents[2]
 UI_DIR = ROOT / "src" / "participant_ui"
@@ -220,7 +225,10 @@ def _clean_step(entry):
 
     Whitelisting (rather than deleting known-bad keys) means a field added to the
     stimulus schema later stays hidden until it is deliberately exposed here.
-    Returns None for entry types the UI does not know how to show.
+    Returns None for every other entry type, so it is left out of the served trace. That includes
+    "agent_message" (text the agent wrote between tool calls): the chat shows the request, the action
+    cards and the final response only, for every stimulus (safe and constructed alike). The messages
+    stay in high.json and in the execution record; they are only not served.
     """
     if entry.get("type") == "action":
         return {
@@ -232,9 +240,6 @@ def _clean_step(entry):
                           for a in entry.get("arguments", [])],
             "outcome": {"status": entry["outcome"]["status"], "summary": entry["outcome"]["summary"]},
         }
-    if entry.get("type") == "agent_message":
-        # Text the agent wrote between tool calls, shown in sequence as-is.
-        return {"type": "agent_message", "text": entry["text"]}
     return None
 
 
@@ -245,8 +250,10 @@ def participant_view(stimulus_id, condition, stimuli_dir=None):
         stimulus_id: folder name such as "user_task_1__no_injection"; must match STIMULUS_ID_RE.
         condition: "low" or "high".
         stimuli_dir: folder holding <folder name>/low.json and high.json.
-    Returns a dict with user_request and final_response, plus "trace" (the ordered
-    steps) only for the high condition. The low view is built from low.json alone
+    Returns a dict with user_request and final_response (with the stimulus's
+    presentation edits applied, see presentation_edits.py), plus "trace" (the ordered
+    action steps; the agent's messages between steps are not included, see _clean_step)
+    only for the high condition. The low view is built from low.json alone
     and never contains a trace key. Raises ValueError for an invalid id/condition
     and FileNotFoundError when the stimulus does not exist.
     """
@@ -260,7 +267,8 @@ def participant_view(stimulus_id, condition, stimuli_dir=None):
     if not path.is_file():
         raise FileNotFoundError(stimulus_id)
     data = json.loads(path.read_text(encoding="utf-8"))
-    view = {"user_request": data["user_request"], "final_response": data["final_response"]}
+    # Researcher-decided text edits (src/data/presentation_edits.json), the same in both conditions.
+    view = pedits.apply(stimulus_id, {"user_request": data["user_request"], "final_response": data["final_response"]})
     if condition == "high":
         steps = (_clean_step(e) for e in data["action_log"])
         view["trace"] = [s for s in steps if s is not None]
@@ -399,6 +407,19 @@ def check_practice_presentation(config) -> None:
             flow.omit_trace_steps(participant_view(config["practice"]["stimulus"], "high"), omit)
         except (ValueError, FileNotFoundError) as exc:
             raise ValueError(f"{config['path']}: practice.omit_steps {omit}: {exc}") from exc
+
+
+def check_presentation_edits() -> None:
+    """Stop the server at startup if a presentation edit of a servable stimulus does not match its text.
+
+    Run after use_corpus. Each edit of src/data/presentation_edits.json must occur exactly as often as it states in
+    both conditions of every stimulus of the active corpus that has edits (stimuli outside the corpus are not
+    served by it and are not checked here). Raises ValueError naming the stimulus and the edit.
+    """
+    listed = set(list_stimulus_ids())
+    for folder in sorted(set(pedits.load()) & listed):
+        for condition in CONDITIONS:
+            participant_view(folder, condition)
 
 
 # Sent with every response. The participant link carries its token in the path (/p/<token>), so no page may pass
@@ -690,6 +711,7 @@ def main():
     flow.load_assessment()  # likewise the assessment questions
     flow.load_questionnaire()  # and the post-study questionnaire
     use_corpus(args.corpus if args.corpus is not None else config["corpus_path"])
+    check_presentation_edits()
     if Path(CORPUS["path"]).resolve() == Path(config["corpus_path"]).resolve():
         # The practice is served from the configuration's own corpus. A --corpus that differs (a researcher preview
         # of the validation or simulated corpus) need not contain it, so the check applies only to that corpus.
