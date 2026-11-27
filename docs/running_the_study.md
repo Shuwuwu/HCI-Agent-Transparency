@@ -169,6 +169,48 @@ database, `data/participants/rehearsal.sqlite3`, which is never study data.
 The same complete procedure runs automatically in `tests/test_pilot_procedure.py`: two participants, one per
 condition, with the server stopped and restarted midway.
 
+## Remote rehearsal over a Cloudflare Quick Tunnel
+
+To let staff on other computers walk through the rehearsal, `rehearsal_tunnel.py` puts the rehearsal server
+behind a temporary HTTPS address (`https://<random-words>.trycloudflare.com`). It is for **rehearsal with simulated
+participants only**: it refuses `study.json` and any configuration that is not simulated, and always uses the
+configuration's own database (`data/participants/rehearsal.sqlite3`; there is no `--db`). The study itself still
+runs in person on `127.0.0.1`, as above.
+
+It is needed because the server's own safeguard cannot cover a tunnel: `--researcher-preview` is refused off
+`127.0.0.1`, but a tunnel reaches the server over `127.0.0.1` too. The script therefore starts its own server
+without `--researcher-preview`, on a port nothing else is using (default 8780, so it never reaches a preview
+server on 8771 or 8772), checks that `/`, `/chat`, `/static/app.js` and the `s=` content routes answer 404, opens the
+tunnel only to that port, and repeats the check through the tunnel before printing any link.
+
+**Once:** install cloudflared (no Cloudflare account is needed for a Quick Tunnel):
+
+```bash
+brew install cloudflared
+```
+
+**Start** (rehearsal participants must be enrolled first, step 1 of "Rehearsing the procedure"):
+
+```bash
+python3 -B src/scripts/rehearsal_tunnel.py
+```
+
+It prints the tunnel address and one link per rehearsal participant, `https://<random-words>.trycloudflare.com/p/<token>`.
+Give each person their own link privately. Anyone with a link can continue that rehearsal participant's session.
+`--no-backup` skips the server's startup and shutdown backups, and `--port` picks another local port.
+
+**Stop:** press Ctrl+C in the same terminal. The tunnel closes first, then the server stops (and writes its
+shutdown backup). The address stops working at once and is never reused: each start gets a new address, so print
+and send the links again. To be sure nothing is left running:
+
+```bash
+pgrep -fl "rehearsal_tunnel.py|cloudflared tunnel"
+```
+
+Notes: a Quick Tunnel has no uptime guarantee and is not for the study. The links go through Cloudflare's network,
+which is acceptable here only because every participant is simulated. The server's request log shows each link
+token, as it does on `127.0.0.1`.
+
 ## Troubleshooting
 
 | Symptom | Cause and fix |
@@ -180,3 +222,5 @@ condition, with the server stopped and restarted midway.
 | `... does not exist: enrol participants first` | Run `participant_store.py --config ... --enrol-all`. |
 | `This conversation could not be loaded` | The stimulus of that trial cannot be served. `experiment_plan.py --check` names it. |
 | A database or backup looks damaged | Stop the server, run `participant_data.py restore` with the newest verified backup (see participant_data.md). |
+| `rehearsal_tunnel.py`: "the tunnel did not reach the server" | The new `trycloudflare.com` name was not yet resolvable from this computer. Run the script again (each start gets a new address). If it keeps failing, the network may block trycloudflare.com. |
+| `rehearsal_tunnel.py`: "port 8780 is already in use" | A rehearsal or preview server is still running there. Stop it, or pass `--port`. |
