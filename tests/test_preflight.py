@@ -125,6 +125,23 @@ class PreflightTests(unittest.TestCase):
         text = "Stored on [secure storage platform]. Contact [me@x.ca](mailto:me@x.ca).\n- [ ] I agree"
         self.assertEqual(preflight.CONSENT_PLACEHOLDER_RE.findall(text), ["secure storage platform"])
 
+    def completion_finding(self, load_debriefing):
+        report = preflight.Report()
+        with mock.patch.object(preflight.flow, "load_debriefing", load_debriefing):
+            preflight.check_materials(report)
+        return next((status, detail) for status, check, detail in report.findings if check == "completion screen")
+
+    def test_the_completion_screen_check_reads_the_debriefing(self):
+        self.assertEqual(self.completion_finding(preflight.flow.load_debriefing),
+                         (preflight.PASS, "debriefing complete"))
+        status, detail = self.completion_finding(lambda: {"markdown": "You will receive [amount] by [date]."})
+        self.assertEqual((status, detail), (preflight.WARN, "debriefing placeholders to fill: ['amount', 'date']"))
+
+    def test_a_missing_debriefing_fails(self):
+        def missing():
+            raise FileNotFoundError("debriefing.md")
+        self.assertEqual(self.completion_finding(missing)[0], preflight.FAIL)
+
 
 class ReviewCheckTests(unittest.TestCase):
     """check_reviews: current review records and manually reviewed stimuli."""

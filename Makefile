@@ -169,7 +169,7 @@ tunnel:
 
 # funnel_server.py starts the server without --researcher-preview, refuses an occupied port or an existing Tailscale
 # share, checks the researcher routes answer 404 locally and at the public address, and never prints link tokens.
-# For the study it also refuses while a consent, questionnaire or completion-screen placeholder is left.
+# For the study it also refuses while a consent, questionnaire or debriefing placeholder is left.
 funnel-rehearsal: preflight-rehearsal
 	@$(call require_free_port,$(FLOW_PORT))
 	$(PY) $(SCRIPTS)/funnel_server.py --experiment-config $(CONFIG_DIR)/rehearsal.json --port $(FLOW_PORT)

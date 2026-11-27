@@ -20,8 +20,9 @@ Inputs:
     --config (default the study configuration) and optionally --db (another database of that environment) and
     --port (default 8765, the server's default). Reads the configuration's assignments, corpus, stimuli, the
     review records of the corpus (its review_file and any reviewed_in record, each recomputed with the corpus in
-    src/data/corpora/ that owns it), the study materials in src/study_materials/, src/participant_ui/flow.js (placeholder screens), the database
-    file, data/participants/ and its backups, and asks git whether the database is ignored.
+    src/data/corpora/ that owns it), the study materials in src/study_materials/ (consent, debriefing,
+    assessment, questionnaires), the database file, data/participants/ and its backups, and asks git whether the
+    database is ignored.
 
 Outputs:
     One line per check on stdout ("PASS|WARN|FAIL  <check>: <detail>") and a summary; exit status 1 if any check
@@ -62,9 +63,9 @@ PASS, WARN, FAIL = "PASS", "WARN", "FAIL"
 MIN_PYTHON = (3, 10)
 BACKUP_MAX_AGE = datetime.timedelta(hours=24)
 MIN_FREE_BYTES = 1 << 30
-# A bracketed phrase that is neither the agreement checkbox ("[ ]") nor a Markdown link ("[text](url)").
+# A bracketed phrase that is neither the agreement checkbox ("[ ]") nor a Markdown link ("[text](url)"): a
+# placeholder left in the consent text or the debriefing.
 CONSENT_PLACEHOLDER_RE = re.compile(r"\[(?! \])([^\]]+)\](?!\()")
-COMPLETION_PLACEHOLDER = "The debriefing text and any compensation details go here."
 
 
 class Report:
@@ -172,7 +173,8 @@ def check_reviews(report: Report, config: ep.Config, payload: dict | None) -> No
 
 def check_materials(report: Report) -> None:
     """Consent, assessment and both questionnaires load (with no item id shared between the questionnaires);
-    placeholders still in them, or on the completion screen."""
+    placeholders still in them, or in the debriefing shown on the completion screen
+    (src/study_materials/debriefing.md)."""
     for name, loader in (("consent", flow.load_consent), ("assessment", flow.load_assessment),
                          ("questionnaire", flow.load_questionnaires)):
         try:
@@ -190,10 +192,14 @@ def check_materials(report: Report) -> None:
                        else ", ".join(spec.get("version", key) for key, spec in material.items()))
         else:
             report.add(PASS, name, f"{material.get('version', 'loaded')}")
-    flow_js = (ps.UI_DIR / "flow.js").read_text(encoding="utf-8")
-    report.add(WARN if COMPLETION_PLACEHOLDER in flow_js else PASS, "completion screen",
-               "debriefing and compensation text are still a placeholder" if COMPLETION_PLACEHOLDER in flow_js
-               else "no placeholder")
+    try:
+        debriefing = flow.load_debriefing()
+    except (OSError, ValueError) as exc:
+        report.add(FAIL, "completion screen", str(exc))
+        return
+    left = CONSENT_PLACEHOLDER_RE.findall(debriefing["markdown"])
+    report.add(WARN if left else PASS, "completion screen",
+               f"debriefing placeholders to fill: {left}" if left else "debriefing complete")
 
 
 def check_database(report: Report, config: ep.Config, db_path: Path, payload: dict | None) -> None:

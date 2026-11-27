@@ -6,7 +6,8 @@ Purpose:
 
 Inputs:
     participant_server.STATIC_FILES (served at /static/<file> without --researcher-preview) and flow.html (served at
-    /p/<token>), all read from src/participant_ui/.
+    /p/<token>), all read from src/participant_ui/; src/study_materials/debriefing.md, none of whose lines may
+    appear in those files.
 
     Also checks over HTTP that the researcher page script (app.js), which reads the condition from its URL, is
     served only with --researcher-preview.
@@ -34,6 +35,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src" / "scripts"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tests"))
 
+import participant_flow as flow  # noqa: E402
 import participant_server as ps  # noqa: E402
 from participant_http import preview_handler  # noqa: E402
 
@@ -60,6 +62,16 @@ class ServedWordingTest(unittest.TestCase):
                     if match.group(0).lower() not in ALLOWED.get(name, set()):
                         hits.append(f"{name}:{number}: {match.group(0)}")
         self.assertEqual(hits, [], "study wording in files served to participants (see README, participant_ui)")
+
+    def test_no_served_file_contains_the_debriefing(self):
+        """The debriefing explains the study; it is sent by the server at the end only (participant_flow), so no file
+        a participant's browser loads at the start may carry any of its lines."""
+        lines = [line.strip("#- ").strip() for line in flow.load_debriefing()["markdown"].splitlines()]
+        lines = [line for line in lines if len(line) > 40]  # flow.js keeps a short generic thank-you as a fallback
+        self.assertTrue(lines)
+        hits = [(name, line[:40]) for name in participant_served_files()
+                for line in lines if line in (ps.UI_DIR / name).read_text(encoding="utf-8")]
+        self.assertEqual(hits, [])
 
     def test_researcher_page_is_not_in_the_participant_whitelist(self):
         # app.js reads the condition from its URL by design, so it must only be served with --researcher-preview.

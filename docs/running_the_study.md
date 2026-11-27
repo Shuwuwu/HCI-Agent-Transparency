@@ -16,7 +16,7 @@ data is and how to read, export, back up and restore it, see [participant_data.m
 | Consent text | Ready: no placeholder left (data storage and HTTPS transmission described, 2026-11-27) |
 | Pre-study questionnaire | Ready: 2 items, the same in both conditions (`src/study_materials/pre_questionnaire.json`) |
 | Post-study questionnaire | Ready: 8 items, identical in both conditions, plus 1 on the activity log for the high condition only (`src/study_materials/questionnaire.json`) |
-| Completion screen | **Placeholder** debriefing and compensation text (`src/participant_ui/flow.js`). `funnel_server.py` refuses to publish the study until it is replaced |
+| Completion screen | Ready: the debriefing (`src/study_materials/debriefing.md`): thanks, the research objective, the two interface versions, the constructed conversations, data, a request not to discuss the study, and the contact address. No compensation is described, as the consent form mentions none; add it there and in the debriefing if that changes. Sent only at the end of the study |
 | Remote sessions (Tailscale Funnel, `funnel_server.py`) | Tested with simulated data only (2026-11-27). Not yet used with real participants: see "Remote study sessions over Tailscale Funnel" for what must be in place first |
 
 `preflight.py` reports each of these. Do not run real participants or a pilot with real people until it shows no
@@ -226,7 +226,7 @@ backups, and serves no researcher route.
 The script refuses to publish, and opens nothing, when:
 
 - the configuration is the study and a placeholder is left in the consent text, the questionnaires or the
-  completion screen (a simulated configuration may be published with them, for testing);
+  debriefing (a simulated configuration may be published with them, for testing);
 - the configuration's database does not exist (enrol first);
 - Tailscale is not running and signed in, or already shares anything (so its funnel is the only one, and clearing
   the configuration on exit removes nothing else);

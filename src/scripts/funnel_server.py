@@ -9,7 +9,7 @@ Purpose:
 
     Safeguards, in order (the route checks are those of rehearsal_tunnel.py, which is left unchanged):
       1. the configuration loads with its assignments; for the study (any non-simulated configuration), no
-         placeholder is left in the consent text, the questionnaires or the completion screen
+         placeholder is left in the consent text, the questionnaires or the debriefing of the completion screen
          (preflight.check_materials); and the configuration's database exists (enrol first);
       2. nothing listens on the chosen port, and Tailscale shares nothing yet (no Serve or Funnel configuration),
          so the funnel opened here is the only thing this computer publishes;
@@ -176,7 +176,7 @@ def check_public(public_url: str, config: ep.Config, seconds: float = REMOTE_CHE
 
 def material_problems() -> list[str]:
     """What preflight.check_materials does not pass (placeholders left in the consent text, the questionnaires or
-    the completion screen, or a material that does not load), as "check: detail" lines; [] when all pass."""
+    the debriefing, or a material that does not load), as "check: detail" lines; [] when all pass."""
     report = preflight.Report()
     preflight.check_materials(report)
     return [f"{check}: {detail}" for status, check, detail in report.findings if status != preflight.PASS]

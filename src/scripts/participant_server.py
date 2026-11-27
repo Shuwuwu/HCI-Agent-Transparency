@@ -710,6 +710,7 @@ def main():
     flow.load_consent()  # a missing or malformed consent file stops the server here, not at a participant's start
     flow.load_assessment()  # likewise the assessment questions
     flow.load_questionnaires()  # and the pre- and post-study questionnaires
+    flow.load_debriefing()  # and the debriefing shown on the completion screen
     use_corpus(args.corpus if args.corpus is not None else config["corpus_path"])
     check_presentation_edits()
     if Path(CORPUS["path"]).resolve() == Path(config["corpus_path"]).resolve():

@@ -15,8 +15,10 @@
  * Inputs:
  *   The link token, read from location.pathname (/p/<token>); it is never written into a query string.
  *   JSON from GET /api/stage?t=<token>: {stage: {key, kind, index, trial_id?, practice?, trial?, trials?} | null,
- *   progress: {completed, total}}. The consent stage also carries consent: {markdown, checkbox, sha256}, and an
- *   assessment stage carries assessment (see assessment.js). The
+ *   progress: {completed, total}}. The consent stage also carries consent: {markdown, checkbox, sha256}, an
+ *   assessment stage carries assessment (see assessment.js), and the completion stage carries debriefing:
+ *   {markdown}, the closing text (src/study_materials/debriefing.md), which the server sends with no earlier
+ *   stage. Once every stage is complete the stage is null and the payload itself carries debriefing. The
  *   stage identifies a trial by its trial id only; the server decides what that trial shows.
  *
  * Outputs:
@@ -52,14 +54,6 @@
     if (cls) e.className = cls;
     if (text !== undefined) e.textContent = text;
     return e;
-  }
-
-  /** A dashed box standing in for study material that has not been written yet. */
-  function placeholder(what) {
-    const box = el("div", "placeholder");
-    box.appendChild(el("strong", "placeholder-tag", "Placeholder"));
-    box.appendChild(document.createTextNode(what));
-    return box;
   }
 
   /** Replace the continue bar with one button; `onClick` is called once and the button then stays disabled. */
@@ -226,14 +220,19 @@
     });
   }
 
-  /** The last screen. Reaching it completes the final stage, which is what marks the participant finished in
-   *  the database; there is nothing to draw afterwards, so the answer is not redrawn. Reopening the link lands
-   *  here again (the stage is then already complete and the repeated submission changes nothing). */
-  function completionScreen(stage) {
-    const box = el("div", "stage-card");
-    box.appendChild(el("h1", null, "Thank you"));
-    box.appendChild(el("p", null, "You have completed the study. You may now close this page."));
-    box.appendChild(placeholder(" The debriefing text and any compensation details go here."));
+  /** The last screen: the closing text the server sent (Markdown, drawn like the consent text). Reaching it
+   *  completes the final stage, which is what marks the participant finished in the database; there is nothing
+   *  to draw afterwards, so the answer is not redrawn. Reopening the link lands here again with the text sent in
+   *  the payload instead (`text`); a plain thank-you is shown only if neither carries it. */
+  function completionScreen(stage, text) {
+    const closing = (stage && stage.debriefing) || text;
+    const box = el("article", "stage-card material");
+    if (closing) {
+      box.innerHTML = renderMarkdown(closing.markdown); // renderMarkdown escapes all HTML in the text
+    } else {
+      box.appendChild(el("h1", null, "Thank you"));
+      box.appendChild(el("p", null, "You have completed the study. You may now close this page."));
+    }
     host.appendChild(box);
     if (!stage) return;
     fetch("/api/stage/complete", {
@@ -284,7 +283,7 @@
     const stage = payload && payload.stage;
     if (!stage) {
       progress.textContent = "";
-      return completionScreen();
+      return completionScreen(null, payload && payload.debriefing);
     }
     progress.textContent = stage.practice ? "Practice"
       : (stage.trials ? "Conversation " + stage.trial + " of " + stage.trials : "");

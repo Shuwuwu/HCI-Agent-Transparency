@@ -1,9 +1,10 @@
 """Tests of participant_flow.py and the participant routes of participant_server.py, over real HTTP.
 
-Three things are checked, and nothing else: that no participant-facing response reveals which stimulus or which
+Four things are checked, and nothing else: that no participant-facing response reveals which stimulus or which
 transparency condition a trial holds (the folder name says whether a trial is injected, so leaking it would tell
-a participant what to expect), that the flow cannot lose, duplicate or reorder a trial, and that no participant
-gets past the consent stage without their agreement to the exact consent text being recorded. The assessment and
+a participant what to expect), that the flow cannot lose, duplicate or reorder a trial, that no participant
+gets past the consent stage without their agreement to the exact consent text being recorded, and that the
+debriefing, which explains the study, reaches a participant only at the end. The assessment and
 questionnaire tests also check that every answer is validated and stored, including that the questionnaire
 item asked only alongside the activity log is asked of, and accepted from, only those participants.
 
@@ -139,15 +140,18 @@ class FlowServer:
         assert stage["kind"] == "assessment", stage
         return self.complete(participant, stage["key"], answers=self.answers_for(stage, **overrides))
 
-    def walk(self, participant, until=None):
+    def walk(self, participant, until=None, seen=None):
         """Advance the way the browser does, stopping when `until` is the current stage (or the sequence ends).
 
         One GET to find where the participant is, then POST after POST: each answer carries the next stage, and
         the page draws it without asking for it again. Walking by re-fetching /api/stage between steps would
-        exercise a path a participant never takes.
+        exercise a path a participant never takes. A `seen` list receives every response body, in order.
         """
         walked = []
-        stage = self.stage(participant)["stage"]
+        first = self.stage(participant)
+        if seen is not None:
+            seen.append(json.dumps(first))
+        stage = first["stage"]
         while stage is not None and stage["key"] != until:
             if stage["kind"] == "consent":
                 answer = self.agree(participant)
@@ -158,6 +162,8 @@ class FlowServer:
             else:
                 answer = self.complete(participant, stage["key"])
             assert answer[0] == 200, answer
+            if seen is not None:
+                seen.append(answer[1])
             walked.append(stage["key"])
             stage = json.loads(answer[1])["stage"]
         return walked
@@ -921,6 +927,51 @@ class ConsentTests(unittest.TestCase):
         self.srv.get(f"/p/{self.srv.tokens[self.participant]}")
         self.assertEqual(self.consent_row(), first)
         self.assertEqual(self.srv.stage(self.participant)["stage"]["key"], "pre_questionnaire")
+
+
+class DebriefingTests(unittest.TestCase):
+    """The debriefing explains what the study investigates, so it must reach a participant only at the end: with the
+    completion stage, and again whenever a participant who has finished reopens their link."""
+
+    MARKER = "prompt injection"  # a phrase of the debriefing that no earlier screen may contain
+
+    def setUp(self):
+        self.srv = FlowServer()
+        self.participant = participant_with("high")
+        self.markdown = flow.load_debriefing()["markdown"]
+
+    def tearDown(self):
+        self.srv.close()
+
+    def test_only_the_completion_stage_and_a_finished_participant_receive_the_debriefing(self):
+        self.assertIn(self.MARKER, self.markdown)
+        seen = []
+        self.srv.walk(self.participant, until="completion", seen=seen)
+        *before, arrival = seen
+        for body in before:
+            self.assertNotIn('"debriefing"', body)
+            self.assertNotIn(self.MARKER, body)
+        # The answer to the last questionnaire carries the completion stage, which the page draws at once.
+        self.assertEqual(json.loads(arrival)["stage"]["kind"], "completion")
+        self.assertEqual(json.loads(arrival)["stage"]["debriefing"], {"markdown": self.markdown})
+        self.assertEqual(self.srv.stage(self.participant)["stage"]["debriefing"], {"markdown": self.markdown})
+        status, body = self.srv.complete(self.participant, "completion")
+        self.assertEqual(status, 200, body)
+        for payload in (json.loads(body), self.srv.stage(self.participant)):  # finishing, then reopening the link
+            self.assertIsNone(payload["stage"])
+            self.assertEqual(payload["debriefing"], {"markdown": self.markdown})
+
+    def test_an_empty_debriefing_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            empty = Path(tmp) / "debriefing.md"
+            empty.write_text(" \n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "empty"):
+                flow.load_debriefing(empty)
+
+    def test_the_debriefing_names_no_trial_stimulus_or_condition_value(self):
+        """Prose about the two interface versions is fine; the identifiers the server keeps from the browser are not."""
+        for secret in ('"low"', '"high"', '"condition"', '"version"', '"stimulus"', "user_task_", "rehearsal-"):
+            self.assertNotIn(secret, self.markdown)
 
 
 class ConsentSchemaTests(unittest.TestCase):

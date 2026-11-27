@@ -25,6 +25,10 @@ Inputs:
     src/study_materials/consent.md: the consent text, in Markdown, whose last line is the agreement checkbox
     written as a task-list item ("- [ ] I agree to ..."). It is read on every request, so the text served and the
     text recorded are always the current file.
+    src/study_materials/debriefing.md: the debriefing shown on the completion screen, in Markdown (see
+    load_debriefing). It explains the study's purpose, so it is sent only with the completion stage, or to a
+    participant who has completed every stage; it never reaches a browser earlier, and it is not part of any
+    file served from src/participant_ui/.
 
     Assessment. Every assessment stage, practice and experimental alike, shows the same five questions in the same
     order: whether the user's request was completed successfully (task_completion: Yes / No / Not sure), whether
@@ -61,7 +65,8 @@ Inputs:
 
 Outputs:
     Stage descriptors and progress counts for the browser (no stimulus identity; the consent stage also carries
-    the consent text, its checkbox statement and its hash); the (stimulus folder, condition) pair the scenario
+    the consent text, its checkbox statement and its hash; the completion stage, and the payload of a participant
+    who has completed every stage, carry the debriefing); the (stimulus folder, condition) pair the scenario
     endpoints resolve on the server; a stored consent when the consent stage is completed; stored answers when an
     experimental assessment or a questionnaire stage is completed; and interaction events
     in the participant database (the trial's stimulus and condition are in its plan_stages rows, not repeated in
@@ -88,6 +93,7 @@ import interaction_log as ilog
 import participant_store as store
 
 CONSENT_PATH = ep.ROOT / "src" / "study_materials" / "consent.md"
+DEBRIEFING_PATH = ep.ROOT / "src" / "study_materials" / "debriefing.md"
 ASSESSMENT_PATH = ep.ROOT / "src" / "study_materials" / "assessment.json"
 QUESTIONNAIRE_PATH = ep.ROOT / "src" / "study_materials" / "questionnaire.json"  # post-study
 PRE_QUESTIONNAIRE_PATH = ep.ROOT / "src" / "study_materials" / "pre_questionnaire.json"
@@ -122,6 +128,20 @@ def load_consent(path=CONSENT_PATH) -> dict:
         raise ValueError(f"{path}: the last line must be the agreement checkbox, '- [ ] <statement>'")
     return {"markdown": "\n".join(lines[:-1]).rstrip(), "checkbox": match.group(1).strip(),
             "sha256": hashlib.sha256(raw).hexdigest(), "text": text}
+
+
+def load_debriefing(path=DEBRIEFING_PATH) -> dict:
+    """The debriefing shown when the study is finished: {"markdown", "sha256"}.
+
+    Read on every request, like the consent text. Raises ValueError if the file is empty and OSError if it cannot be
+    read; participant_server.py loads it at startup so a missing file stops the server rather than a finished
+    participant's last screen.
+    """
+    raw = path.read_bytes()
+    markdown = raw.decode("utf-8").strip()
+    if not markdown:
+        raise ValueError(f"{path}: the debriefing is empty")
+    return {"markdown": markdown, "sha256": hashlib.sha256(raw).hexdigest()}
 
 
 class AssessmentError(ValueError):
@@ -450,6 +470,13 @@ def _progress(plan: dict, done: list[str]) -> dict:
     return {"completed": len(done), "total": len(plan["stages"])}
 
 
+def _finished(plan: dict, done: list[str]) -> dict:
+    """The payload once every stage is complete: no stage, and the debriefing, so the completion screen it draws
+    (on finishing, or on reopening the link later) shows the same closing text as the completion stage did."""
+    return {"stage": None, "progress": _progress(plan, done),
+            "debriefing": {"markdown": load_debriefing()["markdown"]}}
+
+
 def _server_event(conn: sqlite3.Connection, participant: str, stage: dict, kind: str) -> None:
     """Store an event the server produces itself (session_start, stage_load) against `stage`.
 
@@ -483,6 +510,8 @@ def _enter(conn: sqlite3.Connection, config: ep.Config, participant: str, payloa
         out["assessment"] = assessment_for(stage)
     if stage["kind"] == "questionnaire":
         out["questionnaire"] = questionnaire_for(load_questionnaire(QUESTIONNAIRES[stage["key"]]), plan["condition"])
+    if stage["kind"] == "completion":
+        out["debriefing"] = {"markdown": load_debriefing()["markdown"]}
     return out
 
 
@@ -490,13 +519,14 @@ def stage_payload(conn: sqlite3.Connection, config: ep.Config, participant: str,
                   payload: dict | None = None) -> dict:
     """Enter and describe the stage this participant is to be shown now, recording a `stage_load` event.
 
-    Returns {"stage": descriptor or None, "progress": {...}}; the stage is None once every stage has been
-    completed. Called on every page load of the flow, so it is also the resume path: it always returns the same
-    stage until that stage is completed, and the arrival time it records is the first one.
+    Returns {"stage": descriptor or None, "progress": {...}}; once every stage has been completed, the payload
+    of _finished instead (no stage, and the debriefing). Called on every page load of the flow, so it is also the
+    resume path: it always returns the same stage until that stage is completed, and the arrival time it records
+    is the first one.
     """
     plan, stage, done = _plan_and_stage(conn, config, participant, payload)
     if stage is None:
-        return {"stage": None, "progress": _progress(plan, done)}
+        return _finished(plan, done)
     out = _enter(conn, config, participant, payload, plan, stage)
     _server_event(conn, participant, stage, "stage_load")
     return {"stage": out, "progress": _progress(plan, done)}
@@ -655,5 +685,6 @@ def advance(conn: sqlite3.Connection, config: ep.Config, participant: str, stage
     else:
         store.complete_stage(conn, config, participant, stage_key, payload)
     plan, stage, done = _plan_and_stage(conn, config, participant, payload)
-    return {"stage": _enter(conn, config, participant, payload, plan, stage) if stage else None,
-            "progress": _progress(plan, done)}
+    if stage is None:
+        return _finished(plan, done)
+    return {"stage": _enter(conn, config, participant, payload, plan, stage), "progress": _progress(plan, done)}

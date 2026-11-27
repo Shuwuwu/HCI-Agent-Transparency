@@ -103,7 +103,7 @@ body:has(> .layout){height:100vh;height:100dvh;overflow:hidden}
 .stage-card p{margin:0;color:var(--muted)}
 .placeholder{border:1px dashed var(--line);border-radius:10px;padding:14px;color:var(--muted);font-size:14px;background:var(--surface)}
 .placeholder-tag{display:block;font-weight:600;color:var(--text);margin-bottom:4px;font-size:13px}
-/* ---- long-form study text (consent): an information sheet ----
+/* ---- long-form study text (consent, and the closing text after the last stage): an information sheet ----
    One white panel on the page background, like the workspace panel and the chat bubbles. The panel is 736px
    wide but its padding holds the text column to about 590px: measured, that is about 75 characters per line
    (none over 80) at 17px, the upper end of comfortable reading, so widen the padding rather than the column. Spacing follows one scale: 12px between paragraphs, 36px above
@@ -114,6 +114,8 @@ body:has(> .layout){height:100vh;height:100dvh;overflow:hidden}
 .material h1+p{color:var(--muted)}
 .material h2{font-size:19px;line-height:1.35;font-weight:650;margin:24px 0 8px;text-wrap:balance}
 .material p{color:var(--text);margin:0 0 12px;text-wrap:pretty}
+.material ul{margin:0 0 12px;padding-left:1.4em}
+.material li{margin:0 0 4px}
 .material a{color:var(--accent);text-decoration-thickness:1px;text-underline-offset:3px}
 .material a:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
 
