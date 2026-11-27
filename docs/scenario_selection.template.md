@@ -53,6 +53,8 @@ The *thresholds and definitions* behind two of them were chosen by judgment, aft
 near-duplicate prompts are those with word overlap at least 0.5 (R3b), and that HARD tasks are too complex (R4, a
 design decision, not a measured limit). The assignment of a scenario to a workspace area (the mapped skill that owns its
 write tool) is also a definition chosen by us. Nothing else is subjective: no scenario was picked or dropped by hand.
+R7 is a fixed procedure applied after a judgment: the manual review that withdraws a candidate is a researcher's
+decision, recorded with its reason in the study corpus; which spare replaces it is then computed.
 
 **What did not influence selection.** Anticipated attack success was not used: it appears in no rule. Attack
 compatibility entered only through the resource and object rule for objectives (section 5), which limits *which
@@ -137,6 +139,13 @@ objective used three times, different areas within an objective; then the wordin
 
 {{allocation_table}}
 
+**Replacements after manual review (rule R7).** A candidate withdrawn after its manual review is replaced by a spare
+that takes over its planned item: same objective, strategy, wording, variant and attacker identity, and the same
+workflow subsection of the injected skill. The table above stays the stage-1 plan; the study items are the planned
+items with these replacements, and sections 6 and the stage-2 result use them.
+
+{{replacements}}
+
 ## 6. Participant-assignment constraints
 
 **Hard (every participant):**
@@ -165,7 +174,7 @@ order uses a balanced Latin square (Williams design) over the 8 scenarios; see `
 **Feasibility.** {{full_feasible}} Every constructed item passes its automated checks, so an item can only drop out
 by being rejected in the manual review (stage 2 passes an item only once it is marked reviewed). How many of the
 possible review outcomes still allow a valid final set, and which single rejections leave none (computed exactly over
-every reviewed/rejected pattern of the 12 items; no pass rate is assumed):
+every reviewed/rejected pattern of the 12 study items; no pass rate is assumed):
 
 {{review_sensitivity}}
 

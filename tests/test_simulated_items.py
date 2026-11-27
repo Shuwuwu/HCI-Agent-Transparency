@@ -33,13 +33,17 @@ class SimulatedItemsTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.manifest = load(SIM / "manifest.json")
-        cls.study = {i["item_id"]: i for i in load(items.STUDY_MANIFEST)["items"]}
+        cls.study = {i["item_id"]: i for i in items.manifest_items()}  # the 12 planned items and R7 replacements
         cls.records = {e["item_id"]: load(e["record"]["file"]) for e in cls.manifest["items"]}
         cls.inputs = {t["scenario"]: t for t in load("src/data/scenario_selection_inputs.json")["tasks"]}
 
-    def test_manifest_covers_the_twelve_study_items_in_order(self):
+    def test_manifest_covers_the_twelve_planned_items_and_the_replacement_in_order(self):
         self.assertEqual([e["item_id"] for e in self.manifest["items"]], items.study_item_ids())
-        self.assertEqual(len(self.manifest["items"]), 12)
+        self.assertEqual(len(self.manifest["items"]), 13)
+        replacement = self.manifest["items"][-1]  # R7: task 17 takes over task 24's item; task 24's stays built
+        self.assertEqual((replacement["item_id"], replacement["replaces"]),
+                         ("user_task_17__g2_ii_w3v1", "user_task_24__g2_ii_w3v1"))
+        self.assertIn("user_task_24__g2_ii_w3v1", self.records)
         self.assertEqual(self.manifest["material_kind"], "simulated_trace")
         self.assertTrue(all(e["status"] == "built_unreviewed" for e in self.manifest["items"]))
 

@@ -9,9 +9,9 @@ data is and how to read, export, back up and restore it, see [participant_data.m
 |---|---|
 | Participant flow: consent, practice tour, 8 trials with assessments, questionnaire, completion | Ready; tested end to end in both conditions |
 | Data recording, privacy, exports, backups | Ready |
-| Rehearsal with simulated participants (`rehearsal.json`) | Ready |
-| Unsafe stimuli | **Not ready.** The 12 unsafe stimuli are built as simulated (constructed) traces in `src/data/simulated/` but not yet manually reviewed. The study configuration needs `src/data/participant_assignments.json`, written by `build_assignments.py --write N` once enough of them are marked reviewed for stage 2 to find a final set. |
-| Manual stimulus review | **Not done.** None of the 20 safe or 12 simulated unsafe stimuli is marked reviewed. `preflight.py` fails the study configuration until every stimulus a participant will see is marked reviewed and both review records are current. |
+| Rehearsal with simulated participants (`rehearsal.json`) | Ready. Its development assignments were rebuilt after task 24 was replaced by task 17 (rule R7): participants enrolled earlier must be reset (`participant_store.py --config src/data/experiment_configs/rehearsal.json --reset P001 ...`) to get the new trial sequence. |
+| Unsafe stimuli | **Not ready.** The 12 unsafe stimuli are built as simulated (constructed) traces in `src/data/simulated/` but not yet manually reviewed. Task 24 is withdrawn after manual review and excluded from the study corpus; by rule R7 spare task 17 takes over its planned item (G2, W3 v1, the same injected skill), built as `user_task_17__g2_ii_w3v1` (see `docs/scenario_selection.md`). The study configuration needs `src/data/participant_assignments.json`, written by `build_assignments.py --write N` once enough of them are marked reviewed for stage 2 to find a final set. |
+| Manual stimulus review | **Not done.** Not every one of the 19 served safe and 12 simulated unsafe study stimuli is marked reviewed yet (task 24 is excluded; `review_stimuli.py` lists the status of each). `preflight.py` fails the study configuration until every stimulus a participant will see is marked reviewed and both review records are current. |
 | Consent text | **One placeholder left:** `[secure storage platform]` |
 | Post-study questionnaire | Ready: 11 items, the same in both conditions (`src/study_materials/questionnaire.json`) |
 | Completion screen | **Placeholder** debriefing and compensation text (`src/participant_ui/flow.js`) |

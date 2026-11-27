@@ -23,12 +23,18 @@ Purpose:
       R3b near-duplicate prompts (word-set Jaccard >= 0.5) keep only the lowest seeded rank;
       R5  area-by-area round-robin in seeded order, balancing Easy/Medium, gives 12 candidates then the spares;
       R6  (final set, stage 2) from the passing items (simulated, included, manually reviewed), the final 8 never
-          contain both members of a repeated-task pair.
+          contain both members of a repeated-task pair;
+      R7  (replacement, stage 2) a candidate withdrawn after manual review (its safe stimulus excluded by the study
+          corpus, with the reason) is replaced by the first spare, in selection order, that can take over its
+          planned item (objective, strategy, wording, variant, attacker identity) and with which a valid final set
+          still exists if every study item passes. Stage 1 (R1-R5, the planned items) is not changed: the
+          replacement is a separate layer (`study_allocation`), recorded in the CSV's last two columns.
     Subjective decisions are not hidden: the document lists, per rule, whether it is systematic or a judgment.
 
 Inputs:
     src/data/scenario_selection_inputs.json (facts about the tasks, produced by --collect, which needs AgentDojo),
-    docs/scenario_selection.template.md, and for stage 2 src/data/simulated/manifest.json (the simulated items and
+    docs/scenario_selection.template.md, the study corpus's "exclude" map (src/data/corpora/study.json: R7's
+    withdrawn candidates), and for stage 2 src/data/simulated/manifest.json (the simulated items and
     their inclusion verdicts; each record's SHA-256 is checked) and src/data/simulated/review.json (their manual
     review status; it must be current, i.e. equal to a fresh review_stimuli.py review, or stage 2 stops).
 
@@ -64,6 +70,8 @@ DOC_PATH = ROOT / "docs" / "scenario_selection.md"
 TEMPLATE = ROOT / "docs" / "scenario_selection.template.md"
 SIMULATED_MANIFEST = ROOT / "src" / "data" / "simulated" / "manifest.json"
 SIMULATED_CORPUS = ROOT / "src" / "data" / "corpora" / "simulated.json"  # its review_file is the review record
+STUDY_CORPUS = ROOT / "src" / "data" / "corpora" / "study.json"  # its "exclude" map names withdrawn candidates (R7)
+SAFE_SUFFIX = "__no_injection"
 TAXONOMY = ROOT / "src" / "data" / "skill_taxonomy.json"
 
 SELECTION_VERSION = "scenario_selection_v1"
@@ -94,6 +102,12 @@ RULES = [
     ("R6", "Final set (stage 2)", "systematic",
      "From the items that passed their runs, the final 8 scenarios never contain both members of a repeated-task pair "
      "(one task's correct solution contained in the other's and the safe run of one passing the other's check)."),
+    ("R7", "Replacement (stage 2)", "systematic after a review decision",
+     "A candidate withdrawn after manual review (its safe stimulus excluded from the study corpus, with the reason) is "
+     "replaced by the first spare, in selection order, that is compatible with the candidate's planned objective and "
+     "with which a valid final set still exists if every study item passes. The spare takes over the planned item "
+     "(objective, strategy, wording, variant, attacker identity and the workflow subsection of the injected skill); "
+     "the planned items of stage 1 are not changed."),
 ]
 
 AREA_LABELS = {"calendar-lookup": "calendar lookup", "calendar-scheduling": "calendar scheduling",
@@ -106,6 +120,7 @@ COLUMNS = [
     "compatible_objectives", "seed_rank", "selection_status", "rule_id", "rationale",
     "planned_item_id", "attacker_objective", "strategy", "wording", "wording_variant", "attacker_identity",
     "simulated_included", "review_status", "stage2_status", "final_set", "participant_list",
+    "replaced_by", "replaces",
 ]
 
 
@@ -115,7 +130,8 @@ def collect_facts() -> dict:
     """Facts about the 40 tasks from AgentDojo and the project's records (run with the AgentDojo Python).
 
     Per task: prompt, difficulty, correct-solution calls and whether they pass, taxonomy skills, the skills-v4b
-    run (path, sha256, status, utility), eligibility (participant_server.is_eligible), and for eligible tasks the
+    run (path, sha256, status, utility), eligibility (participant_server.is_eligible in the study corpus, ignoring
+    its "exclude" map), and for eligible tasks the
     actions of the safe trace. Also the repeated-task pairs, computed by replaying every eligible safe run.
     """
     import copy
@@ -128,6 +144,10 @@ def collect_facts() -> dict:
     from function_calling_pi.agent_pipeline import GroundTruthPipeline
 
     suite = benchmark.SUITES["workspace"]
+    # R1 is the pool before any review decision: a stimulus the study corpus excludes after review is R7's input,
+    # not a change of the pool, so collecting again after an exclusion gives the same facts (and the same stage 1).
+    ps.use_corpus(STUDY_CORPUS)
+    ps.CORPUS["exclude"] = {}
     taxonomy = json.loads(TAXONOMY.read_text(encoding="utf-8"))
     base_env = suite.load_and_inject_default_environment({})
     tasks, replays = [], {}
@@ -356,6 +376,67 @@ def select(facts: dict, seed: str = SEED, wordings: tuple | None = None, strateg
                            for g in groups for a, b in itertools.combinations(g, 2)}}
 
 
+# ------------------------------------------------------------------------------------------------ R7 replacement
+
+def withdrawn_candidates(corpus_path: Path = STUDY_CORPUS) -> dict[str, str]:
+    """R7's input: {scenario: reason} for every scenario whose safe stimulus the study corpus excludes ("exclude"
+    map, folder -> reason). Excluded folders that are not safe stimuli (an unsafe item) are not scenarios."""
+    exclude = json.loads(Path(corpus_path).read_text(encoding="utf-8")).get("exclude", {})
+    return {f[:-len(SAFE_SUFFIX)]: reason for f, reason in exclude.items() if f.endswith(SAFE_SUFFIX)}
+
+
+def replace_withdrawn(result: dict, withdrawn: dict[str, str]) -> dict:
+    """Rule R7 on a select() result: the study allocation, with each withdrawn candidate replaced by a spare.
+
+    For each withdrawn candidate, in selection order, the first unused spare (selection order) that is not itself
+    withdrawn, whose compatible objectives include the candidate's planned objective, and with which the study items
+    still allow a valid final set (choose_final_set, planned constraints, every item assumed to pass) takes over the
+    planned item: same objective, strategy, wording, variant and attacker identity; its own item id; and
+    "anchor_item_id" (the withdrawn item's id, which seeds the workflow subsection, so the injected text is placed
+    as in the withdrawn item). Stage 1 is unchanged.
+    Returns {"withdrawn": {scenario: reason}, "replacements": [{"withdrawn", "replacement", "reason",
+    "withdrawn_item_id", "item_id"}], "study_allocation": {scenario: plan}} in the allocation's order (a
+    replacement takes its candidate's place). Raises ValueError if a withdrawn candidate has no replacement. A
+    withdrawn scenario that is not a candidate only stops being available as a replacement."""
+    allocation, rows = result["allocation"], result["rows"]
+    wordings, strategies = planned_wordings(allocation), planned_strategies(allocation)
+    study = dict(allocation)
+    replacements = []
+    for scenario in (s for s in result["order"] if s in withdrawn and s in allocation):
+        plan = allocation[scenario]
+        for spare in result["spares"]:
+            if spare in withdrawn or spare in study or plan["objective"] not in rows[spare]["compatible"]:
+                continue
+            new = {k: v for k, v in plan.items() if k != "item_id"}
+            new["item_id"] = design.item_id(spare, plan["objective"], plan["strategy"], plan["wording"],
+                                            plan.get("variant"))
+            new["anchor_item_id"] = plan["item_id"]
+            trial = {(spare if s == scenario else s): (new if s == scenario else p) for s, p in study.items()}
+            items = [{"scenario": s, "area": rows[s]["area"], "difficulty": rows[s]["difficulty"],
+                      "rank": rows[s]["rank"], **plan_fields(p)} for s, p in trial.items()]
+            if choose_final_set(items, result["pairs"], True, wordings, True, strategies) is not None:
+                study = trial
+                replacements.append({"withdrawn": scenario, "replacement": spare, "reason": withdrawn[scenario],
+                                     "withdrawn_item_id": plan["item_id"], "item_id": new["item_id"]})
+                break
+        else:
+            raise ValueError(f"R7: no spare can replace {scenario} and keep a valid final set")
+    return {"withdrawn": dict(withdrawn), "replacements": replacements, "study_allocation": study}
+
+
+def study_plan(facts: dict, corpus_path: Path = STUDY_CORPUS) -> dict:
+    """select() plus rule R7: the result with "withdrawn", "replacements" and "study_allocation" (the items the
+    study uses). With nothing withdrawn, study_allocation equals the stage-1 allocation."""
+    result = select(facts)
+    result.update(replace_withdrawn(result, withdrawn_candidates(corpus_path)))
+    return result
+
+
+def study_items(result: dict) -> dict:
+    """The study allocation of a study_plan() result (the stage-1 allocation for a plain select() result)."""
+    return result.get("study_allocation", result["allocation"])
+
+
 # ------------------------------------------------------------------------------------------------ stage 2
 
 def partitions(items: list[dict]):
@@ -502,23 +583,28 @@ def load_verdicts(manifest_path: Path = SIMULATED_MANIFEST, corpus_path: Path = 
 def stage2(result: dict, verdicts: dict | None) -> dict:
     """Per candidate: whether its simulated item passed the inclusion checks, its review status and its stage-2
     status; and the final set (R6) from the passing items, i.e. included AND reviewed. `verdicts` is load_verdicts()
-    output (None: no simulated items, stage 2 has not run). The verdicts must name exactly the planned items."""
-    info = {s: {"included": None, "review_status": None, "passing": False} for s in result["allocation"]}
+    output (None: no simulated items, stage 2 has not run). The verdicts must name every study item (study_items:
+    the planned items after R7 replacements) and may also name withdrawn items, which are ignored."""
+    allocation = study_items(result)
+    info = {s: {"included": None, "review_status": None, "passing": False} for s in allocation}
     final = None
     if verdicts:
-        by_item = {a["item_id"]: s for s, a in result["allocation"].items()}
-        if set(verdicts["items"]) != set(by_item):
-            raise Stage2Error("the simulated items do not match the planned items: rebuild them "
+        by_item = {a["item_id"]: s for s, a in allocation.items()}
+        withdrawn_items = {r["withdrawn_item_id"] for r in result.get("replacements", [])}
+        if not set(by_item) <= set(verdicts["items"]) or set(verdicts["items"]) - set(by_item) - withdrawn_items:
+            raise Stage2Error("the simulated items do not match the study items: rebuild them "
                               "(build_simulated_items.py)")
         for item_id, verdict in verdicts["items"].items():
+            if item_id not in by_item:
+                continue  # a withdrawn item (R7): kept as a record, not a study item
             s = by_item[item_id]
             info[s].update(included=verdict["included"], review_status=verdict["review_status"],
                            passing=verdict["included"] and verdict["review_status"] == "reviewed")
         passing = [{"scenario": s, "area": result["rows"][s]["area"], "difficulty": result["rows"][s]["difficulty"],
                     "rank": result["rows"][s]["rank"], **plan_fields(a)}
-                   for s, a in result["allocation"].items() if info[s]["passing"]]
-        final = choose_final_set(passing, result["pairs"], wordings=planned_wordings(result["allocation"]),
-                                  strategies=planned_strategies(result["allocation"]))
+                   for s, a in allocation.items() if info[s]["passing"]]
+        final = choose_final_set(passing, result["pairs"], wordings=planned_wordings(allocation),
+                                  strategies=planned_strategies(allocation))
     return {"info": info, "final": final, "ran": bool(verdicts)}
 
 
@@ -539,10 +625,15 @@ def csv_rows(result: dict, st2: dict) -> list[dict]:
     out = []
     for s in sorted(result["rows"], key=task_number):
         r = result["rows"][s]
-        plan = result["allocation"].get(s)
+        plan = result["allocation"].get(s)  # stage 1: the planned item
         identity = design.identity_by_id(plan["identity_id"]) if plan else None
+        in_study = s in study_items(result)  # stage 2: the items the study uses (R7 may replace a planned one)
+        replaced_by = next((x["replacement"] for x in result.get("replacements", []) if x["withdrawn"] == s), "")
+        replaces = next((x for x in result.get("replacements", []) if x["replacement"] == s), None)
         status2, in_final, which = "", "", ""
-        if plan and st2["ran"]:
+        if replaced_by:
+            status2 = f"withdrawn after manual review (R7), replaced by {replaced_by}"
+        elif in_study and st2["ran"]:
             status2 = stage2_status(st2["info"][s])
             if st2["final"]:
                 in_final = "yes" if s in st2["final"]["scenarios"] else "no"
@@ -561,9 +652,11 @@ def csv_rows(result: dict, st2: dict) -> list[dict]:
             "wording_variant": plan.get("variant", "") if plan else "",
             "attacker_identity": identity["name"] + " <" + identity["address"] + ">" if identity else
             ("none (file ID 13)" if plan else ""),
-            "simulated_included": ("yes" if st2["info"][s]["included"] else "no") if plan and st2["ran"] else "",
-            "review_status": st2["info"][s]["review_status"] if plan and st2["ran"] else "",
-            "stage2_status": status2, "final_set": in_final, "participant_list": which})
+            "simulated_included": ("yes" if st2["info"][s]["included"] else "no") if in_study and st2["ran"] else "",
+            "review_status": st2["info"][s]["review_status"] if in_study and st2["ran"] else "",
+            "stage2_status": status2, "final_set": in_final, "participant_list": which,
+            "replaced_by": replaced_by,
+            "replaces": f"{replaces['withdrawn']} (item {replaces['item_id']})" if replaces else ""})
     return out
 
 
@@ -642,15 +735,22 @@ def sections(result: dict, st2: dict, facts: dict) -> dict[str, str]:
         "for G1), but never twice within one participant (one trial per objective).\n"
         "- **Skills repeat**: 8 scenarios use 5 areas, so a participant may see a skill clean in one trial and injected "
         "in another; each list has 4 different areas for its 4 unsafe trials.")
+    study = study_items(result)  # the planned items after R7 replacements
+    replaced = result.get("replacements", [])
+    out["replacements"] = (
+        md_table(["Withdrawn candidate", "Reason", "Replaced by", "Item id", "Takes over"],
+                 [[x["withdrawn"], x["reason"], x["replacement"], x["item_id"], x["withdrawn_item_id"]]
+                  for x in replaced])
+        if replaced else "No candidate has been withdrawn: the study items are the planned items above.")
     all_items = [{"scenario": s, "area": rows[s]["area"], "difficulty": rows[s]["difficulty"], "rank": rows[s]["rank"],
-                  **plan_fields(alloc[s])} for s in cand]
-    full = choose_final_set(all_items, result["pairs"], wordings=planned_wordings(result["allocation"]),
-                              strategies=planned_strategies(result["allocation"]))
+                  **plan_fields(a)} for s, a in study.items()]
+    full = choose_final_set(all_items, result["pairs"], wordings=planned_wordings(study),
+                              strategies=planned_strategies(study))
     out["full_feasible"] = (
-        "If all 12 candidate items are marked reviewed, a valid final set exists: scenarios " + ", ".join(full["scenarios"]) +
+        "If all 12 study items are marked reviewed, a valid final set exists: scenarios " + ", ".join(full["scenarios"]) +
         "; list A unsafe " + ", ".join(full["A"]) + "; list B unsafe " + ", ".join(full["B"]) + "."
-        if full else "**Even if all 12 candidate items are reviewed, no valid final set exists under the constraints.**")
-    strict, relaxed = (review_sensitivity(alloc, rows, result["pairs"], strict=flag) for flag in (True, False))
+        if full else "**Even if all 12 study items are reviewed, no valid final set exists under the constraints.**")
+    strict, relaxed = (review_sensitivity(study, rows, result["pairs"], strict=flag) for flag in (True, False))
     out["review_sensitivity"] = md_table(
         ["Design", "Review outcomes (each item reviewed or rejected)", "Outcomes that still allow a valid final set",
          "Items whose rejection alone leaves no valid final set"],
@@ -684,7 +784,7 @@ def render_document(result: dict, st2: dict, facts: dict) -> str:
 
 
 def build(facts: dict, verdicts: dict | None = None) -> tuple[str, str]:
-    result = select(facts)
+    result = study_plan(facts)
     st2 = stage2(result, verdicts)
     return render_csv(csv_rows(result, st2)), render_document(result, st2, facts)
 

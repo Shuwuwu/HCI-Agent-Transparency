@@ -174,7 +174,8 @@ def is_eligible(stimulus_id, stimuli_dir=None, root=ROOT):
     """True only if the stimulus belongs to the active corpus and its execution record passes one of its rules.
 
     Reads the stimulus provenance and the execution record it cites. Eligible when the corpus's optional "include"
-    list (if any) names the folder, the source is an execution record (not an AgentDojo trace), its file matches
+    list (if any) names the folder, its optional "exclude" map does not (an excluded folder is never eligible), the
+    source is an execution record (not an AgentDojo trace), its file matches
     its recorded sha256, the provenance's stimulus_folder equals the folder name, and the record satisfies one of
     the corpus's eligibility rules (corpus.py: run id suffix, condition, status, utility, simulated flag, inclusion
     verdict, manual review). Anything missing or unreadable is ineligible. Results are cached until use_corpus() is
@@ -194,6 +195,8 @@ def is_eligible(stimulus_id, stimuli_dir=None, root=ROOT):
     include = CORPUS.get("include")
     if include is not None and stimulus_id not in include:
         return False
+    if stimulus_id in CORPUS.get("exclude", {}):
+        return False  # removed from the corpus by a documented decision (corpus "exclude", with its reason)
     try:
         prov = json.loads((Path(stimuli_dir) / stimulus_id / "provenance.json").read_text(encoding="utf-8"))
         src = prov["source"]

@@ -11,7 +11,8 @@
   "sources": {
     "src/data/injected_skills/manifest.json": "b02744492e94cbe314c4229c67f76a5f4008f11cbf42b123b7b522daec4f92e7",
     "src/data/execution/plan_injected_v1.json": "6a9dc49375f0c0cbb24359bca76869e7d5a1a5bac23d2ed2740e1db8a573f049",
-    "src/data/review/reference_recordings.json": "ba1e4e4cbf082bdf50db92d540211f3720fd099e20134d1513f281243381e26e"
+    "src/data/review/reference_recordings.json": "ba1e4e4cbf082bdf50db92d540211f3720fd099e20134d1513f281243381e26e",
+    "src/data/injected_skills/replacements/manifest.json": "ffb0562aac24b479571c5e669466ba88aafc7695a2bc84b4ad0e822525e32015"
   },
   "items": [
     {
@@ -411,6 +412,40 @@
         "create_calendar_event (event 27): participants kept in the safe run's order (AgentDojo builds them with set())"
       ],
       "status": "built_unreviewed"
+    },
+    {
+      "item_id": "user_task_17__g2_ii_w3v1",
+      "scenario": "user_task_17",
+      "objective": "G2",
+      "wording": "W3",
+      "variant": "v1",
+      "injected_skill": {
+        "file": "src/data/injected_skills/replacements/items/user_task_17__g2_ii_w3v1/SKILL.md",
+        "sha256": "25d09a42b14d52b1469c7aea3ea5362b4af24cb8edc54dbefe82656ec47f4c85"
+      },
+      "safe_run": {
+        "file": "src/data/execution/runs/user_task_17__mapped-skills__gpt-4o-2024-08-06__r1__skills-v4b.json",
+        "sha256": "387b732b46a36c93512287a59703fd6f513eb7d89b0edf8073d95d2aaf414dd5"
+      },
+      "record": {
+        "file": "src/data/simulated/runs/user_task_17__g2_ii_w3v1__simulated-v1.json",
+        "sha256": "4bdd8ea8fe603862fe00f37a38a5137cb92c3e07f18d42a543ad4ec0cdb36e11"
+      },
+      "stimulus": {
+        "folder": "src/data/simulated/stimuli/user_task_17__g2_ii_w3v1",
+        "provenance_sha256": "f75a47387cf1f7587abec7eb4976350704b9f982047554de55664d92ad6011d0"
+      },
+      "workspace": {
+        "folder": "src/data/simulated/workspace/user_task_17__g2_ii_w3v1",
+        "replayed_calls": 3
+      },
+      "tool_calls": 3,
+      "included": true,
+      "failed_checks": [],
+      "reference_recordings": 1,
+      "replay_notes": [],
+      "status": "built_unreviewed",
+      "replaces": "user_task_24__g2_ii_w3v1"
     }
   ]
 }

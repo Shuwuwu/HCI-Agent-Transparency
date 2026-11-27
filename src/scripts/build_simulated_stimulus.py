@@ -83,17 +83,23 @@ def load_inputs(item_id: str, item_sources: tuple = ITEM_SOURCES) -> dict:
     """The manifest entry, plan spec (attempt 1) and safe run of an item, checked against each other.
 
     item_sources: (manifest, plan) pairs searched in order (default: the study plan, then the wording pilot's W2
-    items; build_simulated_items.py passes the study plan only)."""
+    items; build_simulated_items.py passes the study plan and the R7 replacement items). A plan of None (the
+    replacement items, which are never run) means the spec is derived from the item exactly as the execution plan
+    derives it (build_injection_plan.item_spec)."""
+    facts = json.loads(INPUTS.read_text(encoding="utf-8"))
     for manifest_path, plan_path in item_sources:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         item = next((i for i in manifest["items"] if i["item_id"] == item_id), None)
         if item is not None:
-            plan = json.loads(plan_path.read_text(encoding="utf-8"))
-            spec = next(r for r in plan["runs"] if r["injection"]["item_id"] == item_id and r["repetition"] == 1)
+            if plan_path is None:
+                import build_injection_plan as bip
+                spec = bip.item_spec(item, facts)
+            else:
+                plan = json.loads(plan_path.read_text(encoding="utf-8"))
+                spec = next(r for r in plan["runs"] if r["injection"]["item_id"] == item_id and r["repetition"] == 1)
             break
     else:
         raise SimulationError(f"unknown item {item_id}")
-    facts = json.loads(INPUTS.read_text(encoding="utf-8"))
     safe_info = next(t for t in facts["tasks"] if t["scenario"] == item["scenario"])["v4b_run"]
     safe_raw = (ROOT / safe_info["file"]).read_bytes()
     if sha256_bytes(safe_raw) != safe_info["sha256"]:

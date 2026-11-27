@@ -1,4 +1,4 @@
-"""Coverage tests: every one of the 20 active study scenarios has its own workspace (before state) and its mapped
+"""Coverage tests: every one of the 19 served study scenarios (20 folders, one excluded by the study corpus) has its own workspace (before state) and its mapped
 skills, served identically in both transparency conditions, with nothing from the after state or from the
 researcher-only files. Complements test_workspace_snapshots.py (deep checks of user_task_13)."""
 
@@ -20,7 +20,10 @@ import participant_server as ps  # noqa: E402
 import tool_result_parser as trp  # noqa: E402
 from participant_http import preview_handler  # noqa: E402
 
-FOLDERS = sorted(p.name for p in (ROOT / "src/data/stimuli").iterdir() if p.is_dir())
+DISK_FOLDERS = sorted(p.name for p in (ROOT / "src/data/stimuli").iterdir() if p.is_dir())
+# The study corpus's "exclude" map removes folders that stay on disk for provenance (task 24, rejected in review).
+EXCLUDED = set(json.loads((ROOT / "src/data/corpora/study.json").read_text())["exclude"])
+FOLDERS = [f for f in DISK_FOLDERS if f not in EXCLUDED]
 KIND_KEY = {"emails": "subject", "events": "title", "files": "filename"}
 
 
@@ -70,10 +73,12 @@ def records_read_before_first_write(record):
 
 
 class CoverageTest(unittest.TestCase):
-    def test_exactly_the_20_active_stimuli_have_a_workspace(self):
-        self.assertEqual(len(FOLDERS), 20)
-        self.assertEqual(sorted(p.name for p in (ROOT / "src/data/workspace").iterdir()), FOLDERS)
-        self.assertEqual(sorted(ps.list_stimulus_ids()), FOLDERS)
+    def test_every_stimulus_folder_has_a_workspace_and_exactly_the_19_not_excluded_are_served(self):
+        self.assertEqual(len(DISK_FOLDERS), 20)
+        self.assertEqual(sorted(p.name for p in (ROOT / "src/data/workspace").iterdir()), DISK_FOLDERS)
+        self.assertEqual(EXCLUDED & set(DISK_FOLDERS), {"user_task_24__no_injection"})
+        self.assertEqual(sorted(i for i in ps.list_stimulus_ids() if ps.stimulus_source(i) == "main"), FOLDERS)
+        self.assertEqual(len(FOLDERS), 19)
 
     def test_each_workspace_belongs_to_its_stimulus_and_replay_matched(self):
         for folder in FOLDERS:

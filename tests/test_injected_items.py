@@ -91,6 +91,38 @@ class InjectedItemsTests(unittest.TestCase):
             bi.build_item(ITEMS[0]["scenario"], result["allocation"][ITEMS[0]["scenario"]],
                           result["rows"][ITEMS[0]["scenario"]], bad, ss.SEED)
 
+class ReplacementItemTests(unittest.TestCase):
+    """R7: a spare that takes over a withdrawn candidate's item gets its own item, in replacements/, built with the
+    withdrawn item's id as anchor seed; the stage-1 manifest (and the execution plan built from it) is unchanged."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.files, cls.manifest = bi.build_replacements(FACTS)
+        cls.committed = json.loads((bi.OUT_DIR / bi.REPLACEMENT_ROOT / "manifest.json").read_text(encoding="utf-8"))
+
+    def test_committed_replacements_equal_a_rebuild(self):
+        self.assertEqual(self.manifest, self.committed)
+        for relative, text in self.files.items():
+            self.assertEqual((bi.OUT_DIR / relative).read_text(encoding="utf-8"), text, relative)
+        on_disk = {str(p.relative_to(bi.OUT_DIR)) for p in bi.OUT_DIR.glob(f"{bi.REPLACEMENT_ROOT}/items/*/SKILL.md")}
+        self.assertEqual(on_disk, {p for p in self.files if p.endswith("SKILL.md")})
+
+    def test_task_17_takes_over_task_24s_item_with_the_same_injected_skill(self):
+        (entry,) = self.manifest["items"]
+        withdrawn = next(i for i in ITEMS if i["item_id"] == "user_task_24__g2_ii_w3v1")
+        self.assertEqual((entry["item_id"], entry["replaces"], entry["anchor_item_id"]),
+                         ("user_task_17__g2_ii_w3v1", withdrawn["item_id"], withdrawn["item_id"]))
+        for key in ("injected_skill", "objective", "strategy", "wording", "variant", "attacker_identity", "goal_text",
+                    "anchor_title", "anchor_offset", "base_sha256"):
+            self.assertEqual(entry[key], withdrawn[key], key)
+        self.assertEqual(entry["item_sha256"], withdrawn["item_sha256"])  # both use email-lookup: identical text
+
+    def test_the_stage_one_manifest_keeps_the_withdrawn_item_and_not_the_replacement(self):
+        ids = {i["item_id"] for i in ITEMS}
+        self.assertIn("user_task_24__g2_ii_w3v1", ids)
+        self.assertNotIn("user_task_17__g2_ii_w3v1", ids)
+
+
 class StudyPlanTests(unittest.TestCase):
     """The study plan: strategy II only, the three wordings mixed (four items each), objectives kept."""
 

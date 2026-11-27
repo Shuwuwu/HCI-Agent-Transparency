@@ -14,6 +14,14 @@ Purpose:
     base skill byte for byte, the block occurs once, contains the goal text and none of AgentDojo's default attacker.
     The old corpus (180 files built on the pre-e5e53ed skills, never run) is in archive/injected_skills_pre_e5e53ed/.
 
+    Replacements (rule R7, select_scenarios.replace_withdrawn). When a candidate is withdrawn after manual review, a
+    spare takes over its planned item. The replacement item is built like any other, with the withdrawn item's id
+    as its anchor seed, so its block lands in the same workflow subsection (for the same area skill the injected
+    skill is byte-identical to the withdrawn item's). It goes to replacements/, with its own manifest, so the study
+    manifest and the execution plan built from it (plan_injected_v1.json, whose runs are recorded) keep describing
+    the stage-1 items exactly. A replacement item is never run against a model: it exists for the simulated stimulus
+    (build_simulated_items.py).
+
 Inputs:
     src/data/scenario_selection_inputs.json (via select_scenarios.select), src/data/skills/*/SKILL.md,
     the skills-v4b run records named in the inputs.
@@ -21,6 +29,8 @@ Inputs:
 Outputs:
     src/data/injected_skills/items/<item_id>/SKILL.md   the injected skill (one per item);
     src/data/injected_skills/manifest.json              provenance and hashes of every item.
+    src/data/injected_skills/replacements/items/<item_id>/SKILL.md and replacements/manifest.json   the R7
+                                                        replacement items (none when nothing is withdrawn).
     With --twins: the wording pilot's items: src/data/injected_skills/pilot_w2/ (the II + W2 items of the earlier
     study plan) and pilot_w3/ (their W3 variant v3 twins), each with items/<item_id>/SKILL.md and manifest.json
     (see "Twins" below).
@@ -35,10 +45,10 @@ Outputs:
     never enter the study manifest (they exist so the pilot stays independent of the study plan's wording mix).
 
 Dependencies:
-    select_scenarios.py (candidates and planned items), injection_design.py (rendering, placement).
+    select_scenarios.py (candidates, planned items, R7 replacements), injection_design.py (rendering, placement).
 
 Usage:
-    python3 -B src/scripts/build_injected_items.py            # write the items and the manifest
+    python3 -B src/scripts/build_injected_items.py            # write the items, the manifest and the R7 replacements
     python3 -B src/scripts/build_injected_items.py --check    # fail if the files differ from a rebuild
     python3 -B src/scripts/build_injected_items.py --twins    # write the wording pilot's items (pilot_w2/, pilot_w3/)
     python3 -B src/scripts/build_injected_items.py --twins --check
@@ -145,6 +155,38 @@ def build_all(facts: dict, wordings: tuple | None = None, strategies: tuple | No
     return files, manifest
 
 
+REPLACEMENT_ROOT = "replacements"
+
+
+def build_replacements(facts: dict) -> tuple[dict[str, str], dict]:
+    """The R7 replacement items: ({relative path: text}, manifest). Each is built from the spare's study plan with the
+    withdrawn item's id as anchor seed (same workflow subsection), and its manifest entry adds "replaces" (the
+    withdrawn item) and the reason. Files are empty when nothing is withdrawn; the manifest is always written."""
+    result = ss.study_plan(facts)
+    tasks = {t["scenario"]: t for t in facts["tasks"]}
+    files, entries = {}, []
+    for r in result["replacements"]:
+        spare = r["replacement"]
+        plan = result["study_allocation"][spare]
+        text, entry = build_item(spare, plan, result["rows"][spare], tasks[spare], ss.SEED,
+                                 anchor_item_id=plan["anchor_item_id"], items_root=f"{REPLACEMENT_ROOT}/items")
+        entry.update(replaces=r["withdrawn_item_id"], anchor_item_id=plan["anchor_item_id"],
+                     withdrawal_reason=r["reason"])
+        files[f"{REPLACEMENT_ROOT}/items/{entry['item_id']}/SKILL.md"] = text
+        entries.append(entry)
+    manifest = {"builder_version": BUILDER_VERSION, "design_version": design.DESIGN_VERSION,
+                "selection_version": ss.SELECTION_VERSION, "seed": ss.SEED,
+                "agentdojo_commit": facts["agentdojo_commit"],
+                "replacement_note": "Rule R7 (docs/scenario_selection.md): each item takes over the planned item of a "
+                                    "candidate withdrawn after manual review (named in replaces, with the reason). "
+                                    "Never run against a model; used only for the simulated stimulus "
+                                    "(src/data/simulated/). The stage-1 items stay in ../manifest.json.",
+                "review_note": "Automated validation plus inspection by one researcher; no independent reviewer.",
+                "items": entries}
+    files[f"{REPLACEMENT_ROOT}/manifest.json"] = json.dumps(manifest, indent=2, ensure_ascii=False) + "\n"
+    return files, manifest
+
+
 PILOT_W2_ROOT = "pilot_w2"
 TWIN_ROOT = "pilot_w3"
 TWIN_VARIANT = "v3"  # sentence at the end of the workflow's last step
@@ -209,14 +251,18 @@ def main() -> None:
     facts = json.loads(ss.INPUTS.read_text(encoding="utf-8"))
     if args.twins:
         files, manifest, _ = build_twins(facts)
-        item_glob = "pilot_w*/items/*/SKILL.md"
+        item_globs = ["pilot_w*/items/*/SKILL.md"]
     else:
         files, manifest = build_all(facts, wordings, strategies)
         files["manifest.json"] = json.dumps(manifest, indent=2, ensure_ascii=False) + "\n"
-        item_glob = "items/*/SKILL.md"
+        item_globs = ["items/*/SKILL.md"]
+        if wordings is None and strategies is None:  # the study plan: also its R7 replacement items
+            files.update(build_replacements(facts)[0])
+            item_globs.append(f"{REPLACEMENT_ROOT}/items/*/SKILL.md")
     if args.check:
         stale = [p for p, t in files.items() if not (out_dir / p).exists() or (out_dir / p).read_text(encoding="utf-8") != t]
-        extra = [str(p.relative_to(out_dir)) for p in out_dir.glob(item_glob) if str(p.relative_to(out_dir)) not in files]
+        found = [p for g in item_globs for p in out_dir.glob(g)]
+        extra = [str(p.relative_to(out_dir)) for p in found if str(p.relative_to(out_dir)) not in files]
         if stale or extra:
             sys.exit(f"out of date: {stale + extra}")
         print("up to date")

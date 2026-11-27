@@ -62,7 +62,8 @@ class LoadsInBothConditions(unittest.TestCase):
     def test_every_study_stimulus_loads_in_both_conditions(self):
         ps.use_corpus(STUDY)
         folders = ps.list_stimulus_ids()
-        self.assertEqual(len(folders), 20)
+        # 20 genuine folders, task 24 excluded by the study corpus; any reviewed simulated stimulus also loads
+        self.assertEqual(sum(ps.stimulus_source(f) == "main" for f in folders), 19)
         for folder in folders:
             self.check_loads(folder)
 

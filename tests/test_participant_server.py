@@ -30,9 +30,10 @@ def saved(cond):
 
 
 class EligibilityTest(unittest.TestCase):
-    def test_exactly_20_eligible_all_from_v4b_successes(self):
-        ids = ps.list_stimulus_ids()
-        self.assertEqual(len(ids), 20)
+    def test_exactly_19_eligible_all_from_v4b_successes(self):
+        # the genuine stimuli (main folder); a reviewed simulated stimulus is also served, from its own folder
+        ids = [i for i in ps.list_stimulus_ids() if ps.stimulus_source(i) == "main"]
+        self.assertEqual(len(ids), 19)  # 20 folders; the study corpus excludes task 24 (rejected in review)
         self.assertEqual(ids[0], SID)
         for sid in ids:
             prov = json.loads((ps.STIMULI_DIR / sid / "provenance.json").read_text())
@@ -42,9 +43,12 @@ class EligibilityTest(unittest.TestCase):
             for cond in ps.CONDITIONS:
                 ps.participant_view(sid, cond)
 
-    def test_stimuli_folder_holds_exactly_the_20_active_stimuli(self):
+    def test_stimuli_folder_holds_exactly_the_served_stimuli_and_the_excluded_one(self):
         folders = sorted(p.name for p in ps.STIMULI_DIR.iterdir() if p.is_dir())
-        self.assertEqual(folders, sorted(ps.list_stimulus_ids()))
+        excluded = set(ps.CORPUS["exclude"])
+        self.assertEqual(excluded & set(folders), {"user_task_24__no_injection"})
+        self.assertEqual([f for f in folders if f not in excluded],
+                         sorted(i for i in ps.list_stimulus_ids() if ps.stimulus_source(i) == "main"))
         self.assertTrue(all(ps.STIMULUS_ID_RE.match(f) and f.endswith("__no_injection") for f in folders))
 
     def test_archived_stimuli_are_rejected_even_if_placed_in_the_stimuli_folder(self):
@@ -86,7 +90,7 @@ class ViewTest(unittest.TestCase):
 
     def test_every_action_matches_saved_stimulus(self):
         for sid in ps.list_stimulus_ids():
-            log = json.loads((ps.STIMULI_DIR / sid / "high.json").read_text())["action_log"]
+            log = json.loads((ps.stimulus_dir(sid) / sid / "high.json").read_text())["action_log"]
             trace = ps.participant_view(sid, "high")["trace"]
             self.assertEqual(len(trace), len(log))
             for shown, src in zip(trace, log):
@@ -153,14 +157,17 @@ class HttpTest(unittest.TestCase):
                      f"/stimuli/{SID}/preview.txt", "/static/%2e%2e/index.html"):
             self.assertIn(self.get(path)[0], (400, 404), path)
 
-    def test_direct_urls_of_missing_or_archived_names_fail_and_index_lists_20(self):
+    def test_direct_urls_of_missing_archived_or_excluded_names_fail_and_index_lists_19(self):
         for sid in ("user_task_5__no_injection", "user_task_0__no_injection",  # tasks whose run failed
+                    "user_task_24__no_injection",  # excluded by the study corpus
                     "user_task_1__important_instructions_injection_task_0", "stim_52669833c1f9"):
             for cond in ps.CONDITIONS:
                 self.assertIn(self.get(f"/api/stimulus?s={sid}&c={cond}")[0], (400, 404), sid)
         index = self.get("/")[1]
-        self.assertEqual(index.count("c=low"), 20)
-        self.assertEqual(index.count("c=high"), 20)
+        served = len(ps.list_stimulus_ids())  # 19 genuine, plus any simulated stimulus already marked reviewed
+        self.assertGreaterEqual(served, 19)
+        self.assertEqual(index.count("c=low"), served)
+        self.assertEqual(index.count("c=high"), served)
         for sid in ps.list_stimulus_ids():
             for cond in ps.CONDITIONS:
                 self.assertEqual(self.get(f"/api/stimulus?s={sid}&c={cond}")[0], 200)

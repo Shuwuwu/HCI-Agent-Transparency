@@ -63,34 +63,43 @@ def run_id(item_id: str, attempt: int, batch: str = BATCH) -> str:
     return f"{item_id}__{CONDITION}__{MODEL}__r{attempt}__{batch}"
 
 
+def item_spec(item: dict, facts: dict) -> dict:
+    """What a run of one item is given, apart from the model: {"skills", "injection"}. The skills are the scenario's
+    skills-v4b safe run's, with the injected skill's entry pointing at the item file. Raises ValueError if the
+    injected skill is not exactly one of the safe run's skills or the item file differs from the manifest.
+    Also used for an R7 replacement item, which has no execution plan (build_simulated_stimulus.load_inputs)."""
+    task = next(t for t in facts["tasks"] if t["scenario"] == item["scenario"])
+    safe = json.loads((ROOT / task["v4b_run"]["file"]).read_text(encoding="utf-8"))
+    skills, replaced = [], 0
+    for entry in safe["skills"]:
+        if entry["id"] == item["injected_skill"]:
+            skills.append({"id": entry["id"], "file": item["item_file"], "sha256": item["item_sha256"]})
+            replaced += 1
+        else:
+            skills.append(dict(entry))
+    if replaced != 1:
+        raise ValueError(f"{item['item_id']}: injected skill {item['injected_skill']} not among the safe run's skills")
+    if hashlib.sha256((ROOT / item["item_file"]).read_bytes()).hexdigest() != item["item_sha256"]:
+        raise ValueError(f"{item['item_id']}: the item file differs from the manifest; rebuild the items")
+    identity = item["attacker_identity"]
+    return {"skills": skills,
+            "injection": {"item_id": item["item_id"], "objective": item["objective"], "strategy": item["strategy"],
+                          "wording": item["wording"], "identity_id": identity["id"] if identity else None,
+                          "injected_skill": item["injected_skill"]}}
+
+
 def build_plan(manifest: dict, facts: dict, attempts: int = MAX_ATTEMPTS, batch: str = BATCH) -> dict:
     """The plan: {items x attempts} runs. Raises ValueError if an item's skills do not match its safe run."""
     tasks = {t["scenario"]: t for t in facts["tasks"]}
     planned = []
     for item in manifest["items"]:
         task = tasks[item["scenario"]]
-        safe = json.loads((ROOT / task["v4b_run"]["file"]).read_text(encoding="utf-8"))
-        skills, replaced = [], 0
-        for entry in safe["skills"]:
-            if entry["id"] == item["injected_skill"]:
-                skills.append({"id": entry["id"], "file": item["item_file"], "sha256": item["item_sha256"]})
-                replaced += 1
-            else:
-                skills.append(dict(entry))
-        if replaced != 1:
-            raise ValueError(f"{item['item_id']}: injected skill {item['injected_skill']} not among the safe run's skills")
-        if hashlib.sha256((ROOT / item["item_file"]).read_bytes()).hexdigest() != item["item_sha256"]:
-            raise ValueError(f"{item['item_id']}: the item file differs from the manifest; rebuild the items")
-        identity = item["attacker_identity"]
+        spec = item_spec(item, facts)
         for attempt in range(1, attempts + 1):
             planned.append({
                 "run_id": run_id(item["item_id"], attempt, batch), "scenario": item["scenario"],
                 "task_prompt": task["prompt"], "condition": CONDITION, "model": MODEL, "repetition": attempt,
-                "skills": skills,
-                "injection": {"item_id": item["item_id"], "objective": item["objective"],
-                              "strategy": item["strategy"], "wording": item["wording"],
-                              "identity_id": identity["id"] if identity else None,
-                              "injected_skill": item["injected_skill"]}})
+                "skills": spec["skills"], "injection": spec["injection"]})
     return {
         "plan_version": "execution_plan_v1",
         "benchmark": {"suite": "workspace", "agentdojo_commit": bp.PINNED_COMMIT, "attack": "none (the injection is in "

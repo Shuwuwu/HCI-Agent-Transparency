@@ -1,5 +1,5 @@
 """Tests for corpus.py and the corpus-driven eligibility of participant_server.py: configuration validation,
-each rule condition, the optional include list, the isolation of simulated records from the study corpus's main
+each rule condition, the optional include list and exclude map, the isolation of simulated records from the study corpus's main
 folder, and the separate simulated_source folder from which the study corpus admits a constructed stimulus only after
 its manual review (reviewed_in)."""
 
@@ -134,7 +134,8 @@ class ServerCorpusTests(unittest.TestCase):
 
     def test_switching_corpus_changes_what_is_served_and_back(self):
         ps.use_corpus(STUDY)
-        self.assertEqual(len(ps.list_stimulus_ids()), 20)
+        genuine = [i for i in ps.list_stimulus_ids() if ps.stimulus_source(i) == "main"]
+        self.assertEqual(len(genuine), 19)  # task 24 excluded; reviewed simulated stimuli are counted apart
         self.assertEqual(ps.DEFAULT_STIMULUS, "user_task_1__no_injection")
         ps.use_corpus(VALIDATION)
         self.assertEqual(ps.list_stimulus_ids(), [ps.DEFAULT_STIMULUS])
@@ -148,6 +149,23 @@ class ServerCorpusTests(unittest.TestCase):
             self.assertEqual(sorted(ps.list_stimulus_ids()), ["user_task_1__no_injection", "user_task_2__no_injection"])
             with self.assertRaises(FileNotFoundError):
                 ps.participant_view("user_task_4__no_injection", "low")
+
+    def test_an_excluded_stimulus_is_never_eligible(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ps.use_corpus(write_config(tmp, exclude={"user_task_2__no_injection": "rejected in manual review"}))
+            self.assertNotIn("user_task_2__no_injection", ps.list_stimulus_ids())
+            self.assertFalse(ps.is_eligible("user_task_2__no_injection"))
+            self.assertTrue(ps.is_eligible("user_task_1__no_injection"))
+            with self.assertRaises(FileNotFoundError):
+                ps.participant_view("user_task_2__no_injection", "low")
+        ps.use_corpus(STUDY)
+
+    def test_an_exclusion_needs_a_reason(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for bad in ({"user_task_2__no_injection": ""}, {"user_task_2__no_injection": "  "},
+                        ["user_task_2__no_injection"], {"user_task_2__no_injection": None}):
+                with self.assertRaises(corpus.CorpusError, msg=repr(bad)):
+                    corpus.load_corpus(write_config(tmp, exclude=bad))
 
     def test_study_corpus_refuses_the_simulated_record_even_inside_the_study_folder(self):
         v = corpus.load_corpus(VALIDATION)
@@ -172,7 +190,7 @@ class ServerCorpusTests(unittest.TestCase):
             path.write_text(json.dumps(config))
             ps.use_corpus(path)
             self.assertFalse(ps.is_eligible(SIM_ITEM))  # not reviewed: refused
-            self.assertEqual(len(ps.list_stimulus_ids()), 20)
+            self.assertEqual(len(ps.list_stimulus_ids()), 19)  # task 24 excluded
             review.write_text(json.dumps({"stimuli": {SIM_ITEM: {"status": "reviewed"}}}))
             ps.use_corpus(path)  # eligibility is cached per corpus load
             self.assertTrue(ps.is_eligible(SIM_ITEM))

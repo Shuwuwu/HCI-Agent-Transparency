@@ -26,7 +26,8 @@ Inputs:
     The final set and lists chosen by select_scenarios.choose_final_set from the passing unsafe items (stage 2,
     select_scenarios.load_verdicts: a simulated item passes when its record passed the inclusion checks and its
     stimulus is marked "reviewed" in src/data/simulated/review.json), or --simulate / --write-simulated N with every
-    planned item assumed to pass (no stage-2 input needed).
+    study item (the planned items after R7 replacements, select_scenarios.study_plan) assumed to pass (no stage-2
+    input needed).
 
 Outputs:
     --simulate: a validation summary on stdout (no file is written).
@@ -39,7 +40,7 @@ Outputs:
         experiment_plan.py refuses a simulated assignments file unless its config says simulated: true.
 
 Dependencies:
-    select_scenarios.py (selection, final set), injection_design.py (list validity).
+    select_scenarios.py (selection, R7 replacements, final set), injection_design.py (list validity).
     Consumed by experiment_plan.py (which turns one assignment row into a participant's stage sequence).
 
 Usage:
@@ -180,11 +181,13 @@ def diagnostics(assignments: list[dict], items: dict[str, dict] | None = None) -
 
 
 def planned_items(result: dict) -> dict[str, dict]:
+    """The study items of a select_scenarios.study_plan() result (the planned items after R7 replacements), with the
+    fields the assignment constraints need."""
     rows = result["rows"]
     return {s: {"scenario": s, "area": rows[s]["area"], "difficulty": rows[s]["difficulty"], "rank": rows[s]["rank"],
                 **{k: a[k] for k in ("objective", "strategy", "wording", "identity_id", "item_id",
                                      *(("variant",) if "variant" in a else ()))}}
-            for s, a in result["allocation"].items()}
+            for s, a in ss.study_items(result).items()}
 
 
 def write_assignments(path: Path, final: dict, assignments: list[dict], simulated: bool) -> None:
@@ -209,7 +212,7 @@ def main() -> None:
                         help=f"write N development assignments over the planned items to {SIMULATED_OUT}")
     args = parser.parse_args()
     facts = json.loads(ss.INPUTS.read_text(encoding="utf-8"))
-    result = ss.select(facts)
+    result = ss.study_plan(facts)  # R7: a candidate withdrawn after review is replaced by a spare
     items = planned_items(result)
     if args.simulate is not None:
         final = ss.choose_final_set(list(items.values()), result["pairs"])

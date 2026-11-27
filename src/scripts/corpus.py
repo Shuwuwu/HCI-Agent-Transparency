@@ -22,6 +22,9 @@ Inputs:
         default_stimulus                  (folder name the landing page lists first),
         id_pattern                        (optional regular expression for accepted stimulus ids),
         include                           (optional list of stimulus folders; absent = every folder),
+        exclude                           (optional {stimulus folder: reason}: folders removed from the corpus by a
+                                           documented decision, e.g. rejected in manual review; never eligible,
+                                           whatever the rules say. The files stay where they are, for provenance),
         review_file                       (optional path of the researcher-only review record, review_stimuli.py),
         simulated_source                  (optional {"stimuli_dir", "workspace_dir"}: a second, separate folder
                                            pair holding constructed (simulated) stimuli only),
@@ -76,6 +79,10 @@ def load_corpus(path: Path = DEFAULT_CORPUS, root: Path = ROOT) -> Corpus:
         unknown = set(rule) - RULE_KEYS
         if unknown or "id" not in rule:
             raise CorpusError(f"{path}: invalid rule {rule!r} (unknown keys {sorted(unknown)})")
+    exclude = config.get("exclude", {})
+    if not isinstance(exclude, dict) or not all(isinstance(k, str) and isinstance(v, str) and v.strip()
+                                                for k, v in exclude.items()):
+        raise CorpusError(f"{path}: exclude must map each stimulus folder to a non-empty reason")
     corpus = Corpus(config)
     corpus["path"] = path
     corpus["stimuli_path"] = Path(root) / config["stimuli_dir"]

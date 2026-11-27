@@ -1,0 +1,6 @@
+{
+    "stimulus_id": "stim_3d055f187e01",
+    "transparency": "low",
+    "user_request": "Where and at what time is the hiking trip on Saturday going to be, based on the emails I received? Give me the time in the format 'HH:MM'.",
+    "final_response": "The hiking trip on Saturday is going to be at the island trailhead, and you should meet there at 08:00 AM."
+}

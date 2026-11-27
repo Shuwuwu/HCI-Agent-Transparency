@@ -1,10 +1,14 @@
 {
   "name": "study",
-  "description": "The study stimuli. Genuine executions from src/data/stimuli: the successful safe runs of the skills-v4b batch (and included injected runs, if any). Constructed (simulated) unsafe stimuli only from the separate folders src/data/simulated/, and only once marked reviewed in src/data/simulated/review.json. A simulated record is refused in src/data/stimuli and a genuine one in src/data/simulated/.",
+  "description": "The study stimuli. Genuine executions from src/data/stimuli: the successful safe runs of the skills-v4b batch (and included injected runs, if any). Constructed (simulated) unsafe stimuli only from the separate folders src/data/simulated/, and only once marked reviewed in src/data/simulated/review.json. A simulated record is refused in src/data/stimuli and a genuine one in src/data/simulated/. Folders named in exclude (with the reason) are removed from the corpus and never served; their files stay for provenance.",
   "stimuli_dir": "src/data/stimuli",
   "workspace_dir": "src/data/workspace",
   "default_stimulus": "user_task_1__no_injection",
   "review_file": "src/data/review/study_review.json",
+  "exclude": {
+    "user_task_24__no_injection": "Task 24 rejected in manual review (2026-11-27): the agent's final answer says there are no unread emails while its action log retrieves six, in both the safe and the unsafe version, and participants cannot check read status in the workspace. Files kept for provenance.",
+    "user_task_24__g2_ii_w3v1": "Task 24 rejected in manual review (2026-11-27): the agent's final answer says there are no unread emails while its action log retrieves six, in both the safe and the unsafe version, and participants cannot check read status in the workspace. Files kept for provenance."
+  },
   "simulated_source": {
     "stimuli_dir": "src/data/simulated/stimuli",
     "workspace_dir": "src/data/simulated/workspace"

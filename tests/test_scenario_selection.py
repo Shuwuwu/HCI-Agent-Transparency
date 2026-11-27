@@ -26,6 +26,7 @@ except Exception:
 
 FACTS = json.loads(ss.INPUTS.read_text(encoding="utf-8"))
 RESULT = ss.select(FACTS)
+STUDY = ss.study_plan(FACTS)  # R7: task 24 withdrawn (study corpus "exclude") and replaced
 ROWS = RESULT["rows"]
 
 
@@ -33,10 +34,11 @@ def by_status(status):
     return sorted((s for s in ROWS if ROWS[s]["status"] == status), key=ss.task_number)
 
 
-def verdicts(status="reviewed", included=True, **overrides):
-    """Synthetic stage-2 input for the 12 planned items; overrides: {scenario: (included, review_status)}."""
+def verdicts(status="reviewed", included=True, result=RESULT, **overrides):
+    """Synthetic stage-2 input for the 12 items of `result` (default: the planned items; STUDY: the study items);
+    overrides: {scenario: (included, review_status)}."""
     out = {}
-    for s, a in RESULT["allocation"].items():
+    for s, a in ss.study_items(result).items():
         inc, st = overrides.get(s, (included, status))
         out[a["item_id"]] = {"included": inc, "review_status": st}
     return {"items": out}
@@ -191,14 +193,59 @@ class ArtifactTests(unittest.TestCase):
         self.assertNotIn("{{", doc)
 
     def test_stage_two_fills_the_columns_when_every_item_is_reviewed(self):
-        csv_text, doc_text = ss.build(FACTS, verdicts())
+        csv_text, doc_text = ss.build(FACTS, verdicts(result=STUDY))
         rows = list(csv.DictReader(io.StringIO(csv_text)))
         final = [r for r in rows if r["final_set"] == "yes"]
         self.assertEqual(len(final), 8)
         self.assertEqual(sorted(r["participant_list"] for r in final), ["A"] * 4 + ["B"] * 4)
+        study = [r for r in rows if r["scenario"] in ss.study_items(STUDY)]
+        self.assertEqual(len(study), 12)
         self.assertTrue(all(r["simulated_included"] == "yes" and r["review_status"] == "reviewed"
-                            and r["stage2_status"] == "passed" for r in rows if r["selection_status"] == "candidate"))
+                            and r["stage2_status"] == "passed" for r in study))
+        withdrawn = next(r for r in rows if r["scenario"] == "user_task_24")
+        self.assertEqual((withdrawn["replaced_by"], withdrawn["final_set"]), ("user_task_17", ""))
         self.assertIn("Final scenarios", doc_text)
+
+
+class ReplacementTests(unittest.TestCase):
+    """R7: a candidate withdrawn after manual review (its safe stimulus excluded by the study corpus) is replaced by
+    the first spare that can take over its planned item and keep a valid final set; stage 1 is unchanged."""
+
+    def test_task_24_is_withdrawn_and_task_17_takes_over_its_planned_item(self):
+        self.assertEqual(set(STUDY["withdrawn"]), {"user_task_24"})
+        (r,) = STUDY["replacements"]
+        self.assertEqual((r["withdrawn"], r["replacement"], r["item_id"]),
+                         ("user_task_24", "user_task_17", "user_task_17__g2_ii_w3v1"))
+        old, new = RESULT["allocation"]["user_task_24"], ss.study_items(STUDY)["user_task_17"]
+        self.assertEqual(ss.plan_fields(new), ss.plan_fields(old))
+        self.assertEqual(new["anchor_item_id"], old["item_id"])
+        self.assertEqual(list(ss.study_items(STUDY)), [("user_task_17" if s == "user_task_24" else s)
+                                                        for s in RESULT["allocation"]])
+
+    def test_the_first_spare_is_skipped_when_it_leaves_no_final_set(self):
+        self.assertEqual(RESULT["spares"][0], "user_task_10")  # compatible with G2, but no valid final set
+        self.assertIn("G2", ROWS["user_task_10"]["compatible"])
+        trial = {("user_task_10" if s == "user_task_24" else s): a for s, a in RESULT["allocation"].items()}
+        items = [{"scenario": s, "area": ROWS[s]["area"], "difficulty": ROWS[s]["difficulty"], "rank": ROWS[s]["rank"],
+                  **ss.plan_fields(a)} for s, a in trial.items()]
+        self.assertIsNone(ss.choose_final_set(items, RESULT["pairs"], True, ss.planned_wordings(trial), True,
+                                              ss.planned_strategies(trial)))
+
+    def test_nothing_withdrawn_leaves_the_plan_and_no_spare_fails_loudly(self):
+        none = ss.replace_withdrawn(RESULT, {})
+        self.assertEqual((none["study_allocation"], none["replacements"]), (RESULT["allocation"], []))
+        with self.assertRaises(ValueError):  # every spare withdrawn too
+            ss.replace_withdrawn(RESULT, {s: "x" for s in ["user_task_24", *RESULT["spares"]]})
+
+    def test_withdrawn_candidates_are_the_excluded_safe_stimuli(self):
+        self.assertEqual(set(ss.withdrawn_candidates()), {"user_task_24"})
+
+    def test_stage_one_columns_are_unchanged_by_a_replacement(self):
+        stage1 = ("scenario", "selection_status", "rule_id", "planned_item_id", "attacker_objective", "wording",
+                  "attacker_identity", "seed_rank", "rationale")
+        with_r7 = list(csv.DictReader(io.StringIO(ss.render_csv(ss.csv_rows(STUDY, ss.stage2(STUDY, None))))))
+        without = list(csv.DictReader(io.StringIO(ss.render_csv(ss.csv_rows(RESULT, ss.stage2(RESULT, None))))))
+        self.assertEqual([[r[c] for c in stage1] for r in with_r7], [[r[c] for c in stage1] for r in without])
 
 
 class Stage2Tests(unittest.TestCase):
@@ -223,11 +270,13 @@ class Stage2Tests(unittest.TestCase):
         with self.assertRaises(ss.Stage2Error):
             ss.stage2(RESULT, v)
 
-    def test_committed_inputs_give_twelve_included_unreviewed_items(self):
+    def test_committed_inputs_cover_the_study_items_and_the_withdrawn_one(self):
         v = ss.load_verdicts()
-        self.assertEqual(set(v["items"]), {a["item_id"] for a in RESULT["allocation"].values()})
+        self.assertEqual(set(v["items"]), {a["item_id"] for a in ss.study_items(STUDY).values()}
+                         | {"user_task_24__g2_ii_w3v1"})
         self.assertTrue(all(i["included"] for i in v["items"].values()))
-        self.assertEqual({i["review_status"] for i in v["items"].values()}, {"unreviewed"})
+        self.assertLessEqual({i["review_status"] for i in v["items"].values()}, set(ss.STAGE2_STATUS))
+        ss.stage2(STUDY, v)  # the withdrawn item is accepted and ignored
 
     def test_the_real_injected_runs_are_not_a_stage_two_input(self):
         self.assertFalse(hasattr(ss, "EVALUATION"))

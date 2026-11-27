@@ -30,7 +30,7 @@ class RealDataTests(unittest.TestCase):
         ps.use_corpus(STUDY)
 
     def test_every_check_passes_for_every_stimulus_of_both_corpora(self):
-        for path, count in ((STUDY, 20), (VALIDATION, 1), (SIMULATED, 12)):
+        for path, count in ((STUDY, 19), (VALIDATION, 1), (SIMULATED, 13)):
             ps.use_corpus(path)
             record = rv.review_corpus()
             self.assertEqual(len(record["stimuli"]), count)
