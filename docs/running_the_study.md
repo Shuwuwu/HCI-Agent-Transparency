@@ -11,6 +11,7 @@ data is and how to read, export, back up and restore it, see [participant_data.m
 | Data recording, privacy, exports, backups | Ready |
 | Rehearsal with simulated participants (`rehearsal.json`) | Ready |
 | Unsafe stimuli | **Not ready.** The 12 unsafe stimuli are built as simulated (constructed) traces in `src/data/simulated/` but not yet manually reviewed. The study configuration needs `src/data/participant_assignments.json`, written by `build_assignments.py --write N` once enough of them are marked reviewed for stage 2 to find a final set. |
+| Manual stimulus review | **Not done.** None of the 20 safe or 12 simulated unsafe stimuli is marked reviewed. `preflight.py` fails the study configuration until every stimulus a participant will see is marked reviewed and both review records are current. |
 | Consent text | **One placeholder left:** `[secure storage platform]` |
 | Post-study questionnaire | Ready: 11 items, the same in both conditions (`src/study_materials/questionnaire.json`) |
 | Completion screen | **Placeholder** debriefing and compensation text (`src/participant_ui/flow.js`) |
@@ -170,6 +171,8 @@ condition, with the server stopped and restarted midway.
 
 | Symptom | Cause and fix |
 |---|---|
+| `preflight` fails "review records ... is out of date" | A stimulus or the checks changed after the record was written, or a status was edited by hand. Run the `review_stimuli.py --corpus ... --write` it names (manual answers are kept; a review of changed content becomes `stale`). |
+| `preflight` fails "manual review" | A stimulus shown to participants is not marked `reviewed`. Review it and record it with `review_stimuli.py --mark`. |
 | `preflight` warns the port is taken | An older server is still running; stop it (Ctrl+C in its terminal), or use `--port`. |
 | `... is a development database; it cannot be opened for study data` | The wrong `--db` or configuration. Each configuration names its own database; leave out `--db`. |
 | `... does not exist: enrol participants first` | Run `participant_store.py --config ... --enrol-all`. |

@@ -2,8 +2,15 @@
 Purpose:
     A readiness check to run before every session (and before pilot testing): is everything a participant will
     meet in place, and is their data going to be recorded, private and backed up? It checks the configuration,
-    the assignments and every stimulus they need, the study materials, the participant database, the privacy of
-    the data folder, the backups, and that nothing else (an old server) already holds the port.
+    the assignments and every stimulus they need, the stimulus review records (current, and every stimulus a
+    participant will see marked reviewed), the study materials, the participant database, the privacy of the data
+    folder, the backups, and that nothing else (an old server) already holds the port.
+
+    Why the review records are recomputed: the study corpus admits a constructed (simulated) stimulus only when its
+    review record says "reviewed" (corpus.py, reviewed_in), and the server trusts the status saved in that file. A
+    record is current only if it equals a fresh review_stimuli.py review; otherwise a status could predate a change
+    to the stimulus or the checks. Unreviewed stimuli fail for the study configuration and only warn for a
+    development or rehearsal configuration, which never holds study data.
 
     Read-only: it never creates, changes or upgrades a database, and writes no file. Each finding is PASS, WARN
     (works, but not ready for real participants, e.g. a placeholder or a rehearsal configuration) or FAIL (a
@@ -12,7 +19,8 @@ Purpose:
 Inputs:
     --config (default the study configuration) and optionally --db (another database of that environment) and
     --port (default 8765, the server's default). Reads the configuration's assignments, corpus, stimuli, the
-    study materials in src/study_materials/, src/participant_ui/flow.js (placeholder screens), the database
+    review records of the corpus (its review_file and any reviewed_in record, each recomputed with the corpus in
+    src/data/corpora/ that owns it), the study materials in src/study_materials/, src/participant_ui/flow.js (placeholder screens), the database
     file, data/participants/ and its backups, and asks git whether the database is ignored.
 
 Outputs:
@@ -21,7 +29,8 @@ Outputs:
 
 Dependencies:
     experiment_plan.py (configuration, plans, servable stimuli), participant_flow.py (consent, assessment and
-    questionnaire loaders), participant_server.py (practice presentation check), participant_store.py (schema,
+    questionnaire loaders), participant_server.py (practice presentation check), review_stimuli.py (review records),
+    corpus.py (finding the corpus that owns a review record), participant_store.py (schema,
     environment), participant_data.py (consistency check, backup verification). Python standard library and git.
 
 Usage:
@@ -40,12 +49,15 @@ import subprocess
 import sys
 from pathlib import Path
 
+import corpus as corpus_cfg
 import experiment_plan as ep
 import participant_data as pdata
 import participant_flow as flow
 import participant_server as ps
 import participant_store as store
+import review_stimuli as rv
 
+ROOT = Path(__file__).resolve().parents[2]
 PASS, WARN, FAIL = "PASS", "WARN", "FAIL"
 MIN_PYTHON = (3, 10)
 BACKUP_MAX_AGE = datetime.timedelta(hours=24)
@@ -106,6 +118,56 @@ def check_design(report: Report, config: ep.Config) -> dict | None:
     except (ValueError, FileNotFoundError) as exc:
         report.add(FAIL, "practice", str(exc))
     return payload
+
+
+def review_records(corpus_path: Path) -> list[tuple[Path, Path | None]]:
+    """(review record, corpus that writes it) for the configuration's corpus: its own review_file, and the record
+    of every reviewed_in rule, whose owner is the corpus in src/data/corpora/ naming it as review_file (None if no
+    corpus does)."""
+    corpus = corpus_cfg.load_corpus(corpus_path)
+    out = [(corpus["review_path"], Path(corpus_path))] if corpus["review_path"] else []
+    owners = {}
+    for path in sorted((ROOT / "src" / "data" / "corpora").glob("*.json")):
+        other = corpus_cfg.load_corpus(path)
+        if other["review_path"]:
+            owners.setdefault(other["review_path"], path)
+    for rule in corpus["rules"]:
+        if "reviewed_in" in rule:
+            review = ROOT / rule["reviewed_in"]
+            if all(review != r for r, _ in out):
+                out.append((review, owners.get(review)))
+    return out
+
+
+def check_reviews(report: Report, config: ep.Config, payload: dict | None) -> None:
+    """The review records are current, and every stimulus a participant will see is marked reviewed."""
+    previous = ps.CORPUS["path"] if ps.CORPUS else None
+    statuses = {}
+    try:
+        for review, owner in review_records(config["corpus_path"]):
+            name = review.relative_to(ROOT) if review.is_relative_to(ROOT) else review
+            saved = rv.read_record(review)
+            if owner is None or saved is None:
+                report.add(FAIL, "review records", f"{name}: " + ("missing" if saved is None else "no corpus writes it"))
+                continue
+            ps.use_corpus(owner)
+            if rv.review_corpus(saved) != saved:
+                report.add(FAIL, "review records", f"{name} is out of date: run review_stimuli.py --corpus "
+                           f"{owner.relative_to(ROOT) if owner.is_relative_to(ROOT) else owner} --write")
+                continue
+            report.add(PASS, "review records", f"{name} is current")
+            statuses.update({folder: e["status"] for folder, e in saved["stimuli"].items()})
+    finally:
+        if previous is not None:
+            ps.use_corpus(previous)
+    if payload is None:
+        return
+    shown = sorted({stage["stimulus"] for row in payload["assignments"]
+                    for stage in ep.scenario_stages(ep.plan_for(config, row["participant"], payload), practice=True)})
+    pending = [f for f in shown if statuses.get(f) != "reviewed"]
+    report.add((WARN if config["simulated"] else FAIL) if pending else PASS, "manual review",
+               f"{len(pending)} of {len(shown)} stimuli shown are not marked reviewed: {', '.join(pending)}"
+               if pending else f"all {len(shown)} stimuli shown are marked reviewed")
 
 
 def check_materials(report: Report) -> None:
@@ -244,6 +306,7 @@ def run(config_path: Path, db: Path | None = None, port: int = 8765) -> Report:
     db_path = Path(db or config["database_path"])
     check_environment(report, db_path.parent)
     payload = check_design(report, config)
+    check_reviews(report, config, payload)
     check_materials(report)
     check_database(report, config, db_path, payload)
     check_privacy(report, db_path)

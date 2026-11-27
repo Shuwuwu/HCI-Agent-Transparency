@@ -2,7 +2,9 @@
 Purpose:
     Tests of preflight.py, the readiness check before a session: a ready rehearsal passes with only the expected
     warnings; damaged records, a database of the other environment, files others can read, a changed backup and a
-    busy port are caught; and the check never creates or changes a database.
+    busy port are caught; the stimulus review records must be current and every stimulus shown marked reviewed
+    (a failure for the study configuration, a warning otherwise); and the check never creates or changes a
+    database.
 
 Inputs:
     Temporary databases filled by tests/study_data_fixtures.py; the rehearsal configuration (read-only).
@@ -17,12 +19,14 @@ Usage:
     python3 -B -m unittest tests.test_preflight
 """
 
+import json
 import shutil
 import socket
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src" / "scripts"))
@@ -115,6 +119,59 @@ class PreflightTests(unittest.TestCase):
     def test_consent_placeholders_are_bracketed_phrases_only(self):
         text = "Stored on [secure storage platform]. Contact [me@x.ca](mailto:me@x.ca).\n- [ ] I agree"
         self.assertEqual(preflight.CONSENT_PLACEHOLDER_RE.findall(text), ["secure storage platform"])
+
+
+class ReviewCheckTests(unittest.TestCase):
+    """check_reviews: current review records and manually reviewed stimuli."""
+
+    STUDY_CORPUS = ROOT / "src" / "data" / "corpora" / "study.json"
+
+    def setUp(self):
+        self.config = preflight.ep.load_config(REHEARSAL)
+
+    def findings(self, config=None):
+        report = preflight.Report()
+        preflight.check_reviews(report, config or self.config, PAYLOAD)
+        return [(status, check, detail) for status, check, detail in report.findings], report
+
+    def test_the_study_corpus_depends_on_both_review_records(self):
+        records = [r.relative_to(ROOT).as_posix() for r, _ in preflight.review_records(self.STUDY_CORPUS)]
+        self.assertEqual(records, ["src/data/review/study_review.json", "src/data/simulated/review.json"])
+
+    def test_committed_records_are_current_and_unreviewed_stimuli_only_warn_in_a_rehearsal(self):
+        found, report = self.findings()
+        self.assertFalse(report.failed, found)
+        self.assertEqual([f[0] for f in found if f[1] == "review records"], [preflight.PASS] * 2)
+        self.assertEqual([f[0] for f in found if f[1] == "manual review"], [preflight.WARN])
+
+    def test_unreviewed_stimuli_fail_for_the_study_configuration(self):
+        found, report = self.findings({**self.config, "simulated": False})
+        self.assertTrue(report.failed)
+        self.assertEqual([f[0] for f in found if f[1] == "manual review"], [preflight.FAIL])
+
+    def test_a_stale_or_missing_review_record_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            stale = Path(tmp) / "review.json"
+            record = json.loads((ROOT / "src/data/simulated/review.json").read_text())
+            next(iter(record["stimuli"].values()))["status"] = "reviewed"  # claimed without a manual review
+            stale.write_text(json.dumps(record))
+            corpus = ROOT / "src" / "data" / "corpora" / "simulated.json"
+            for records in ([(stale, corpus)], [(Path(tmp) / "absent.json", corpus)]):
+                with mock.patch.object(preflight, "review_records", return_value=records):
+                    found, report = self.findings()
+                self.assertTrue(report.failed, records)
+                self.assertEqual(found[0][:2], (preflight.FAIL, "review records"))
+
+    def test_all_stimuli_reviewed_passes(self):
+        statuses = {s["stimulus"] for row in PAYLOAD["assignments"] for s in preflight.ep.scenario_stages(
+            preflight.ep.plan_for(self.config, row["participant"], PAYLOAD), practice=True)}
+        record = {"stimuli": {folder: {"status": "reviewed"} for folder in statuses}}
+        with mock.patch.object(preflight, "review_records", return_value=[(ROOT / "x.json", self.STUDY_CORPUS)]), \
+                mock.patch.object(preflight.rv, "read_record", return_value=record), \
+                mock.patch.object(preflight.rv, "review_corpus", side_effect=lambda saved: saved):
+            found, report = self.findings({**self.config, "simulated": False})
+        self.assertFalse(report.failed, found)
+        self.assertEqual([f[0] for f in found if f[1] == "manual review"], [preflight.PASS])
 
 
 if __name__ == "__main__":
