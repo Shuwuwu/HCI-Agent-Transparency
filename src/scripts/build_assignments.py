@@ -22,6 +22,13 @@ Purpose:
     Nothing here is shown to participants; the output is a researcher file. Mapping assignments to opaque stimulus
     links is a separate step (not done here).
 
+    Reserve participants (--add-reserves): one per original participant of an existing assignments file, numbered
+    on from the last id (20 originals: P021 mirrors P001, ..., P040 mirrors P020). A reserve row is an exact copy of
+    its original's list, condition and trial order, marked "reserve_for": <original id>, so a reserve who takes the
+    place of an original who did not complete sees exactly what that original would have seen and the balance of
+    conditions, lists and trial orders is unchanged. The original rows are left exactly as they are, so participants
+    enrolled from them keep their stage sequence.
+
 Inputs:
     The final set and lists chosen by select_scenarios.choose_final_set from the passing unsafe items (stage 2,
     select_scenarios.load_verdicts: a simulated item passes when its record passed the inclusion checks and its
@@ -38,24 +45,31 @@ Outputs:
         (not yet passing) items, marked "simulated": true. It exists so that the participant flow can be built
         and tested before the injected runs pass; the study corpus and the study assignments never read it, and
         experiment_plan.py refuses a simulated assignments file unless its config says simulated: true.
+    --add-reserves FILE: FILE (one of the two above) rewritten with the reserve rows appended; nothing else in it
+        changes. Running it again adds nothing once every original has a reserve. Rerunning --write or
+        --write-simulated afterwards writes the originals only, without the reserves.
 
 Dependencies:
-    select_scenarios.py (selection, R7 replacements, final set), injection_design.py (list validity).
+    select_scenarios.py (selection, R7 replacements, final set), injection_design.py (list validity),
+    experiment_plan.py (reserve_problems, the check a reserve row must pass).
     Consumed by experiment_plan.py (which turns one assignment row into a participant's stage sequence).
 
 Usage:
     python3 -B src/scripts/build_assignments.py --simulate 32          # dry run: validate the design with 32 participants
     python3 -B src/scripts/build_assignments.py --write-simulated 8    # development assignments (planned items)
     python3 -B src/scripts/build_assignments.py --write N              # after stage 2: write N assignments
+    python3 -B src/scripts/build_assignments.py --add-reserves src/data/participant_assignments.json
 """
 
 import argparse
+import copy
 import itertools
 import json
 from collections import Counter
 import sys
 from pathlib import Path
 
+import experiment_plan as ep
 import injection_design as design
 import select_scenarios as ss
 
@@ -190,6 +204,53 @@ def planned_items(result: dict) -> dict[str, dict]:
             for s, a in ss.study_items(result).items()}
 
 
+def mirror_reserves(assignments: list[dict]) -> list[dict]:
+    """The reserve rows for every original participant of `assignments` that has no reserve yet.
+
+    Ids continue after the highest id in the file, in the order of the originals, so P001..P020 get P021..P040.
+    Each row copies its original's list, condition and trials (experiment_plan.MIRRORED_KEYS) and names the
+    original under experiment_plan.RESERVE_KEY. Assumes ids of the form "P" + digits, as generate() writes them;
+    raises ValueError for any other id.
+    """
+    if not assignments:
+        return []
+    numbers = []
+    for row in assignments:
+        who = row["participant"]
+        if not (who.startswith("P") and who[1:].isdigit()):
+            raise ValueError(f"cannot number reserves after the participant id {who!r}")
+        numbers.append(int(who[1:]))
+    covered = {row[ep.RESERVE_KEY] for row in assignments if row.get(ep.RESERVE_KEY) is not None}
+    originals = [row for row in assignments
+                 if row.get(ep.RESERVE_KEY) is None and row["participant"] not in covered]
+    width = max(3, *(len(row["participant"]) - 1 for row in assignments))
+    return [{"participant": f"P{max(numbers) + k + 1:0{width}d}", ep.RESERVE_KEY: row["participant"],
+             **{key: copy.deepcopy(row[key]) for key in ep.MIRRORED_KEYS}}
+            for k, row in enumerate(originals)]
+
+
+def add_reserves(path: Path) -> list[dict]:
+    """Append mirror_reserves(...) to the assignments file at `path` and return the rows added.
+
+    Refuses (ValueError) a file that is not in the exact layout write_assignments produces, so rewriting it cannot
+    change a single character of the rows already there, and a result that fails experiment_plan.reserve_problems.
+    Writes nothing when every original already has a reserve.
+    """
+    text = path.read_text(encoding="utf-8")
+    payload = json.loads(text)
+    if json.dumps(payload, indent=2) + "\n" != text:
+        raise ValueError(f"{path} is not in the layout build_assignments.py writes; refusing to rewrite it")
+    added = mirror_reserves(payload["assignments"])
+    if not added:
+        return []
+    payload["assignments"] = payload["assignments"] + added
+    problems = ep.reserve_problems(payload)
+    if problems:
+        raise ValueError(f"invalid reserves: {problems}")
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    return added
+
+
 def write_assignments(path: Path, final: dict, assignments: list[dict], simulated: bool) -> None:
     """Write an assignments file.
 
@@ -210,7 +271,21 @@ def main() -> None:
     parser.add_argument("--write", type=int, metavar="N")
     parser.add_argument("--write-simulated", type=int, metavar="N", dest="write_simulated",
                         help=f"write N development assignments over the planned items to {SIMULATED_OUT}")
+    parser.add_argument("--add-reserves", type=Path, metavar="FILE", dest="add_reserves",
+                        help="append one reserve participant per original participant of this assignments file")
     args = parser.parse_args()
+    if args.add_reserves is not None:
+        try:
+            added = add_reserves(args.add_reserves)
+        except (OSError, ValueError) as exc:
+            sys.exit(str(exc))
+        if not added:
+            print(f"every original participant of {args.add_reserves} already has a reserve; nothing written")
+        else:
+            print(f"added {len(added)} reserve participants to {args.add_reserves}: "
+                  f"{added[0]['participant']}-{added[-1]['participant']} (reserve for "
+                  f"{added[0][ep.RESERVE_KEY]}-{added[-1][ep.RESERVE_KEY]})")
+        return
     facts = json.loads(ss.INPUTS.read_text(encoding="utf-8"))
     result = ss.study_plan(facts)  # R7: a candidate withdrawn after review is replaced by a spare
     items = planned_items(result)
@@ -231,7 +306,7 @@ def main() -> None:
         write_assignments(SIMULATED_OUT, final, assignments, simulated=True)
         return
     if args.write is None:
-        parser.error("choose --simulate N, --write-simulated N or --write N")
+        parser.error("choose --simulate N, --write-simulated N, --write N or --add-reserves FILE")
     verdicts = ss.load_verdicts()
     if verdicts is None:
         sys.exit("no simulated unsafe stimuli yet: run build_simulated_items.py")

@@ -5,6 +5,7 @@ import copy
 import itertools
 import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -12,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src" / "scripts"))
 
 import build_assignments as ba  # noqa: E402
+import experiment_plan as ep  # noqa: E402
 import select_scenarios as ss  # noqa: E402
 
 FACTS = json.loads(ss.INPUTS.read_text(encoding="utf-8"))
@@ -110,3 +112,55 @@ class AssignmentTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ReserveTests(unittest.TestCase):
+    """--add-reserves: one exact copy per original, numbered on, with the original rows left exactly as they were."""
+
+    def write(self, assignments, simulated=False):
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        path = Path(folder.name) / "participant_assignments.json"
+        ba.write_assignments(path, FINAL, assignments, simulated=simulated)
+        return path
+
+    def test_reserves_mirror_the_originals_in_order_with_ids_numbered_on(self):
+        originals = ba.generate(FINAL, ITEMS, 20)
+        reserves = ba.mirror_reserves(originals)
+        self.assertEqual([r["participant"] for r in reserves], [f"P{n:03d}" for n in range(21, 41)])
+        self.assertEqual([r[ep.RESERVE_KEY] for r in reserves], [o["participant"] for o in originals])
+        for original, reserve in zip(originals, reserves):
+            self.assertEqual({k: reserve[k] for k in ep.MIRRORED_KEYS}, {k: original[k] for k in ep.MIRRORED_KEYS})
+            self.assertIsNot(reserve["trials"], original["trials"])  # a copy, not a shared list
+
+    def test_originals_plus_reserves_keep_every_balance_of_the_design(self):
+        originals = ba.generate(FINAL, ITEMS, 20)
+        both = originals + ba.mirror_reserves(originals)
+        self.assertEqual(ba.validate(both, FINAL, ITEMS, RESULT["pairs"]), [])
+        cells = {}
+        for row in both:
+            cells[(row["list"], row["condition"])] = cells.get((row["list"], row["condition"]), 0) + 1
+        self.assertEqual(cells, {(l, c): 10 for l in "AB" for c in ("low", "high")})
+
+    def test_add_reserves_leaves_the_originals_unchanged_and_runs_once(self):
+        path = self.write(ba.generate(FINAL, ITEMS, 8))
+        before = json.loads(path.read_text(encoding="utf-8"))
+        added = ba.add_reserves(path)
+        after = json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual(len(added), 8)
+        self.assertEqual(after["assignments"][:8], before["assignments"])
+        self.assertEqual({k: v for k, v in after.items() if k != "assignments"},
+                         {k: v for k, v in before.items() if k != "assignments"})
+        self.assertEqual(after["assignments"][8:], added)
+        self.assertEqual(ep.reserve_problems(after), [])
+        text = path.read_text(encoding="utf-8")
+        self.assertEqual(ba.add_reserves(path), [])  # every original has a reserve: nothing more
+        self.assertEqual(path.read_text(encoding="utf-8"), text)
+
+    def test_a_file_in_another_layout_is_not_rewritten(self):
+        path = self.write(ba.generate(FINAL, ITEMS, 4))
+        path.write_text(json.dumps(json.loads(path.read_text(encoding="utf-8"))), encoding="utf-8")  # one line
+        text = path.read_text(encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "layout"):
+            ba.add_reserves(path)
+        self.assertEqual(path.read_text(encoding="utf-8"), text)

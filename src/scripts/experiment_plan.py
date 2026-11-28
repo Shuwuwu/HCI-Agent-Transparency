@@ -40,7 +40,10 @@ Inputs:
                                   practice stage only and renumbers the rest (participant_flow.omit_trace_steps).
                                   A reason is required whenever steps are omitted, so the change stays documented.
     The assignments file it names: {"version", "seed", "simulated", "final", "assignments": [...]} as written by
-    build_assignments.py --write (study) or --write-simulated (development).
+    build_assignments.py --write (study) or --write-simulated (development). A row may carry "reserve_for": <id>
+    (build_assignments.py --add-reserves): a reserve participant whose list, condition and trials are an exact
+    copy of that original participant's, given out only if the original does not complete the study (see
+    reserve_problems).
 
 Outputs:
     In-memory stage sequences (plan_for) and configuration problems (design_problems). The command line prints one
@@ -166,6 +169,37 @@ def load_assignments(config: Config) -> dict:
         raise ConfigError(f"{config['assignments_path']}: study assignments must not be used with the simulated "
                           f"configuration {config['path']}")
     return payload
+
+
+RESERVE_KEY = "reserve_for"  # in an assignment row: the original participant a reserve participant mirrors
+MIRRORED_KEYS = ("list", "condition", "trials")  # what a reserve copies from its original, unchanged
+
+
+def reserve_problems(payload: dict) -> list[str]:
+    """Problems with the reserve participants of an assignments file (empty list = none, or no reserves).
+
+    A reserve row ("reserve_for": <original id>) must name an original participant of the same file that is not
+    itself a reserve, must have the original's list, condition and trials unchanged (MIRRORED_KEYS), and each
+    original has at most one reserve. Copying the whole assignment is what keeps the design balanced when a reserve
+    takes the place of an original who did not complete: the replacement sees exactly what the original would have.
+    """
+    rows = {row["participant"]: row for row in payload["assignments"]}
+    problems, mirrored = [], {}
+    for row in payload["assignments"]:
+        original = row.get(RESERVE_KEY)
+        if original is None:
+            continue
+        who = row["participant"]
+        if original not in rows:
+            problems.append(f"{who}: reserve for {original}, who is not in the assignments file")
+        elif rows[original].get(RESERVE_KEY) is not None:
+            problems.append(f"{who}: reserve for {original}, who is a reserve participant")
+        elif any(row.get(key) != rows[original].get(key) for key in MIRRORED_KEYS):
+            problems.append(f"{who}: the list, condition or trials differ from {original}'s")
+        if original in mirrored:
+            problems.append(f"{who}: {original} already has the reserve {mirrored[original]}")
+        mirrored.setdefault(original, who)
+    return problems
 
 
 def assignment_for(payload: dict, participant: str) -> dict:
@@ -298,9 +332,10 @@ def scenario_stages(plan: dict, practice: bool = False) -> list[dict]:
 def design_problems(config: Config, payload: dict | None = None) -> list[str]:
     """Problems that would break the flow for some participant (empty list = the configuration is usable).
 
-    Checks that every participant's stages can be derived at all, that participant ids are unique, and that the
-    practice scenario is not one of the final eight scenarios (a participant must not meet the same legitimate
-    task twice, and practising on an experimental scenario would reveal its outcome).
+    Checks that every participant's stages can be derived at all, that participant ids are unique, that every
+    reserve participant mirrors its original (reserve_problems), and that the practice scenario is not one of the
+    final eight scenarios (a participant must not meet the same legitimate task twice, and practising on an
+    experimental scenario would reveal its outcome).
     """
     problems = []
     try:
@@ -310,6 +345,7 @@ def design_problems(config: Config, payload: dict | None = None) -> list[str]:
     ids = [row["participant"] for row in payload["assignments"]]
     if len(set(ids)) != len(ids):
         problems.append("the assignments file repeats a participant id")
+    problems += reserve_problems(payload)
     practice_scenario = _scenario_of(config["practice"]["stimulus"])
     final = payload.get("final", {}).get("scenarios", [])
     if practice_scenario in final:
@@ -361,7 +397,8 @@ def main() -> None:
     if not args.check:
         parser.error("choose --check or --participant ID")
     problems = design_problems(config, payload)
-    print(f"{config['path'].name}: {len(payload['assignments'])} participants, "
+    reserves = sum(row.get(RESERVE_KEY) is not None for row in payload["assignments"])
+    print(f"{config['path'].name}: {len(payload['assignments'])} participants ({reserves} reserve), "
           f"{config['trials_per_participant']} trials each, "
           f"{'simulated' if payload.get('simulated') else 'study'} assignments")
     print(f"problems: {problems or 'none'}")

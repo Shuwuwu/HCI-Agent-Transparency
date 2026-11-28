@@ -284,3 +284,41 @@ class DesignProblemTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ReserveTests(unittest.TestCase):
+    """A reserve row ("reserve_for") must be an exact copy of an original participant's assignment."""
+
+    def payload_with(self, *rows):
+        return {**DEV_PAYLOAD, "assignments": [r for r in DEV_PAYLOAD["assignments"] if not r.get(ep.RESERVE_KEY)]
+                + list(rows)}
+
+    def reserve(self, original, participant="P900", **changes):
+        row = next(r for r in DEV_PAYLOAD["assignments"] if r["participant"] == original)
+        return {"participant": participant, ep.RESERVE_KEY: original,
+                **{k: copy.deepcopy(row[k]) for k in ep.MIRRORED_KEYS}, **changes}
+
+    def test_an_exact_copy_is_accepted_and_gets_its_own_trial_ids(self):
+        payload = self.payload_with(self.reserve(FIRST))
+        self.assertEqual(ep.reserve_problems(payload), [])
+        self.assertEqual(ep.design_problems(DEV_CONFIG, payload), [])
+        original, reserve = (ep.plan_for(DEV_CONFIG, p, payload) for p in (FIRST, "P900"))
+        strip = lambda plan: [{k: v for k, v in s.items() if k != "trial_id"} for s in plan["stages"]]  # noqa: E731
+        self.assertEqual(strip(reserve), strip(original))
+        self.assertTrue(all(s["trial_id"].startswith("P900-") for s in ep.scenario_stages(reserve, practice=True)))
+
+    def test_broken_reserves_are_design_problems(self):
+        other = next(r["participant"] for r in DEV_PAYLOAD["assignments"] if r["participant"] != FIRST)
+        flipped = "high" if self.reserve(FIRST)["condition"] == "low" else "low"
+        cases = {
+            "not in the assignments file": [self.reserve(FIRST, **{ep.RESERVE_KEY: "P999"})],
+            "differ from": [self.reserve(FIRST, condition=flipped)],
+            "who is a reserve participant": [self.reserve(FIRST),
+                                             {**self.reserve(FIRST, participant="P901"), ep.RESERVE_KEY: "P900"}],
+            "already has the reserve": [self.reserve(FIRST), self.reserve(FIRST, participant="P901")],
+        }
+        for message, rows in cases.items():
+            with self.subTest(message):
+                problems = ep.design_problems(DEV_CONFIG, self.payload_with(*rows))
+                self.assertTrue(any(message in p for p in problems), problems)
+        self.assertEqual(ep.reserve_problems(self.payload_with(self.reserve(other))), [])

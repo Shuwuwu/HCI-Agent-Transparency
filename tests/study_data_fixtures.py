@@ -7,12 +7,14 @@ Purpose:
 
 Inputs:
     The development configuration and its assignments (read-only); a database path chosen by the caller.
+    RESERVE_PAYLOAD is those assignments with one reserve participant per original (build_assignments
+    .mirror_reserves), built in memory whatever the file itself holds.
 
 Outputs:
     Python helpers only.
 
 Dependencies:
-    src/scripts/participant_flow.py, participant_store.py, experiment_plan.py.
+    src/scripts/participant_flow.py, participant_store.py, experiment_plan.py, build_assignments.py.
 
 Usage:
     from study_data_fixtures import CONFIG, PAYLOAD, new_database, walk      (tests add tests/ to sys.path)
@@ -25,6 +27,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src" / "scripts"))
 
+import build_assignments as ba  # noqa: E402
 import experiment_plan as ep  # noqa: E402
 import participant_flow as flow  # noqa: E402
 import participant_store as store  # noqa: E402
@@ -32,6 +35,8 @@ import participant_store as store  # noqa: E402
 CONFIG = ep.load_config(ep.DEVELOPMENT_CONFIG)
 PAYLOAD = ep.load_assignments(CONFIG)
 PARTICIPANTS = [row["participant"] for row in PAYLOAD["assignments"]]
+_ORIGINALS = [row for row in PAYLOAD["assignments"] if row.get(ep.RESERVE_KEY) is None]
+RESERVE_PAYLOAD = {**PAYLOAD, "assignments": _ORIGINALS + ba.mirror_reserves(_ORIGINALS)}
 
 
 def new_database(folder: Path | None = None) -> tuple:
@@ -68,12 +73,13 @@ def submission(stage: dict) -> dict:
     return {}
 
 
-def walk(conn, participant: str, until: str | None = None, events: bool = True) -> list[str]:
+def walk(conn, participant: str, until: str | None = None, events: bool = True, payload: dict = PAYLOAD) -> list[str]:
     """Advance `participant` the way the page does until the stage `until` is current (or the end); returns the
     stage keys completed. With `events`, each scenario gets a few browser events (a workspace tab chosen and
-    viewed, a card expanded and viewed, the visible time), sent while it is the current stage."""
+    viewed, a card expanded and viewed, the visible time), sent while it is the current stage. `payload` is the
+    assignments the participant was enrolled from (RESERVE_PAYLOAD for a reserve participant)."""
     walked = []
-    stage = flow.stage_payload(conn, CONFIG, participant, PAYLOAD)["stage"]
+    stage = flow.stage_payload(conn, CONFIG, participant, payload)["stage"]
     while stage is not None and stage["key"] != until:
         if events and stage["kind"] == "scenario":
             for event in ({"type": "workspace_tab_open", "tab": "calendar"},
@@ -81,9 +87,9 @@ def walk(conn, participant: str, until: str | None = None, events: bool = True) 
                           {"type": "trace_card_expand", "card_id": "step-1"},
                           {"type": "trace_card_view", "card_id": "step-1", "duration_ms": 700},
                           {"type": "scenario_visible", "duration_ms": 9000}):
-                flow.log_event(conn, CONFIG, participant, {"trial_id": stage["trial_id"], **event}, PAYLOAD)
+                flow.log_event(conn, CONFIG, participant, {"trial_id": stage["trial_id"], **event}, payload)
         extra = submission(stage)
         walked.append(stage["key"])
-        stage = flow.advance(conn, CONFIG, participant, stage["key"], PAYLOAD, consent=extra.get("consent"),
+        stage = flow.advance(conn, CONFIG, participant, stage["key"], payload, consent=extra.get("consent"),
                              answers=extra.get("answers"))["stage"]
     return walked

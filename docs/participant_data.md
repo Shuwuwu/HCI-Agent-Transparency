@@ -64,7 +64,8 @@ What each command does:
   consent text only with `--consent-text`.
 - `export` writes the CSV files to `data/participants/exports/<environment>/`. With `--participant ID` they go
   to `<...>/<ID>/` instead. Use `--out DIR` for another folder.
-- `check` reports inconsistent records and exits with status 1 if it finds any.
+- `check` reports inconsistent records and exits with status 1 if it finds any. For a reserve participant it also
+  checks that their original is enrolled, is not a reserve, and has the same stage sequence apart from the trial ids.
 
 ## Inspecting the database with DB Browser for SQLite
 
@@ -76,9 +77,11 @@ or with `brew install --cask db-browser-for-sqlite`.
    the participant server is running: SQLite's write-ahead log lets readers and the server work at the same time.
    Close DB Browser when you are done, so it does not hold the file open.
 2. **Start with the views.** On the *Browse Data* tab, choose a table or view from the drop-down:
-   - `participant_overview`: one row per participant, with condition, list, consent time, stages completed and
-     total, current stage, completion time, and counts of answers, events and questionnaire items.
-   - `trial_summary`: one row per trial (practice included, marked by `trial_type`). It holds the scenario,
+   - `participant_overview`: one row per participant, with `reserve_for` (the original a reserve participant
+     mirrors; empty for an original), condition, list, consent time, stages completed and total, current stage,
+     completion time, and counts of answers, events and questionnaire items.
+   - `trial_summary`: one row per trial (practice included, marked by `trial_type`), with the participant's
+     `reserve_for`. It holds the scenario,
      stimulus version (`practice`, `safe` or `unsafe`), stimulus folder and condition. It also has when the
      scenario and its assessment were entered and completed, plus `scenario_s`, `assessment_s` and
      `scenario_visible_ms`. Then come the answers (`task_completion`, `performed_safely`, `confidence`,
@@ -130,7 +133,7 @@ Do not edit data in DB Browser. In a study database, the triggers refuse edits a
 
 | Table | One row per | Main columns |
 |---|---|---|
-| `participants` | enrolled participant | `participant_id` (pseudonymous), `token` (the link; never exported), `condition`, `list`, `trials`, `simulated`, configuration and stage fingerprint, `enrolled_at`, `completed_at` |
+| `participants` | enrolled participant | `participant_id` (pseudonymous), `token` (the link; never exported), `condition`, `list`, `trials`, `simulated`, configuration and stage fingerprint, `enrolled_at`, `completed_at`, `reserve_for` (schema version 11: the original participant whose assignment a reserve participant mirrors; NULL for an original, and for everyone enrolled before version 11; fixed once enrolled in a study database) |
 | `plan_stages` | stage of a participant's sequence | `stage_index`, `stage_key`, `kind`, `trial_id`, `trial_ordinal`, `practice`, `scenario`, `stimulus_version`, `stimulus`, `condition` |
 | `progress` | stage a participant has entered | `entered_at` (first arrival), `completed_at` |
 | `consents` | participant who agreed | `agreed_at`, `consent_sha256`, `consent_text` (the exact text agreed to) |
@@ -172,8 +175,8 @@ on every run, so never edit them; change nothing but the database, and only thro
 
 | File | One row per | Notes |
 |---|---|---|
-| `participants.csv` | participant | `participant_overview` |
-| `trials.csv` | trial | `trial_summary` (including the answers, with `task_completion`), plus the measures of `interaction_log.summarize`: Skills tab and skill-document use, `workspace_inspected` (the participant chose a tab or opened an item, the Skills tab or a skill document; the panel being open by default never counts), tabs and items (items opened, and `workspace_items_viewed_ms`, the viewing time per item as `{tab: {item_id: ms}}`), activity cards expanded and viewed. Dict-valued measures are JSON. `trial_type` is `practice` or `experimental`. |
+| `participants.csv` | participant | `participant_overview` (`reserve_for` names the original a reserve participant mirrors; empty for an original) |
+| `trials.csv` | trial | `trial_summary` (including the participant's `reserve_for` and the answers, with `task_completion`), plus the measures of `interaction_log.summarize`: Skills tab and skill-document use, `workspace_inspected` (the participant chose a tab or opened an item, the Skills tab or a skill document; the panel being open by default never counts), tabs and items (items opened, and `workspace_items_viewed_ms`, the viewing time per item as `{tab: {item_id: ms}}`), activity cards expanded and viewed. Dict-valued measures are JSON. `trial_type` is `practice` or `experimental`. |
 | `progress.csv` | stage entered | stage kind, trial and `trial_type` |
 | `events.csv` | event | with `trial_type` |
 | `questionnaire.csv` | participant and item asked | long format, both questionnaires, with `stage_key`; `answer` coding below |

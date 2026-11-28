@@ -4,6 +4,7 @@ a participant being resumed into a changed stage sequence."""
 
 import json
 import sqlite3
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -15,9 +16,14 @@ sys.path.insert(0, str(ROOT / "src" / "scripts"))
 import experiment_plan as ep  # noqa: E402
 import participant_store as store  # noqa: E402
 
+sys.path.insert(0, str(ROOT / "tests"))
+from study_data_fixtures import RESERVE_PAYLOAD  # noqa: E402
+
 CONFIG = ep.load_config(ep.DEVELOPMENT_CONFIG)
 PAYLOAD = ep.load_assignments(CONFIG)
 FIRST = PAYLOAD["assignments"][0]["participant"]
+WITH_RESERVES = RESERVE_PAYLOAD  # one reserve participant per original (tests/study_data_fixtures.py)
+RESERVE = next(row["participant"] for row in WITH_RESERVES["assignments"] if row.get(ep.RESERVE_KEY) == FIRST)
 
 
 def temp_db():
@@ -331,7 +337,7 @@ class SchemaV10Tests(unittest.TestCase):
     def test_a_version_9_database_gains_the_column_with_its_answers_kept(self):
         path, before = self.make_version_9()
         conn = store.connect(path)
-        self.assertEqual(conn.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()[0], "10")
+        self.assertEqual(conn.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()[0], str(store.SCHEMA_VERSION))
         after = dict(conn.execute("SELECT * FROM responses").fetchone())
         self.assertEqual(after, {**before, "task_completion": None})  # every stored value unchanged
         self.assertEqual([r[1] for r in conn.execute("PRAGMA table_info(responses)")], list(store.RESPONSE_COLUMNS))
@@ -660,3 +666,144 @@ class PlanChangeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ReserveTests(unittest.TestCase):
+    """Reserve participants: enrolled with their own id, link and records, marked with the original they mirror."""
+
+    def setUp(self):
+        self.conn = store.connect(temp_db())
+
+    def tearDown(self):
+        self.conn.close()
+
+    def test_a_reserve_is_enrolled_with_its_own_link_and_the_originals_sequence(self):
+        original = store.enrol(self.conn, CONFIG, FIRST, WITH_RESERVES)
+        reserve = store.enrol(self.conn, CONFIG, RESERVE, WITH_RESERVES)
+        self.assertIsNone(original["reserve_for"])
+        self.assertEqual(reserve["reserve_for"], FIRST)
+        self.assertNotEqual(reserve["token"], original["token"])
+        self.assertEqual((reserve["condition"], reserve["list"]), (original["condition"], original["list"]))
+        mirrored = lambda who: [  # noqa: E731
+            {k: v for k, v in row.items() if k not in ("participant_id", "trial_id")}
+            for row in store.stored_plan_stages(self.conn, who)]
+        self.assertEqual(mirrored(RESERVE), mirrored(FIRST))
+        self.assertTrue(all(row["trial_id"].startswith(f"{RESERVE}-")
+                            for row in store.stored_plan_stages(self.conn, RESERVE) if row["trial_id"]))
+
+    def test_adding_reserves_keeps_existing_links_and_sequences(self):
+        before = {row["participant_id"]: row for row in store.enrol_all(self.conn, CONFIG, PAYLOAD)}
+        added = store.enrol_all(self.conn, CONFIG, WITH_RESERVES)
+        self.assertEqual({row["participant_id"] for row in added},
+                         {row["participant"] for row in WITH_RESERVES["assignments"]} - set(before))
+        for participant, row in before.items():
+            self.assertEqual(store.record(self.conn, participant)["token"], row["token"])
+            store.checked_plan(self.conn, CONFIG, participant, WITH_RESERVES)  # still their enrolled sequence
+
+    def test_a_reserves_progress_and_records_are_their_own(self):
+        store.enrol_all(self.conn, CONFIG, WITH_RESERVES)
+        store.record_consent(self.conn, RESERVE, "0" * 64, "text")
+        store.complete_stage(self.conn, CONFIG, RESERVE, "consent", WITH_RESERVES)
+        store.record_event(self.conn, RESERVE, "pre_questionnaire", None, False, {"type": "stage_load"}, "server")
+        self.assertEqual(store.completed_stages(self.conn, RESERVE), ["consent"])
+        self.assertEqual(store.completed_stages(self.conn, FIRST), [])
+        self.assertIsNone(store.consent_of(self.conn, FIRST))
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM events WHERE participant_id = ?",
+                                           (FIRST,)).fetchone()[0], 0)
+
+    def test_the_researcher_views_and_status_mark_reserves(self):
+        store.enrol_all(self.conn, CONFIG, WITH_RESERVES)
+        overview = {r["participant_id"]: r["reserve_for"]
+                    for r in self.conn.execute("SELECT * FROM participant_overview")}
+        self.assertEqual(overview[RESERVE], FIRST)
+        self.assertIsNone(overview[FIRST])
+        trials = {r["reserve_for"] for r in self.conn.execute(
+            "SELECT reserve_for FROM trial_summary WHERE participant_id = ?", (RESERVE,))}
+        self.assertEqual(trials, {FIRST})
+        self.assertEqual(store.status(self.conn, CONFIG, RESERVE, WITH_RESERVES)["reserve_for"], FIRST)
+        self.assertIsNone(store.status(self.conn, CONFIG, FIRST, WITH_RESERVES)["reserve_for"])
+
+    def test_a_study_database_keeps_reserve_for_as_enrolled(self):
+        path = temp_db()
+        conn = store.connect(path)
+        store.enrol_all(conn, CONFIG, WITH_RESERVES)
+        conn.execute("UPDATE participants SET simulated = 0")
+        conn.commit()
+        conn.close()
+        conn = store.connect(path, "study")
+        for sql in ("UPDATE participants SET reserve_for = NULL", f"UPDATE participants SET reserve_for = '{FIRST}'"):
+            with self.subTest(sql=sql), self.assertRaises(sqlite3.IntegrityError):
+                conn.execute(sql)
+            conn.rollback()
+        conn.close()
+
+    def test_links_name_the_original_of_each_reserve(self):
+        folder = Path(tempfile.mkdtemp())
+        assignments = folder / "assignments.json"
+        assignments.write_text(json.dumps(WITH_RESERVES), encoding="utf-8")
+        config = alternative_config(assignments=str(assignments))
+        out = subprocess.run([sys.executable, "-B", str(ROOT / "src" / "scripts" / "participant_store.py"),
+                              "--config", str(config["path"]), "--db", str(folder / "p.sqlite3"),
+                              "--enrol-all", "--links", "--base-url", "http://127.0.0.1:8765"],
+                             capture_output=True, text=True, check=True).stdout
+        lines = {line.split("\t")[0]: line.split("\t") for line in out.splitlines() if "\t" in line}
+        self.assertEqual(len(lines[FIRST]), 2)  # an original's line is unchanged: id and link
+        self.assertEqual(lines[RESERVE][2], f"reserve for {FIRST}")
+        self.assertTrue(lines[RESERVE][1].startswith("http://127.0.0.1:8765/p/"))
+
+
+class SchemaV11Tests(unittest.TestCase):
+    """Schema version 11: participants.reserve_for, added to an existing database without changing its rows (they
+    keep NULL: everyone enrolled before reserves existed is an original), and the views showing it."""
+
+    def make_version_10(self, environment=None):
+        """A database in the version 10 layout (no reserve_for, the old views and study trigger) holding one
+        participant who has consented; returns its path and that participant's row as stored."""
+        path = temp_db()
+        conn = store.connect(path)
+        store.enrol(conn, CONFIG, FIRST, PAYLOAD)
+        store.record_consent(conn, FIRST, "0" * 64, "text")
+        old_views = store.VIEWS.replace("p.reserve_for, ", "").replace(
+            "       (SELECT p.reserve_for FROM participants p WHERE p.participant_id = s.participant_id) AS reserve_for,\n",
+            "")
+        self.assertNotIn("reserve_for", old_views)
+        conn.executescript("DROP VIEW participant_overview; DROP VIEW trial_summary; DROP VIEW experimental_events;"
+                           "ALTER TABLE participants DROP COLUMN reserve_for;" + old_views)
+        if environment == "study":
+            conn.execute("UPDATE participants SET simulated = 0")
+            conn.execute("INSERT INTO meta (key, value) VALUES ('environment', 'study')")
+            conn.executescript(store.STUDY_TRIGGERS.replace(', "reserve_for"', "").replace(
+                " OR NEW.reserve_for IS NOT OLD.reserve_for", ""))
+        conn.execute("UPDATE meta SET value = '10' WHERE key = 'schema_version'")
+        conn.commit()
+        before = dict(conn.execute("SELECT * FROM participants").fetchone())
+        self.assertNotIn("reserve_for", before)
+        conn.close()
+        return path, before
+
+    def test_a_version_10_database_gains_the_column_with_its_participants_kept(self):
+        path, before = self.make_version_10()
+        conn = store.connect(path)
+        self.assertEqual(conn.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()[0], "11")
+        self.assertEqual(dict(conn.execute("SELECT * FROM participants").fetchone()), {**before, "reserve_for": None})
+        self.assertIn("reserve_for", conn.execute("SELECT * FROM participant_overview").fetchone().keys())
+        self.assertIn("reserve_for", conn.execute("SELECT * FROM trial_summary").fetchone().keys())
+        self.assertEqual(store.consent_of(conn, FIRST)["consent_text"], "text")
+        conn.close()
+
+    def test_a_version_10_study_database_also_fixes_reserve_for_after_the_upgrade(self):
+        path, before = self.make_version_10("study")
+        trigger = lambda c: c.execute("SELECT sql FROM sqlite_master WHERE name = 'study_keep_participants_u'"  # noqa: E731
+                                      ).fetchone()[0]
+        raw = sqlite3.connect(path)
+        self.assertNotIn("reserve_for", trigger(raw))
+        raw.close()
+        conn = store.connect(path, "study")
+        self.assertIn("reserve_for", trigger(conn))
+        self.assertEqual(dict(conn.execute("SELECT * FROM participants").fetchone()), {**before, "reserve_for": None})
+        for sql in ("UPDATE participants SET reserve_for = 'P999'", "UPDATE participants SET condition = 'x'",
+                    "DELETE FROM consents"):
+            with self.subTest(sql=sql), self.assertRaises(sqlite3.IntegrityError):
+                conn.execute(sql)
+            conn.rollback()
+        conn.close()

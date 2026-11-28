@@ -19,10 +19,11 @@ Outputs:
     export      CSV files in data/participants/exports/<environment>/ (or <...>/<ID>/ with --participant, or
                 --out DIR), each with a header row, plus export_manifest.json (source database, schema version,
                 environment, time, row count and SHA-256 of every file). Files are private (0600):
-                  participants.csv    one row per participant (view participant_overview)
-                  trials.csv          one row per trial, practice included and marked by trial_type (view
-                                      trial_summary plus the interaction measures of interaction_log.summarize;
-                                      dict-valued measures as JSON)
+                  participants.csv    one row per participant (view participant_overview; reserve_for names
+                                      the original a reserve participant mirrors, empty for an original)
+                  trials.csv          one row per trial, practice included and marked by trial_type, with the
+                                      participant's reserve_for (view trial_summary plus the interaction
+                                      measures of interaction_log.summarize; dict-valued measures as JSON)
                   progress.csv        one row per stage entered, with its kind, trial and trial_type
                   events.csv          one row per interaction event, with trial_type
                   questionnaire.csv   one row per participant and item asked, pre- and post-study, with the
@@ -185,7 +186,8 @@ def find_problems(conn: sqlite3.Connection) -> list[str]:
     """Everything inconsistent in a participant database, as readable sentences; [] when it is consistent.
 
     Checks: SQLite's integrity and foreign keys; an environment stamp; per participant, a stage-sequence snapshot
-    matching their fingerprint, progress only for stages of that sequence and completed in order, completed_at set
+    matching their fingerprint, for a reserve participant an enrolled original who is not a reserve and the same
+    sequence as that original's apart from the trial ids (MIRRORED_STAGE_COLUMNS), progress only for stages of that sequence and completed in order, completed_at set
     exactly when every stage is completed, a consent exactly when consent is completed, a response exactly for
     each completed experimental assessment (naming the trial, stimulus and condition of the plan) and, for the
     display-only practice assessment, none unless it was recorded by the earlier interactive practice (and then
@@ -210,6 +212,17 @@ def find_problems(conn: sqlite3.Connection) -> list[str]:
             continue
         if store.stored_plan_fingerprint(conn, participant) != store.record(conn, participant)["plan_fingerprint"]:
             p("plan_stages do not match the fingerprint they were enrolled under")
+        # .get: a database below schema version 11, opened read-only, has no reserve_for column (no reserves).
+        original = store.record(conn, participant).get("reserve_for")
+        if original is not None:
+            original_row = conn.execute("SELECT reserve_for FROM participants WHERE participant_id = ?",
+                                        (original,)).fetchone()
+            if original_row is None:
+                p(f"reserve for {original}, who is not enrolled")
+            elif original_row[0] is not None:
+                p(f"reserve for {original}, who is a reserve participant")
+            elif _mirrored(stages) != _mirrored(store.stored_plan_stages(conn, original)):
+                p(f"reserve for {original}, but their stage sequence differs from {original}'s")
         by_key = {s["stage_key"]: s for s in stages}
         progress = _rows(conn, "SELECT * FROM progress WHERE participant_id = ?", (participant,))
         for row in progress:
@@ -271,6 +284,17 @@ def find_problems(conn: sqlite3.Connection) -> list[str]:
             if sum(r[0] == "server" for r in starts) > 1:
                 p(f"{stage['trial_id']}: more than one session_start")
     return problems
+
+
+# What a reserve participant's plan_stages share with their original's: everything but the participant and trial
+# ids, which are derived from the participant id (experiment_plan.trial_id).
+MIRRORED_STAGE_COLUMNS = ("stage_index", "stage_key", "kind", "trial_ordinal", "practice", "scenario",
+                          "stimulus_version", "stimulus", "condition")
+
+
+def _mirrored(stages: list[dict]) -> list[tuple]:
+    """A stage sequence without its participant and trial ids, for comparing a reserve with their original."""
+    return [tuple(stage[c] for c in MIRRORED_STAGE_COLUMNS) for stage in stages]
 
 
 def _group(conn: sqlite3.Connection, sql: str, participant: str) -> dict:

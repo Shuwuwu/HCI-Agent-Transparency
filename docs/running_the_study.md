@@ -11,7 +11,7 @@ data is and how to read, export, back up and restore it, see [participant_data.m
 | Data recording, privacy, exports, backups | Ready |
 | Rehearsal with simulated participants (`rehearsal.json`) | Ready. Its development assignments were rebuilt after task 24 was replaced by task 17 (rule R7): participants enrolled earlier must be reset (`participant_store.py --config src/data/experiment_configs/rehearsal.json --reset P001 ...`) to get the new trial sequence. The pre-study questionnaire stage (after consent) also changed every participant's stage sequence, so links enrolled before it are refused until reset in the same way. |
 | Unsafe stimuli | Ready. The 12 unsafe stimuli are simulated (constructed) traces in `src/data/simulated/`, all marked reviewed. Task 24 is withdrawn after manual review and excluded from the study corpus; by rule R7 spare task 17 takes over its planned item (G2, W3 v1, the same injected skill), built as `user_task_17__g2_ii_w3v1` (see `docs/scenario_selection.md`). Stage 2's final set is scenarios 1, 2, 15, 17, 26, 27, 28 and 29. |
-| Study assignments | Written for 20 participants (`src/data/participant_assignments.json`, `build_assignments.py --write 20`). `experiment_plan.py --check` reports every stimulus servable. Rewrite them only before enrolment. |
+| Study assignments | Written for 20 participants (`src/data/participant_assignments.json`, `build_assignments.py --write 20`). `experiment_plan.py --check` reports every stimulus servable. Rewrite them only before enrolment. No reserve participants yet (see "Reserve participants"). |
 | Manual stimulus review | Done (2026-11-27). All 19 served safe and 12 simulated unsafe study stimuli are marked reviewed (task 24 is excluded; `review_stimuli.py` lists the status of each). `preflight.py` fails the study configuration if any stimulus a participant will see stops being marked reviewed or a review record goes out of date. |
 | Consent text | Ready: no placeholder left (data storage and HTTPS transmission described, 2026-11-27) |
 | Pre-study questionnaire | Ready: 3 items, the same in both conditions (`src/study_materials/pre_questionnaire.json`) |
@@ -86,6 +86,57 @@ them to the server. Anyone holding a link could continue that participant's sess
   the channel the ethics approval names, never posted or shared in a group message.
 - The participant ID (`P001`, …) is pseudonymous. Keep the list linking IDs to people (if you need one at all)
   apart from the computer and the data, as the ethics approval specifies.
+
+## Reserve participants
+
+A reserve participant replaces an original participant who withdrew or did not complete. Each original gets one
+reserve whose assignment is an exact copy of theirs: the same list, condition and trial order. With 20 originals,
+P021 mirrors P001, P022 mirrors P002, …, P040 mirrors P020. A reserve who takes an original's place therefore sees
+exactly what that original would have seen, and the balance of conditions, lists and trial orders is unchanged.
+Each reserve still has their own ID, link, progress, answers and interaction events.
+
+- **Give out a reserve's link only to replace their own original**, and only once that original has withdrawn or
+  will not complete. Never send both links of a pair. If both an original and their reserve complete anyway, the
+  database keeps both: decide which one to analyse before looking at their answers, and record the decision.
+- `--links` marks reserves: a reserve's line ends with a third tab-separated column, `reserve for P001`. The
+  `participants.csv` and `trials.csv` exports, the `participant_overview` and `trial_summary` views and
+  `participant_store.py --status` show the same in `reserve_for` (empty for an original). Participants never see it.
+
+**Adding the reserves** (once; nothing is changed for the participants already enrolled):
+
+1. Stop every participant server first, including `funnel_server.py`. The first command below to open the database
+   upgrades it to schema version 11, and a server still running the older code refuses a database newer than
+   itself. Start the servers again afterwards.
+2. Back up the database:
+
+   ```bash
+   python3 -B src/scripts/participant_data.py --config src/data/experiment_configs/study.json backup
+   ```
+
+3. Append the reserves to the assignments file. The existing rows are left exactly as they are, and running it
+   again adds nothing:
+
+   ```bash
+   python3 -B src/scripts/build_assignments.py --add-reserves src/data/participant_assignments.json
+   ```
+
+4. Check the design. It must report no problems (a reserve that does not mirror its original is one):
+
+   ```bash
+   python3 -B src/scripts/experiment_plan.py --config src/data/experiment_configs/study.json --check
+   ```
+
+5. Enrol the reserves and print every link. The links already sent do not change:
+
+   ```bash
+   python3 -B src/scripts/participant_store.py --config src/data/experiment_configs/study.json --enrol-all --links --base-url http://127.0.0.1:8765
+   ```
+
+6. Run the readiness check (`preflight.py`, below). Its `records` check compares each reserve's stored stage
+   sequence with their original's.
+
+For the rehearsal, use `src/data/validation/participant_assignments.json` and `rehearsal.json` (8 originals, so
+reserves P009–P016). `development.json` reads the same assignments file, so it gains the same reserves.
 
 ## Before each session
 

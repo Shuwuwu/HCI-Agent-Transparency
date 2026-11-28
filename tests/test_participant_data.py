@@ -31,7 +31,7 @@ sys.path.insert(0, str(ROOT / "tests"))
 
 import participant_data as pdata  # noqa: E402
 import participant_store as store  # noqa: E402
-from study_data_fixtures import PARTICIPANTS, new_database, walk  # noqa: E402
+from study_data_fixtures import CONFIG, PARTICIPANTS, RESERVE_PAYLOAD, new_database, walk  # noqa: E402
 
 DONE, PARTWAY = PARTICIPANTS[0], PARTICIPANTS[1]
 
@@ -203,6 +203,52 @@ class CheckTests(unittest.TestCase):
         store.record_event(self.conn, PARTWAY, "trial_01_assessment", f"{DONE}-t01", False,
                            {"type": "workspace_panel_open"}, "browser")
         self.assertTrue(any("not theirs" in p for p in pdata.find_problems(self.conn)))
+
+
+class ReserveTests(unittest.TestCase):
+    """Reserve participants are checked against their original and marked in the exports."""
+
+    def setUp(self):
+        self.conn, _ = new_database()
+        store.enrol_all(self.conn, CONFIG, RESERVE_PAYLOAD)
+        self.reserve, self.original = next((row["participant"], row["reserve_for"])
+                                           for row in RESERVE_PAYLOAD["assignments"] if row.get("reserve_for"))
+        walk(self.conn, self.original)
+        walk(self.conn, self.reserve, until="trial_02_scenario", payload=RESERVE_PAYLOAD)
+
+    def tearDown(self):
+        self.conn.close()
+
+    def test_mirrored_reserves_are_consistent(self):
+        self.assertEqual(pdata.find_problems(self.conn), [])
+
+    def test_a_reserve_that_does_not_mirror_its_original_is_reported(self):
+        other = next(p for p in PARTICIPANTS if p != self.original)
+        damage = [
+            (f"UPDATE participants SET reserve_for = 'P999' WHERE participant_id = '{self.reserve}'", "not enrolled"),
+            (f"UPDATE participants SET reserve_for = '{self.reserve}' WHERE participant_id = '{other}'",
+             "is a reserve participant"),
+            (f"UPDATE plan_stages SET condition = CASE condition WHEN 'low' THEN 'high' ELSE 'low' END "
+             f"WHERE participant_id = '{self.original}'", "stage sequence differs"),
+        ]
+        for sql, words in damage:
+            with self.subTest(words=words):
+                self.conn.execute("SAVEPOINT damage")
+                self.conn.execute(sql)
+                problems = pdata.find_problems(self.conn)
+                self.conn.execute("ROLLBACK TO damage")
+                self.conn.execute("RELEASE damage")
+                self.assertTrue(any(words in p for p in problems), problems)
+
+    def test_the_exports_name_the_original_of_each_reserve(self):
+        out = Path(tempfile.mkdtemp())
+        pdata.write_export(self.conn, out, Path("development.sqlite3"))
+        people = {row["participant_id"]: row["reserve_for"] for row in read_csv(out / "participants.csv")}
+        self.assertEqual(people[self.reserve], self.original)
+        self.assertEqual(people[self.original], "")
+        trials = {row["reserve_for"] for row in read_csv(out / "trials.csv") if row["participant_id"] == self.reserve}
+        self.assertEqual(trials, {self.original})
+        self.assertEqual(pdata.participant_data(self.conn, self.reserve)["participant"]["reserve_for"], self.original)
 
 
 if __name__ == "__main__":

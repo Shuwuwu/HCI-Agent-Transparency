@@ -1,10 +1,11 @@
 """Tests of participant_flow.py and the participant routes of participant_server.py, over real HTTP.
 
-Four things are checked, and nothing else: that no participant-facing response reveals which stimulus or which
+Five things are checked, and nothing else: that no participant-facing response reveals which stimulus or which
 transparency condition a trial holds (the folder name says whether a trial is injected, so leaking it would tell
 a participant what to expect), that the flow cannot lose, duplicate or reorder a trial, that no participant
-gets past the consent stage without their agreement to the exact consent text being recorded, and that the
-debriefing, which explains the study, reaches a participant only at the end. The assessment and
+gets past the consent stage without their agreement to the exact consent text being recorded, that the
+debriefing, which explains the study, reaches a participant only at the end, and that a reserve participant is
+served exactly what their original is, with nothing saying they are a reserve. The assessment and
 questionnaire tests also check that every answer is validated and stored, including that the questionnaire
 item asked only alongside the activity log is asked of, and accepted from, only those participants.
 
@@ -33,6 +34,9 @@ import participant_flow as flow  # noqa: E402
 import participant_server as ps  # noqa: E402
 import participant_store as store  # noqa: E402
 
+sys.path.insert(0, str(ROOT / "tests"))
+from study_data_fixtures import RESERVE_PAYLOAD  # noqa: E402
+
 CONFIG = ep.load_config(ep.DEVELOPMENT_CONFIG)
 PAYLOAD = ep.load_assignments(CONFIG)
 CONTENT_ROUTES = ("/api/stimulus", "/api/workspace", "/api/skills", "/api/skill")
@@ -44,16 +48,17 @@ def participant_with(condition):
 
 
 class FlowServer:
-    """A server on a throwaway database with every development participant enrolled.
+    """A server on a throwaway database with every participant of `payload` (default: the development
+    assignments) enrolled.
 
     `tokens` maps participant id to link token. `handler` is the Handler subclass actually serving, so a test can
     build a variant of it (preview on, a different configuration) without touching the shared class.
     """
 
-    def __init__(self, config=CONFIG, researcher_preview=False):
+    def __init__(self, config=CONFIG, researcher_preview=False, payload=PAYLOAD):
         self.folder = Path(tempfile.mkdtemp())
         conn = store.connect(self.folder / "participants.db")
-        self.tokens = {row["participant_id"]: row["token"] for row in store.enrol_all(conn, CONFIG, PAYLOAD)}
+        self.tokens = {row["participant_id"]: row["token"] for row in store.enrol_all(conn, CONFIG, payload)}
         conn.close()
 
         class Handler(ps.Handler):
@@ -63,7 +68,7 @@ class FlowServer:
                 pass  # the access log and the flow reasons would bury the test output
 
         Handler.config = config
-        Handler.payload = PAYLOAD
+        Handler.payload = payload
         Handler.researcher_preview = researcher_preview
         self.handler = Handler
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
@@ -1005,6 +1010,31 @@ class DebriefingTests(unittest.TestCase):
         """Prose about the two interface versions is fine; the identifiers the server keeps from the browser are not."""
         for secret in ('"low"', '"high"', '"condition"', '"version"', '"stimulus"', "user_task_", "rehearsal-"):
             self.assertNotIn(secret, self.markdown)
+
+
+class ReserveExposureTests(unittest.TestCase):
+    """Whether a participant is a reserve, and whose assignment they mirror, is researcher-only: a reserve's browser
+    is sent exactly what their original's is, apart from their own trial ids."""
+
+    def setUp(self):
+        self.srv = FlowServer(payload=RESERVE_PAYLOAD)
+        self.reserve, self.original = next((row["participant"], row[ep.RESERVE_KEY])
+                                           for row in RESERVE_PAYLOAD["assignments"] if row.get(ep.RESERVE_KEY))
+
+    def tearDown(self):
+        self.srv.close()
+
+    def test_a_reserves_pages_never_mention_reserves_or_the_original(self):
+        seen = {self.reserve: [], self.original: []}
+        for participant, bodies in seen.items():
+            self.srv.walk(participant, seen=bodies)
+        self.assertEqual(len(seen[self.reserve]), len(seen[self.original]))
+        for body in seen[self.reserve]:
+            self.assertNotIn("reserve", body.lower())
+            self.assertNotIn(f'"{self.original}', body)  # the original's id, or one of their trial ids
+        # Identical apart from the participant's own trial ids (P009-t01 in place of P001-t01).
+        self.assertEqual([b.replace(f"{self.reserve}-", "ID-") for b in seen[self.reserve]],
+                         [b.replace(f"{self.original}-", "ID-") for b in seen[self.original]])
 
 
 class ConsentSchemaTests(unittest.TestCase):

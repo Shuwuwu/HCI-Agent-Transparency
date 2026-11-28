@@ -7,7 +7,10 @@ Purpose:
     be completed twice or out of order, so a reopened link cannot duplicate or renumber a trial.
 
     Identifiers. The participant id is the pseudonymous id of the assignment row (e.g. "P001"); it carries nothing
-    about the person. The link instead carries an opaque, unguessable token, so knowing one participant's link
+    about the person. A reserve participant (an assignment row with "reserve_for", build_assignments.py
+    --add-reserves) is enrolled like any other, with their own id, token, progress, answers and events, and
+    `participants.reserve_for` names the original participant whose assignment they mirror (NULL for an
+    original). It is researcher-only: nothing sent to a participant's browser mentions it. The link instead carries an opaque, unguessable token, so knowing one participant's link
     tells nobody another participant's link, and the pseudonymous id never has to appear in a URL. Trial ids are
     not stored here: experiment_plan.py derives them from the assignment, and this module records progress by
     stage key only.
@@ -62,16 +65,18 @@ Inputs:
 
 Outputs:
     The SQLite database: `participants` (one row per enrolled participant: token, condition, list, trial count,
-    configuration provenance, stage fingerprint, timestamps), `plan_stages` (their stage sequence, one row per
+    configuration provenance, stage fingerprint, timestamps, and the original a reserve participant mirrors), `plan_stages` (their stage sequence, one row per
     stage), `progress` (one row per stage a participant has entered, with its completion time), `consents` (at
     most one row per participant: when they agreed, and the consent text and its hash), `responses` (one row per
     completed experimental assessment), `events` (interaction events), `questionnaire_responses` (both questionnaires, one row
     per item asked) and the view `experimental_responses` (responses without the practice). CHECK constraints
     refuse out-of-range answers, unknown event types and conditions. Researcher views (no link tokens):
-    `participant_overview` (one row per participant: condition, consent, how far they are, counts), `trial_summary`
-    (one row per trial: what it showed, viewing and response times, the answers) and `experimental_events` (events
-    without the practice). The command line enrols participants, prints their links, and prints how far each
-    participant has come, including whether they have consented.
+    `participant_overview` (one row per participant: reserve_for, condition, consent, how far they are, counts),
+    `trial_summary` (one row per trial: the participant's reserve_for, what it showed, viewing and response times,
+    the answers) and `experimental_events` (events
+    without the practice). The command line enrols participants, prints their links (a reserve participant's
+    line ends with "reserve for <original id>"), and prints how far each participant has come, including whether
+    they have consented and, for a reserve, whose assignment they mirror.
 
 Dependencies:
     experiment_plan.py (configuration, assignments and the derived stage sequence). Python standard library only.
@@ -111,8 +116,10 @@ TOKEN_BYTES = 24  # 32 URL-safe characters
 # 7: the researcher views participant_overview, trial_summary and experimental_events (VIEWS);
 # 8: questionnaire_responses.stage_key (the pre-study questionnaire is stored in the same table);
 # 9: the event type workspace_item_view (the events table is rebuilt, since SQLite cannot change a CHECK);
-# 10: responses.task_completion (NULL in rows stored before the question was asked) and trial_summary showing it.
-SCHEMA_VERSION = 10
+# 10: responses.task_completion (NULL in rows stored before the question was asked) and trial_summary showing it;
+# 11: participants.reserve_for (NULL for the participants enrolled before it, who are all originals), shown in
+#     participant_overview and trial_summary, and fixed once enrolled in a study database.
+SCHEMA_VERSION = 11
 STAGE_KINDS = ("consent", "scenario", "assessment", "questionnaire", "completion")  # as experiment_plan.STAGE_KINDS
 CONDITIONS = ("low", "high")
 # The answers responses.task_completion accepts: the option ids of assessment.json's task_completion question
@@ -195,7 +202,8 @@ CREATE TABLE IF NOT EXISTS participants (
     assignments_path TEXT NOT NULL,
     plan_fingerprint TEXT NOT NULL,
     enrolled_at      TEXT NOT NULL,
-    completed_at     TEXT
+    completed_at     TEXT,
+    reserve_for      TEXT  -- version 11, last as in upgraded tables: the original a reserve mirrors, NULL if none
 );
 CREATE TABLE IF NOT EXISTS plan_stages (
     participant_id   TEXT NOT NULL REFERENCES participants(participant_id),
@@ -248,7 +256,7 @@ CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 # never show a link token. Times are seconds between the stored ISO timestamps.
 VIEWS = """
 CREATE VIEW IF NOT EXISTS participant_overview AS
-SELECT p.participant_id, p.condition, p.list, p.trials, p.simulated, p.enrolled_at,
+SELECT p.participant_id, p.reserve_for, p.condition, p.list, p.trials, p.simulated, p.enrolled_at,
        c.agreed_at AS consented_at, c.consent_sha256,
        (SELECT COUNT(*) FROM plan_stages s WHERE s.participant_id = p.participant_id) AS stages_total,
        (SELECT COUNT(*) FROM progress g WHERE g.participant_id = p.participant_id
@@ -267,7 +275,9 @@ SELECT p.participant_id, p.condition, p.list, p.trials, p.simulated, p.enrolled_
 FROM participants p LEFT JOIN consents c ON c.participant_id = p.participant_id;
 
 CREATE VIEW IF NOT EXISTS trial_summary AS
-SELECT s.participant_id, s.trial_id, s.trial_ordinal,
+SELECT s.participant_id,
+       (SELECT p.reserve_for FROM participants p WHERE p.participant_id = s.participant_id) AS reserve_for,
+       s.trial_id, s.trial_ordinal,
        CASE s.practice WHEN 1 THEN 'practice' ELSE 'experimental' END AS trial_type,
        s.scenario, s.stimulus_version, s.stimulus, s.condition,
        sp.entered_at AS scenario_entered_at, sp.completed_at AS scenario_completed_at,
@@ -309,7 +319,7 @@ def _study_triggers() -> str:
         out.append(f"CREATE TRIGGER IF NOT EXISTS study_keep_{table}_d BEFORE DELETE ON {table} "
                    f"BEGIN SELECT RAISE(ABORT, 'study records cannot be deleted'); END;")
     fixed = ("participant_id", "token", "condition", "list", "trials", "simulated", "config_path",
-             "assignments_path", "plan_fingerprint", "enrolled_at")
+             "assignments_path", "plan_fingerprint", "enrolled_at", "reserve_for")
     changed = " OR ".join(f"NEW.{c} IS NOT OLD.{c}" for c in fixed)
     out.append("CREATE TRIGGER IF NOT EXISTS study_keep_participants_u BEFORE UPDATE ON participants "
                f"WHEN OLD.completed_at IS NOT NULL OR {changed} "
@@ -383,12 +393,17 @@ def connect(path: Path, environment: str | None = None) -> sqlite3.Connection:
         _add_column_if_missing(conn, "questionnaire_responses", "stage_key",
                                "TEXT NOT NULL DEFAULT 'questionnaire'")  # version 8
         _add_column_if_missing(conn, "responses", *TASK_COMPLETION_COLUMN)  # version 10: NULL in existing rows
+        _add_column_if_missing(conn, "participants", "reserve_for", "TEXT")  # version 11: NULL, all originals
+        if int(row["value"]) < 11 and environment_of(conn) == "study":
+            # The trigger keeping enrolled participants fixed names its columns; drop it so the STUDY_TRIGGERS
+            # script below re-creates it with reserve_for among them (CREATE ... IF NOT EXISTS keeps an old one).
+            conn.execute("DROP TRIGGER IF EXISTS study_keep_participants_u")
         conn.commit()
         if int(row["value"]) < 5:
             _rebuild_responses(conn, path)
         if int(row["value"]) < 9:
             _rebuild_events(conn, path)
-        if int(row["value"]) < 10:
+        if int(row["value"]) < 11:
             _recreate_views(conn, path)
         conn.execute("UPDATE meta SET value = ? WHERE key = 'schema_version'", (str(SCHEMA_VERSION),))
         conn.commit()
@@ -498,8 +513,8 @@ def _rebuild_events(conn: sqlite3.Connection, path: Path) -> None:
 
 
 def _recreate_views(conn: sqlite3.Connection, path: Path) -> None:
-    """Version 10: re-create the researcher views (VIEWS) so trial_summary shows responses.task_completion. A
-    view keeps the definition it was created with, and CREATE VIEW IF NOT EXISTS leaves an existing one alone, so
+    """Versions 10 and 11: re-create the researcher views (VIEWS) so trial_summary shows
+    responses.task_completion and both views show participants.reserve_for. A view keeps the definition it was created with, and CREATE VIEW IF NOT EXISTS leaves an existing one alone, so
     an upgraded database would otherwise keep the old column list. Views hold no data; nothing stored changes.
     All or nothing: on any error the database is left as it was and StoreError is raised."""
     views = [line.split()[5] for line in VIEWS.splitlines() if line.startswith("CREATE VIEW")]
@@ -575,7 +590,7 @@ def enrol(conn: sqlite3.Connection, config: ep.Config, participant: str, payload
     """Enrol one participant and return their record.
 
     Derives their stage sequence to store its fingerprint, the condition, the list and the trial count, so a later
-    resume can be checked against it. `token` is for tests and reproducible fixtures; by default an opaque token
+    resume can be checked against it, and stores the row's reserve_for (None for an original participant). `token` is for tests and reproducible fixtures; by default an opaque token
     is generated. Raises StoreError if the participant is already enrolled, and KeyError if the assignments file
     does not hold them.
     """
@@ -587,17 +602,18 @@ def enrol(conn: sqlite3.Connection, config: ep.Config, participant: str, payload
                          f"{stamped} database")
     if conn.execute("SELECT 1 FROM participants WHERE participant_id = ?", (participant,)).fetchone():
         raise StoreError(f"{participant} is already enrolled")
+    reserve_for = ep.assignment_for(payload, participant).get(ep.RESERVE_KEY)
     row = {"participant_id": participant, "token": token or secrets.token_urlsafe(TOKEN_BYTES),
            "condition": plan["condition"], "list": plan["list"], "trials": plan["trials"],
            "simulated": int(plan["simulated"]), "config_path": str(config["path"]),
            "assignments_path": str(config["assignments_path"]), "plan_fingerprint": plan_fingerprint(plan),
-           "enrolled_at": now(), "completed_at": None}
+           "enrolled_at": now(), "completed_at": None, "reserve_for": reserve_for}
     try:
         conn.execute(
             "INSERT INTO participants (participant_id, token, condition, list, trials, simulated, config_path, "
-            "assignments_path, plan_fingerprint, enrolled_at, completed_at) "
+            "assignments_path, plan_fingerprint, enrolled_at, completed_at, reserve_for) "
             "VALUES (:participant_id, :token, :condition, :list, :trials, :simulated, :config_path, "
-            ":assignments_path, :plan_fingerprint, :enrolled_at, :completed_at)", row)
+            ":assignments_path, :plan_fingerprint, :enrolled_at, :completed_at, :reserve_for)", row)
         snapshot_plan(conn, participant, plan)  # same transaction: never a participant without their sequence
         conn.commit()
     except Exception:
@@ -609,8 +625,8 @@ def enrol(conn: sqlite3.Connection, config: ep.Config, participant: str, payload
 def enrol_all(conn: sqlite3.Connection, config: ep.Config, payload: dict | None = None) -> list[dict]:
     """Enrol every participant of the assignments file that is not enrolled yet; returns the new records.
 
-    Safe to run again after adding participants to the assignments file: those already enrolled keep their token
-    and their progress.
+    Safe to run again after adding participants to the assignments file (reserve participants, for instance):
+    those already enrolled keep their token and their progress.
     """
     payload = ep.load_assignments(config) if payload is None else payload
     added = []
@@ -865,7 +881,8 @@ def status(conn: sqlite3.Connection, config: ep.Config, participant: str,
     """
     stored = record(conn, participant)
     done = completed_stages(conn, participant)
-    out = {"participant": participant, "condition": stored["condition"], "list": stored["list"],
+    out = {"participant": participant, "reserve_for": stored["reserve_for"],
+           "condition": stored["condition"], "list": stored["list"],
            "simulated": bool(stored["simulated"]), "enrolled_at": stored["enrolled_at"],
            "completed_at": stored["completed_at"], "stages_completed": len(done), "plan_changed": False}
     consent = consent_of(conn, participant)
@@ -912,10 +929,12 @@ def reset(conn: sqlite3.Connection, config: ep.Config, participant: str, payload
     events = conn.execute("DELETE FROM events WHERE participant_id = ?", (participant,)).rowcount
     questionnaire = conn.execute("DELETE FROM questionnaire_responses WHERE participant_id = ?",
                                  (participant,)).rowcount
+    reserve_for = ep.assignment_for(payload if payload is not None else ep.load_assignments(config),
+                                    participant).get(ep.RESERVE_KEY)
     conn.execute("UPDATE participants SET completed_at = NULL, plan_fingerprint = ?, config_path = ?, "
-                 "assignments_path = ?, condition = ?, list = ?, trials = ? WHERE participant_id = ?",
+                 "assignments_path = ?, condition = ?, list = ?, trials = ?, reserve_for = ? WHERE participant_id = ?",
                  (fingerprint, str(config["path"]), str(config["assignments_path"]), plan["condition"], plan["list"],
-                  plan["trials"], participant))
+                  plan["trials"], reserve_for, participant))
     snapshot_plan(conn, participant, plan)
     conn.commit()
     return {"participant_id": participant, "stages_cleared": stages, "consent_cleared": bool(consent),
@@ -936,7 +955,8 @@ def main() -> None:
     parser.add_argument("--base-url", default="", help="prefix for the printed links, e.g. http://127.0.0.1:8765")
     parser.add_argument("--enrol-all", action="store_true", dest="enrol_all",
                         help="enrol every participant of the assignments file that is not enrolled yet")
-    parser.add_argument("--links", action="store_true", help="print every enrolled participant's link")
+    parser.add_argument("--links", action="store_true",
+                        help="print every enrolled participant's link (reserve participants marked)")
     parser.add_argument("--status", action="store_true", help="print how far each enrolled participant has come")
     parser.add_argument("--reset", nargs="+", metavar="ID", default=[],
                         help="send these simulated participants back to the first stage (their links are kept)")
@@ -955,10 +975,12 @@ def main() -> None:
     if args.enrol_all:
         added = enrol_all(conn, config, payload)
         print(f"enrolled {len(added)} new participant(s) in {db}")
-    rows = conn.execute("SELECT participant_id, token FROM participants ORDER BY participant_id").fetchall()
+    rows = conn.execute("SELECT participant_id, token, reserve_for FROM participants "
+                        "ORDER BY participant_id").fetchall()
     if args.links:
         for row in rows:
-            print(f"{row['participant_id']}\t{link(row['token'], args.base_url)}")
+            reserve = f"\treserve for {row['reserve_for']}" if row["reserve_for"] else ""
+            print(f"{row['participant_id']}\t{link(row['token'], args.base_url)}{reserve}")
     if args.status:
         for row in rows:
             print(json.dumps(status(conn, config, row["participant_id"], payload)))

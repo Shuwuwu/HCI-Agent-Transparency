@@ -178,7 +178,8 @@ class PilotProcedureTest(unittest.TestCase):
         cls.db = cls.folder / "rehearsal.sqlite3"
         out = script("participant_store.py", "--config", REHEARSAL, "--db", cls.db, "--enrol-all", "--links",
                      "--base-url", "http://127.0.0.1:8765").stdout
-        links = dict(line.split("\t") for line in out.splitlines() if "\t" in line)
+        # id, link, and "reserve for <id>" on a reserve participant's line
+        links = dict(line.split("\t")[:2] for line in out.splitlines() if "\t" in line)
         cls.browsers = {p: Browser(links[p]) for p in (LOW, HIGH)}
 
         cls.server = ServerProcess(cls.db)
