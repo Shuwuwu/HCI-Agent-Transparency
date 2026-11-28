@@ -5,7 +5,8 @@
  *   BEFORE the agent ran (the server never sends the state after), each with a list and a readable preview.
  *   Mail is the default tab. It reads only the workspace snapshot and the skills, never the conversation itself.
  *   The header names the account and, below it in smaller secondary text, says the panel is the snapshot from
- *   before the task (SNAPSHOT_NOTE); both stay on screen whichever tab is open.
+ *   before the task ("Note: This is a snapshot of the workspace before the assistant began the task.", with
+ *   "Note:" and "before" in bold; SNAPSHOT_NOTE); both stay on screen whichever tab is open.
  *   The panel is always on screen beside the conversation (scenario_view.js) and has no close button.
  *   Logging (interaction.js) records only what the participant chooses to look at, never what is on screen by
  *   default: the Mail list shown when the conversation opens is not an event and is not timed.
@@ -211,7 +212,10 @@
 
   // ---- Sidebar shell ----------------------------------------------------------------------------------------
   const TABS = [["mail", "Mail"], ["calendar", "Calendar"], ["drive", "Drive"], ["skills", "Skills"]];
-  const SNAPSHOT_NOTE = "Workspace snapshot before the assistant performed the task.";
+  // The subtitle, in parts: a [tag, text] pair is drawn as that element (the bold words), a string as plain text.
+  // Built from DOM nodes rather than HTML, so no markup is ever parsed.
+  const SNAPSHOT_NOTE = [["strong", "Note:"], " This is a snapshot of the workspace ", ["strong", "before"],
+    " the assistant began the task."];
   const ITEM_KEY = { mail: "emails", calendar: "events", drive: "files" };
 
   /**
@@ -300,7 +304,10 @@
       const head = el("div", "ws-head");
       head.appendChild(el("div", "ws-title", data ? "Workspace · " + data.account.email : "Workspace"));
       // Shown on every tab: the panel is the stored snapshot, not the state after the conversation.
-      head.appendChild(el("p", "ws-subtitle", SNAPSHOT_NOTE));
+      const note = el("p", "ws-subtitle");
+      SNAPSHOT_NOTE.forEach((part) => note.appendChild(
+        Array.isArray(part) ? el(part[0], null, part[1]) : document.createTextNode(part)));
+      head.appendChild(note);
       container.appendChild(head);
 
       const tabs = el("div", "tabs");

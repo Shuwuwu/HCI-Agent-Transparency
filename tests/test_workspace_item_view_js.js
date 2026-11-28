@@ -24,7 +24,7 @@ globalThis.window = globalThis;
 globalThis.document = {
   hidden: false,
   createElement: el,
-  createTextNode: (text) => ({ textContent: text, children: [] }),
+  createTextNode: (text) => ({ textContent: text, className: "", children: [] }), // className: find() walks them
   addEventListener(type, fn) { if (type === "visibilitychange") visibilityListeners.push(fn); },
 };
 Object.defineProperty(globalThis, "performance", { value: { now: () => clock }, configurable: true });
@@ -173,12 +173,17 @@ assert.deepStrictEqual(views(), []);
 // The panel has no close button.
 assert.strictEqual(find(container, "ws-close"), null);
 
-// The header carries the snapshot subtitle below the account, on every tab and also without a snapshot.
-const SNAPSHOT_NOTE = "Workspace snapshot before the assistant performed the task.";
+// The header carries the snapshot subtitle below the account, on every tab and also without a snapshot, with
+// "Note:" and "before" (and nothing else) in bold.
+const SNAPSHOT_NOTE = "Note: This is a snapshot of the workspace before the assistant began the task.";
 const subtitleUnderTitle = (root) => {
   const head = find(root, "ws-head");
   assert.deepStrictEqual(head.children.map((c) => c.className), ["ws-title", "ws-subtitle"]);
-  assert.strictEqual(head.children[1].textContent, SNAPSHOT_NOTE);
+  const note = head.children[1];
+  assert.strictEqual(note.tag, "p");
+  assert.strictEqual(text(note), SNAPSHOT_NOTE);
+  assert.deepStrictEqual(note.children.filter((c) => c.tag === "strong").map(text), ["Note:", "before"]);
+  assert.ok(note.children.every((c) => c.tag === "strong" || c.tag === undefined), "only bold and plain text");
 };
 for (const label of ["Mail", "Calendar", "Drive", "Skills"]) {
   click(container, "tab", label);
