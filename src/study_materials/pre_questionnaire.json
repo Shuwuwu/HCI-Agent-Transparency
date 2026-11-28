@@ -1,5 +1,5 @@
 {
-  "version": "pre_questionnaire_v1",
+  "version": "pre_questionnaire_v2",
   "title": "Before You Begin",
   "intro": "A few questions about your experience with AI assistants.",
   "items": [
@@ -19,15 +19,27 @@
     {
       "id": "agent_experience",
       "type": "choice",
-      "text": "Have you previously used AI agents or agentic skills to perform workspace tasks on your behalf (e.g. sending emails, scheduling events or managing files)?",
+      "text": "How often have you used AI agents to perform workspace tasks on your behalf (e.g., sending emails, scheduling events or managing files)?",
+      "description": "AI agents are AI assistants capable of taking actions on a user's behalf.",
       "required": true,
       "options": [
-        {"id": "never", "label": "No, never"},
-        {"id": "once_or_twice", "label": "Yes, once or twice"},
-        {"id": "occasionally", "label": "Yes, occasionally"},
-        {"id": "regularly", "label": "Yes, regularly"},
+        {"id": "never", "label": "Never"},
+        {"id": "once_or_twice", "label": "Once or twice"},
+        {"id": "occasionally", "label": "Occasionally"},
+        {"id": "regularly", "label": "Regularly"},
         {"id": "not_sure", "label": "Not sure"}
       ]
+    },
+    {
+      "id": "tools_skills_familiarity",
+      "type": "scale",
+      "text": "How familiar are you with agentic tools and skills?",
+      "description": "Tools enable AI agents to perform actions, while skills provide instructions that guide how agents perform tasks.",
+      "required": true,
+      "min": 1,
+      "max": 5,
+      "anchors": {"1": "Not at all familiar", "2": "Slightly familiar", "3": "Moderately familiar",
+                  "4": "Very familiar", "5": "Extremely familiar"}
     }
   ]
 }

@@ -294,8 +294,9 @@ def load_questionnaire(path=QUESTIONNAIRE_PATH) -> dict:
     records.
 
     The file has a "title" (the heading of its screen), an optional "intro" and "items" in the order asked. Items
-    are {"id", "type", "text", "required"}, optionally "shown_with" a part of the interface in SHOWN_WITH (the
-    item is asked only of participants whose view shows it), plus, by type: "scale" a whole-number "min" < "max"
+    are {"id", "type", "text", "required"}, optionally a "description" (a non-empty string the form shows below
+    the question, above its answers, in smaller secondary text) and "shown_with" a part of the interface in
+    SHOWN_WITH (the item is asked only of participants whose view shows it), plus, by type: "scale" a whole-number "min" < "max"
     with optional "anchors" inside that range and an optional "not_applicable" {"id", "label"}, an answer off the
     scale (such as "Did not consult"); "choice" a list of "options" with distinct ids; "text" a positive
     "max_chars". Raises ValueError for anything else (or repeated item ids), so a broken file stops the server at
@@ -315,6 +316,8 @@ def load_questionnaire(path=QUESTIONNAIRE_PATH) -> dict:
         kind = item.get("type")
         if kind not in QUESTIONNAIRE_TYPES or not isinstance(item.get("required"), bool) or not item.get("text"):
             raise ValueError(f"{path}: item {item['id']} needs a type of {QUESTIONNAIRE_TYPES}, text and required")
+        if "description" in item and not (isinstance(item["description"], str) and item["description"].strip()):
+            raise ValueError(f"{path}: item {item['id']} has an empty or non-text description")
         if "shown_with" in item and item["shown_with"] not in SHOWN_WITH:
             raise ValueError(f"{path}: item {item['id']} has an unknown shown_with {item['shown_with']!r}")
         if kind == "scale" and not (isinstance(item.get("min"), int) and isinstance(item.get("max"), int)

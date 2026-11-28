@@ -109,6 +109,14 @@ class ResearcherDataTests(unittest.TestCase):
             self.assertFalse(any(token in text for token in tokens), name)
         self.assertEqual(out.stat().st_mode & 0o777, 0o700)
         self.assertEqual(manifest["environment"], "development")
+        # Every pre-study item, the familiarity scale included, is exported under its stage key with an answer.
+        pre_ids = [i["id"] for i in json.loads((ROOT / "src" / "study_materials" / "pre_questionnaire.json")
+                                               .read_text())["items"]]
+        pre_rows = [r for r in read_csv(out / "questionnaire.csv")
+                    if r["participant_id"] == DONE and r["stage_key"] == "pre_questionnaire"]
+        self.assertEqual([r["item_id"] for r in pre_rows], pre_ids)
+        self.assertIn("tools_skills_familiarity", pre_ids)
+        self.assertTrue(all(r["answer"] for r in pre_rows))
         events = read_csv(out / "events.csv")
         self.assertEqual({e["trial_type"] for e in events if e["trial_id"].endswith("-p00")}, {"practice"})
         self.assertEqual({e["trial_type"] for e in events if "-t" in e["trial_id"]}, {"experimental"})

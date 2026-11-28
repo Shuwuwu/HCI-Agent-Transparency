@@ -782,7 +782,8 @@ class QuestionnaireTests(unittest.TestCase):
         path = Path(tempfile.mkdtemp()) / "questionnaire.json"
         scale_index = next(n for n, i in enumerate(spec["items"]) if i["type"] == "scale")
         breakages = [("not_applicable", {"id": "3", "label": "x"}), ("not_applicable", {"id": "skipped"}),
-                     ("not_applicable", "skipped"), ("shown_with", "trace_panel")]
+                     ("not_applicable", "skipped"), ("shown_with", "trace_panel"), ("description", ""),
+                     ("description", "   "), ("description", ["not", "text"])]
         for key, value in breakages:
             broken = json.loads(json.dumps(spec))
             broken["items"][scale_index][key] = value
@@ -839,9 +840,31 @@ class PreQuestionnaireTests(unittest.TestCase):
         spec = flow.load_questionnaire(flow.PRE_QUESTIONNAIRE_PATH)
         self.assertEqual(self.stage["questionnaire"]["sha256"], spec["sha256"])
         self.assertEqual([(i["id"], i["type"]) for i in self.stage["questionnaire"]["items"]],
-                         [("ai_chat_frequency", "choice"), ("agent_experience", "choice")])
+                         [("ai_chat_frequency", "choice"), ("agent_experience", "choice"),
+                          ("tools_skills_familiarity", "scale")])
         self.assertTrue(all(i["required"] for i in self.stage["questionnaire"]["items"]))
         self.assertNotEqual(self.stage["questionnaire"]["title"], flow.load_questionnaire()["title"])
+
+    def test_the_items_are_sent_with_their_wording_options_and_descriptions(self):
+        """The browser gets each item exactly as the file words it: Q1 has no description, Q2 and Q3 do, and Q3
+        is a five-point scale with every point labelled."""
+        items = {i["id"]: i for i in self.stage["questionnaire"]["items"]}
+        self.assertNotIn("description", items["ai_chat_frequency"])
+        self.assertEqual([o["id"] for o in items["ai_chat_frequency"]["options"]],
+                         ["never", "less_than_monthly", "monthly", "weekly", "daily"])
+        q2 = items["agent_experience"]
+        self.assertTrue(q2["text"].startswith("How often have you used AI agents to perform workspace tasks"))
+        self.assertEqual(q2["description"],
+                         "AI agents are AI assistants capable of taking actions on a user's behalf.")
+        self.assertEqual([o["label"] for o in q2["options"]],
+                         ["Never", "Once or twice", "Occasionally", "Regularly", "Not sure"])
+        q3 = items["tools_skills_familiarity"]
+        self.assertEqual(q3["text"], "How familiar are you with agentic tools and skills?")
+        self.assertTrue(q3["description"].startswith("Tools enable AI agents to perform actions"))
+        self.assertEqual((q3["min"], q3["max"]), (1, 5))
+        self.assertEqual(list(q3["anchors"].values()),
+                         ["Not at all familiar", "Slightly familiar", "Moderately familiar", "Very familiar",
+                          "Extremely familiar"])
 
     def test_both_conditions_get_the_same_pre_study_questionnaire(self):
         high = participant_with("high")
@@ -853,6 +876,13 @@ class PreQuestionnaireTests(unittest.TestCase):
         self.assertEqual(self.srv.complete(self.participant, "pre_questionnaire")[0], 400)  # no answers
         wrong = self.srv.questionnaire_answers(self.stage, ai_chat_frequency="hourly")
         self.assertEqual(self.srv.complete(self.participant, "pre_questionnaire", answers=wrong)[0], 400)
+        for off_scale in (0, 6, 2.5, "3", True):
+            wrong = self.srv.questionnaire_answers(self.stage, tools_skills_familiarity=off_scale)
+            self.assertEqual(self.srv.complete(self.participant, "pre_questionnaire", answers=wrong)[0], 400,
+                             off_scale)
+        missing = self.srv.questionnaire_answers(self.stage)
+        del missing["items"]["tools_skills_familiarity"]
+        self.assertEqual(self.srv.complete(self.participant, "pre_questionnaire", answers=missing)[0], 400)
         post = flow.load_questionnaire()  # the other questionnaire's hash is not accepted here
         stale = {**self.srv.questionnaire_answers(self.stage), "sha256": post["sha256"]}
         self.assertEqual(self.srv.complete(self.participant, "pre_questionnaire", answers=stale)[0], 400)
@@ -860,16 +890,19 @@ class PreQuestionnaireTests(unittest.TestCase):
         self.assertEqual(self.srv.stage(self.participant)["stage"]["key"], "pre_questionnaire")
 
     def test_answers_are_stored_under_its_stage_key_and_lead_to_the_practice(self):
-        answers = self.srv.questionnaire_answers(self.stage, ai_chat_frequency="weekly", agent_experience="not_sure")
+        answers = self.srv.questionnaire_answers(self.stage, ai_chat_frequency="weekly", agent_experience="not_sure",
+                                                 tools_skills_familiarity=4)
         status, body = self.srv.complete(self.participant, "pre_questionnaire", answers=answers)
         self.assertEqual(status, 200, body)
         self.assertEqual(json.loads(body)["stage"]["key"], "practice_scenario")
         self.assertEqual(self.stored("pre_questionnaire"),
-                         {"ai_chat_frequency": "weekly", "agent_experience": "not_sure"})
+                         {"ai_chat_frequency": "weekly", "agent_experience": "not_sure",
+                          "tools_skills_familiarity": "4"})
         self.assertEqual(self.stored("questionnaire"), {})
         # Both questionnaires end up side by side, each under its own key.
         self.srv.walk(self.participant)
-        self.assertEqual(list(self.stored("pre_questionnaire")), ["ai_chat_frequency", "agent_experience"])
+        self.assertEqual(list(self.stored("pre_questionnaire")),
+                         ["ai_chat_frequency", "agent_experience", "tools_skills_familiarity"])
         self.assertTrue(self.stored("questionnaire"))
         self.assertFalse(set(self.stored("pre_questionnaire")) & set(self.stored("questionnaire")))
 

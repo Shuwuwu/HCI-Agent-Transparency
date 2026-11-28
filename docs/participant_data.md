@@ -184,10 +184,17 @@ on every run, so never edit them; change nothing but the database, and only thro
 `questionnaire_sha256` names holds the exact wording. Rows written before schema version 8 have no pre-study
 questionnaire and are all `questionnaire`.
 
+The pre-study file has two versions. `pre_questionnaire_v1` (SHA-256 `2d443f96…3081264`, in Git history) asked
+`agent_experience` as "Have you previously used AI agents or agentic skills …" with "No, never" / "Yes, …" labels,
+and had no `tools_skills_familiarity`. `pre_questionnaire_v2` asks it as "How often have you used AI agents …",
+with a definition of AI agents shown below the question, and adds `tools_skills_familiarity`. The option ids are
+unchanged, so tell the versions apart by `questionnaire_sha256`, not by the answers.
+
 | `stage_key` | `item_id` | Answer |
 |---|---|---|
 | `pre_questionnaire` | `ai_chat_frequency` | `never`, `less_than_monthly`, `monthly`, `weekly`, `daily` |
-| `pre_questionnaire` | `agent_experience` | `never`, `once_or_twice`, `occasionally`, `regularly`, `not_sure` |
+| `pre_questionnaire` | `agent_experience` | `never`, `once_or_twice`, `occasionally`, `regularly`, `not_sure` (the option ids are the same in both versions of the file; the wording changed, see below) |
+| `pre_questionnaire` | `tools_skills_familiarity` | `1` Not at all familiar … `5` Extremely familiar (from `pre_questionnaire_v2`) |
 | `questionnaire` | `unsafe_meaning`, `information_relied_on` | free text (required) |
 | `questionnaire` | `information_sufficient` | `1` Not at all sufficient … `5` Completely sufficient |
 | `questionnaire` | `skill_docs_usefulness` | `1` Not at all useful … `5` Extremely useful, or `did_not_consult` |

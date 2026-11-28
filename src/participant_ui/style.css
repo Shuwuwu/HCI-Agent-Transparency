@@ -191,6 +191,7 @@ body:has(> .layout){height:100vh;height:100dvh;overflow:hidden}
 .q+.q{border-top:1px solid var(--line);margin-top:24px}
 .q-text{float:left;width:100%;padding:0;margin:0 0 12px;font-size:18px;font-weight:650;line-height:1.4;color:var(--text)}
 .q>:not(legend){clear:both}
+.q .q-description{margin:-6px 0 14px;font-size:14px;line-height:1.45;color:var(--muted)}
 .q-choices{display:flex;flex-direction:column;gap:8px}
 .q-choices.q-inline{flex-direction:row;flex-wrap:wrap;gap:12px}
 .q-choice{display:flex;align-items:center;gap:12px;min-height:44px;padding:8px 16px;border:1px solid var(--line);border-radius:10px;background:var(--bg);cursor:pointer;font-size:16px}

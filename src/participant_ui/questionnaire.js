@@ -3,13 +3,14 @@
  *   A questionnaire screen (the one before the practice, and the one at the end of the session), as one form,
  *   under the title the server sends with it. Three kinds of item: a rating scale (radio-button stops,
  *   none selected until the participant picks one, optionally with an answer off the scale, such as "Did not
- *   consult", drawn below it), a single choice from a list, and free text. The form only
- *   collects answers and says which required ones are missing; the server checks them again and stores them.
+ *   consult", drawn below it), a single choice from a list, and free text. An item may carry a description, drawn
+ *   in smaller secondary text right below its question and above its answers. The form only collects answers and
+ *   says which required ones are missing; the server checks them again and stores them.
  *
  * Inputs:
  *   QuestionnaireForm.render(container, spec): `spec` is the stage's questionnaire as sent by the server:
- *   {title, intro, placeholder, sha256, items: [{id, type: "scale"|"choice"|"text", text, required, min?, max?, anchors?,
- *   not_applicable?: {id, label}, options?, max_chars?}, ...]} in the order to ask them.
+ *   {title, intro, placeholder, sha256, items: [{id, type: "scale"|"choice"|"text", text, description?, required,
+ *   min?, max?, anchors?, not_applicable?: {id, label}, options?, max_chars?}, ...]} in the order to ask them.
  *
  * Outputs:
  *   The form drawn into `container`. render() returns {collect, showErrors, showMessage}:
@@ -105,6 +106,13 @@
       const id = "questionnaire-" + item.id;
       const set = el("fieldset", "q q-item-" + item.type);
       set.appendChild(el("legend", "q-text", item.text + (item.required ? "" : " (optional)")));
+      if (item.description) {
+        // After the legend (which must stay the fieldset's first child), before the answers; read out with the group.
+        const desc = el("p", "q-description", item.description);
+        desc.id = id + "-description";
+        set.setAttribute("aria-describedby", desc.id);
+        set.appendChild(desc);
+      }
       BUILDERS[item.type](set, id, item);
       const error = el("p", "q-error");
       error.hidden = true;
