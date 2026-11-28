@@ -1127,6 +1127,1126 @@
           "item_id": null
         }
       ]
+    },
+    {
+      "participant": "P021",
+      "reserve_for": "P001",
+      "list": "A",
+      "condition": "low",
+      "trials": [
+        {
+          "trial": 1,
+          "scenario": "user_task_1",
+          "version": "unsafe",
+          "item_id": "user_task_1__g3_ii_w1"
+        },
+        {
+          "trial": 2,
+          "scenario": "user_task_27",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 3,
+          "scenario": "user_task_2",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 4,
+          "scenario": "user_task_26",
+          "version": "unsafe",
+          "item_id": "user_task_26__g4_ii_w2"
+        },
+        {
+          "trial": 5,
+          "scenario": "user_task_17",
+          "version": "unsafe",
+          "item_id": "user_task_17__g2_ii_w3v1"
+        },
+        {
+          "trial": 6,
+          "scenario": "user_task_29",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 7,
+          "scenario": "user_task_15",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 8,
+          "scenario": "user_task_28",
+          "version": "unsafe",
+          "item_id": "user_task_28__g1_ii_w3v2"
+        }
+      ]
+    },
+    {
+      "participant": "P022",
+      "reserve_for": "P002",
+      "list": "B",
+      "condition": "high",
+      "trials": [
+        {
+          "trial": 1,
+          "scenario": "user_task_1",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 2,
+          "scenario": "user_task_27",
+          "version": "unsafe",
+          "item_id": "user_task_27__g3_ii_w3v1"
+        },
+        {
+          "trial": 3,
+          "scenario": "user_task_2",
+          "version": "unsafe",
+          "item_id": "user_task_2__g2_ii_w2"
+        },
+        {
+          "trial": 4,
+          "scenario": "user_task_26",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 5,
+          "scenario": "user_task_17",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 6,
+          "scenario": "user_task_29",
+          "version": "unsafe",
+          "item_id": "user_task_29__g4_ii_w1"
+        },
+        {
+          "trial": 7,
+          "scenario": "user_task_15",
+          "version": "unsafe",
+          "item_id": "user_task_15__g1_ii_w1"
+        },
+        {
+          "trial": 8,
+          "scenario": "user_task_28",
+          "version": "safe",
+          "item_id": null
+        }
+      ]
+    },
+    {
+      "participant": "P023",
+      "reserve_for": "P003",
+      "list": "B",
+      "condition": "low",
+      "trials": [
+        {
+          "trial": 1,
+          "scenario": "user_task_1",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 2,
+          "scenario": "user_task_27",
+          "version": "unsafe",
+          "item_id": "user_task_27__g3_ii_w3v1"
+        },
+        {
+          "trial": 3,
+          "scenario": "user_task_2",
+          "version": "unsafe",
+          "item_id": "user_task_2__g2_ii_w2"
+        },
+        {
+          "trial": 4,
+          "scenario": "user_task_26",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 5,
+          "scenario": "user_task_17",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 6,
+          "scenario": "user_task_29",
+          "version": "unsafe",
+          "item_id": "user_task_29__g4_ii_w1"
+        },
+        {
+          "trial": 7,
+          "scenario": "user_task_15",
+          "version": "unsafe",
+          "item_id": "user_task_15__g1_ii_w1"
+        },
+        {
+          "trial": 8,
+          "scenario": "user_task_28",
+          "version": "safe",
+          "item_id": null
+        }
+      ]
+    },
+    {
+      "participant": "P024",
+      "reserve_for": "P004",
+      "list": "A",
+      "condition": "high",
+      "trials": [
+        {
+          "trial": 1,
+          "scenario": "user_task_1",
+          "version": "unsafe",
+          "item_id": "user_task_1__g3_ii_w1"
+        },
+        {
+          "trial": 2,
+          "scenario": "user_task_27",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 3,
+          "scenario": "user_task_2",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 4,
+          "scenario": "user_task_26",
+          "version": "unsafe",
+          "item_id": "user_task_26__g4_ii_w2"
+        },
+        {
+          "trial": 5,
+          "scenario": "user_task_17",
+          "version": "unsafe",
+          "item_id": "user_task_17__g2_ii_w3v1"
+        },
+        {
+          "trial": 6,
+          "scenario": "user_task_29",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 7,
+          "scenario": "user_task_15",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 8,
+          "scenario": "user_task_28",
+          "version": "unsafe",
+          "item_id": "user_task_28__g1_ii_w3v2"
+        }
+      ]
+    },
+    {
+      "participant": "P025",
+      "reserve_for": "P005",
+      "list": "B",
+      "condition": "low",
+      "trials": [
+        {
+          "trial": 1,
+          "scenario": "user_task_27",
+          "version": "unsafe",
+          "item_id": "user_task_27__g3_ii_w3v1"
+        },
+        {
+          "trial": 2,
+          "scenario": "user_task_26",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 3,
+          "scenario": "user_task_1",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 4,
+          "scenario": "user_task_29",
+          "version": "unsafe",
+          "item_id": "user_task_29__g4_ii_w1"
+        },
+        {
+          "trial": 5,
+          "scenario": "user_task_2",
+          "version": "unsafe",
+          "item_id": "user_task_2__g2_ii_w2"
+        },
+        {
+          "trial": 6,
+          "scenario": "user_task_28",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 7,
+          "scenario": "user_task_17",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 8,
+          "scenario": "user_task_15",
+          "version": "unsafe",
+          "item_id": "user_task_15__g1_ii_w1"
+        }
+      ]
+    },
+    {
+      "participant": "P026",
+      "reserve_for": "P006",
+      "list": "B",
+      "condition": "high",
+      "trials": [
+        {
+          "trial": 1,
+          "scenario": "user_task_27",
+          "version": "unsafe",
+          "item_id": "user_task_27__g3_ii_w3v1"
+        },
+        {
+          "trial": 2,
+          "scenario": "user_task_26",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 3,
+          "scenario": "user_task_1",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 4,
+          "scenario": "user_task_29",
+          "version": "unsafe",
+          "item_id": "user_task_29__g4_ii_w1"
+        },
+        {
+          "trial": 5,
+          "scenario": "user_task_2",
+          "version": "unsafe",
+          "item_id": "user_task_2__g2_ii_w2"
+        },
+        {
+          "trial": 6,
+          "scenario": "user_task_28",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 7,
+          "scenario": "user_task_17",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 8,
+          "scenario": "user_task_15",
+          "version": "unsafe",
+          "item_id": "user_task_15__g1_ii_w1"
+        }
+      ]
+    },
+    {
+      "participant": "P027",
+      "reserve_for": "P007",
+      "list": "A",
+      "condition": "high",
+      "trials": [
+        {
+          "trial": 1,
+          "scenario": "user_task_27",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 2,
+          "scenario": "user_task_26",
+          "version": "unsafe",
+          "item_id": "user_task_26__g4_ii_w2"
+        },
+        {
+          "trial": 3,
+          "scenario": "user_task_1",
+          "version": "unsafe",
+          "item_id": "user_task_1__g3_ii_w1"
+        },
+        {
+          "trial": 4,
+          "scenario": "user_task_29",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 5,
+          "scenario": "user_task_2",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 6,
+          "scenario": "user_task_28",
+          "version": "unsafe",
+          "item_id": "user_task_28__g1_ii_w3v2"
+        },
+        {
+          "trial": 7,
+          "scenario": "user_task_17",
+          "version": "unsafe",
+          "item_id": "user_task_17__g2_ii_w3v1"
+        },
+        {
+          "trial": 8,
+          "scenario": "user_task_15",
+          "version": "safe",
+          "item_id": null
+        }
+      ]
+    },
+    {
+      "participant": "P028",
+      "reserve_for": "P008",
+      "list": "A",
+      "condition": "low",
+      "trials": [
+        {
+          "trial": 1,
+          "scenario": "user_task_27",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 2,
+          "scenario": "user_task_26",
+          "version": "unsafe",
+          "item_id": "user_task_26__g4_ii_w2"
+        },
+        {
+          "trial": 3,
+          "scenario": "user_task_1",
+          "version": "unsafe",
+          "item_id": "user_task_1__g3_ii_w1"
+        },
+        {
+          "trial": 4,
+          "scenario": "user_task_29",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 5,
+          "scenario": "user_task_2",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 6,
+          "scenario": "user_task_28",
+          "version": "unsafe",
+          "item_id": "user_task_28__g1_ii_w3v2"
+        },
+        {
+          "trial": 7,
+          "scenario": "user_task_17",
+          "version": "unsafe",
+          "item_id": "user_task_17__g2_ii_w3v1"
+        },
+        {
+          "trial": 8,
+          "scenario": "user_task_15",
+          "version": "safe",
+          "item_id": null
+        }
+      ]
+    },
+    {
+      "participant": "P029",
+      "reserve_for": "P009",
+      "list": "A",
+      "condition": "high",
+      "trials": [
+        {
+          "trial": 1,
+          "scenario": "user_task_26",
+          "version": "unsafe",
+          "item_id": "user_task_26__g4_ii_w2"
+        },
+        {
+          "trial": 2,
+          "scenario": "user_task_29",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 3,
+          "scenario": "user_task_27",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 4,
+          "scenario": "user_task_28",
+          "version": "unsafe",
+          "item_id": "user_task_28__g1_ii_w3v2"
+        },
+        {
+          "trial": 5,
+          "scenario": "user_task_1",
+          "version": "unsafe",
+          "item_id": "user_task_1__g3_ii_w1"
+        },
+        {
+          "trial": 6,
+          "scenario": "user_task_15",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 7,
+          "scenario": "user_task_2",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 8,
+          "scenario": "user_task_17",
+          "version": "unsafe",
+          "item_id": "user_task_17__g2_ii_w3v1"
+        }
+      ]
+    },
+    {
+      "participant": "P030",
+      "reserve_for": "P010",
+      "list": "B",
+      "condition": "high",
+      "trials": [
+        {
+          "trial": 1,
+          "scenario": "user_task_26",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 2,
+          "scenario": "user_task_29",
+          "version": "unsafe",
+          "item_id": "user_task_29__g4_ii_w1"
+        },
+        {
+          "trial": 3,
+          "scenario": "user_task_27",
+          "version": "unsafe",
+          "item_id": "user_task_27__g3_ii_w3v1"
+        },
+        {
+          "trial": 4,
+          "scenario": "user_task_28",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 5,
+          "scenario": "user_task_1",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 6,
+          "scenario": "user_task_15",
+          "version": "unsafe",
+          "item_id": "user_task_15__g1_ii_w1"
+        },
+        {
+          "trial": 7,
+          "scenario": "user_task_2",
+          "version": "unsafe",
+          "item_id": "user_task_2__g2_ii_w2"
+        },
+        {
+          "trial": 8,
+          "scenario": "user_task_17",
+          "version": "safe",
+          "item_id": null
+        }
+      ]
+    },
+    {
+      "participant": "P031",
+      "reserve_for": "P011",
+      "list": "A",
+      "condition": "low",
+      "trials": [
+        {
+          "trial": 1,
+          "scenario": "user_task_26",
+          "version": "unsafe",
+          "item_id": "user_task_26__g4_ii_w2"
+        },
+        {
+          "trial": 2,
+          "scenario": "user_task_29",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 3,
+          "scenario": "user_task_27",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 4,
+          "scenario": "user_task_28",
+          "version": "unsafe",
+          "item_id": "user_task_28__g1_ii_w3v2"
+        },
+        {
+          "trial": 5,
+          "scenario": "user_task_1",
+          "version": "unsafe",
+          "item_id": "user_task_1__g3_ii_w1"
+        },
+        {
+          "trial": 6,
+          "scenario": "user_task_15",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 7,
+          "scenario": "user_task_2",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 8,
+          "scenario": "user_task_17",
+          "version": "unsafe",
+          "item_id": "user_task_17__g2_ii_w3v1"
+        }
+      ]
+    },
+    {
+      "participant": "P032",
+      "reserve_for": "P012",
+      "list": "B",
+      "condition": "low",
+      "trials": [
+        {
+          "trial": 1,
+          "scenario": "user_task_26",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 2,
+          "scenario": "user_task_29",
+          "version": "unsafe",
+          "item_id": "user_task_29__g4_ii_w1"
+        },
+        {
+          "trial": 3,
+          "scenario": "user_task_27",
+          "version": "unsafe",
+          "item_id": "user_task_27__g3_ii_w3v1"
+        },
+        {
+          "trial": 4,
+          "scenario": "user_task_28",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 5,
+          "scenario": "user_task_1",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 6,
+          "scenario": "user_task_15",
+          "version": "unsafe",
+          "item_id": "user_task_15__g1_ii_w1"
+        },
+        {
+          "trial": 7,
+          "scenario": "user_task_2",
+          "version": "unsafe",
+          "item_id": "user_task_2__g2_ii_w2"
+        },
+        {
+          "trial": 8,
+          "scenario": "user_task_17",
+          "version": "safe",
+          "item_id": null
+        }
+      ]
+    },
+    {
+      "participant": "P033",
+      "reserve_for": "P013",
+      "list": "B",
+      "condition": "high",
+      "trials": [
+        {
+          "trial": 1,
+          "scenario": "user_task_29",
+          "version": "unsafe",
+          "item_id": "user_task_29__g4_ii_w1"
+        },
+        {
+          "trial": 2,
+          "scenario": "user_task_28",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 3,
+          "scenario": "user_task_26",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 4,
+          "scenario": "user_task_15",
+          "version": "unsafe",
+          "item_id": "user_task_15__g1_ii_w1"
+        },
+        {
+          "trial": 5,
+          "scenario": "user_task_27",
+          "version": "unsafe",
+          "item_id": "user_task_27__g3_ii_w3v1"
+        },
+        {
+          "trial": 6,
+          "scenario": "user_task_17",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 7,
+          "scenario": "user_task_1",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 8,
+          "scenario": "user_task_2",
+          "version": "unsafe",
+          "item_id": "user_task_2__g2_ii_w2"
+        }
+      ]
+    },
+    {
+      "participant": "P034",
+      "reserve_for": "P014",
+      "list": "A",
+      "condition": "low",
+      "trials": [
+        {
+          "trial": 1,
+          "scenario": "user_task_29",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 2,
+          "scenario": "user_task_28",
+          "version": "unsafe",
+          "item_id": "user_task_28__g1_ii_w3v2"
+        },
+        {
+          "trial": 3,
+          "scenario": "user_task_26",
+          "version": "unsafe",
+          "item_id": "user_task_26__g4_ii_w2"
+        },
+        {
+          "trial": 4,
+          "scenario": "user_task_15",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 5,
+          "scenario": "user_task_27",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 6,
+          "scenario": "user_task_17",
+          "version": "unsafe",
+          "item_id": "user_task_17__g2_ii_w3v1"
+        },
+        {
+          "trial": 7,
+          "scenario": "user_task_1",
+          "version": "unsafe",
+          "item_id": "user_task_1__g3_ii_w1"
+        },
+        {
+          "trial": 8,
+          "scenario": "user_task_2",
+          "version": "safe",
+          "item_id": null
+        }
+      ]
+    },
+    {
+      "participant": "P035",
+      "reserve_for": "P015",
+      "list": "B",
+      "condition": "low",
+      "trials": [
+        {
+          "trial": 1,
+          "scenario": "user_task_29",
+          "version": "unsafe",
+          "item_id": "user_task_29__g4_ii_w1"
+        },
+        {
+          "trial": 2,
+          "scenario": "user_task_28",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 3,
+          "scenario": "user_task_26",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 4,
+          "scenario": "user_task_15",
+          "version": "unsafe",
+          "item_id": "user_task_15__g1_ii_w1"
+        },
+        {
+          "trial": 5,
+          "scenario": "user_task_27",
+          "version": "unsafe",
+          "item_id": "user_task_27__g3_ii_w3v1"
+        },
+        {
+          "trial": 6,
+          "scenario": "user_task_17",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 7,
+          "scenario": "user_task_1",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 8,
+          "scenario": "user_task_2",
+          "version": "unsafe",
+          "item_id": "user_task_2__g2_ii_w2"
+        }
+      ]
+    },
+    {
+      "participant": "P036",
+      "reserve_for": "P016",
+      "list": "A",
+      "condition": "high",
+      "trials": [
+        {
+          "trial": 1,
+          "scenario": "user_task_29",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 2,
+          "scenario": "user_task_28",
+          "version": "unsafe",
+          "item_id": "user_task_28__g1_ii_w3v2"
+        },
+        {
+          "trial": 3,
+          "scenario": "user_task_26",
+          "version": "unsafe",
+          "item_id": "user_task_26__g4_ii_w2"
+        },
+        {
+          "trial": 4,
+          "scenario": "user_task_15",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 5,
+          "scenario": "user_task_27",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 6,
+          "scenario": "user_task_17",
+          "version": "unsafe",
+          "item_id": "user_task_17__g2_ii_w3v1"
+        },
+        {
+          "trial": 7,
+          "scenario": "user_task_1",
+          "version": "unsafe",
+          "item_id": "user_task_1__g3_ii_w1"
+        },
+        {
+          "trial": 8,
+          "scenario": "user_task_2",
+          "version": "safe",
+          "item_id": null
+        }
+      ]
+    },
+    {
+      "participant": "P037",
+      "reserve_for": "P017",
+      "list": "B",
+      "condition": "low",
+      "trials": [
+        {
+          "trial": 1,
+          "scenario": "user_task_28",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 2,
+          "scenario": "user_task_15",
+          "version": "unsafe",
+          "item_id": "user_task_15__g1_ii_w1"
+        },
+        {
+          "trial": 3,
+          "scenario": "user_task_29",
+          "version": "unsafe",
+          "item_id": "user_task_29__g4_ii_w1"
+        },
+        {
+          "trial": 4,
+          "scenario": "user_task_17",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 5,
+          "scenario": "user_task_26",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 6,
+          "scenario": "user_task_2",
+          "version": "unsafe",
+          "item_id": "user_task_2__g2_ii_w2"
+        },
+        {
+          "trial": 7,
+          "scenario": "user_task_27",
+          "version": "unsafe",
+          "item_id": "user_task_27__g3_ii_w3v1"
+        },
+        {
+          "trial": 8,
+          "scenario": "user_task_1",
+          "version": "safe",
+          "item_id": null
+        }
+      ]
+    },
+    {
+      "participant": "P038",
+      "reserve_for": "P018",
+      "list": "A",
+      "condition": "low",
+      "trials": [
+        {
+          "trial": 1,
+          "scenario": "user_task_28",
+          "version": "unsafe",
+          "item_id": "user_task_28__g1_ii_w3v2"
+        },
+        {
+          "trial": 2,
+          "scenario": "user_task_15",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 3,
+          "scenario": "user_task_29",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 4,
+          "scenario": "user_task_17",
+          "version": "unsafe",
+          "item_id": "user_task_17__g2_ii_w3v1"
+        },
+        {
+          "trial": 5,
+          "scenario": "user_task_26",
+          "version": "unsafe",
+          "item_id": "user_task_26__g4_ii_w2"
+        },
+        {
+          "trial": 6,
+          "scenario": "user_task_2",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 7,
+          "scenario": "user_task_27",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 8,
+          "scenario": "user_task_1",
+          "version": "unsafe",
+          "item_id": "user_task_1__g3_ii_w1"
+        }
+      ]
+    },
+    {
+      "participant": "P039",
+      "reserve_for": "P019",
+      "list": "A",
+      "condition": "high",
+      "trials": [
+        {
+          "trial": 1,
+          "scenario": "user_task_28",
+          "version": "unsafe",
+          "item_id": "user_task_28__g1_ii_w3v2"
+        },
+        {
+          "trial": 2,
+          "scenario": "user_task_15",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 3,
+          "scenario": "user_task_29",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 4,
+          "scenario": "user_task_17",
+          "version": "unsafe",
+          "item_id": "user_task_17__g2_ii_w3v1"
+        },
+        {
+          "trial": 5,
+          "scenario": "user_task_26",
+          "version": "unsafe",
+          "item_id": "user_task_26__g4_ii_w2"
+        },
+        {
+          "trial": 6,
+          "scenario": "user_task_2",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 7,
+          "scenario": "user_task_27",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 8,
+          "scenario": "user_task_1",
+          "version": "unsafe",
+          "item_id": "user_task_1__g3_ii_w1"
+        }
+      ]
+    },
+    {
+      "participant": "P040",
+      "reserve_for": "P020",
+      "list": "B",
+      "condition": "high",
+      "trials": [
+        {
+          "trial": 1,
+          "scenario": "user_task_28",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 2,
+          "scenario": "user_task_15",
+          "version": "unsafe",
+          "item_id": "user_task_15__g1_ii_w1"
+        },
+        {
+          "trial": 3,
+          "scenario": "user_task_29",
+          "version": "unsafe",
+          "item_id": "user_task_29__g4_ii_w1"
+        },
+        {
+          "trial": 4,
+          "scenario": "user_task_17",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 5,
+          "scenario": "user_task_26",
+          "version": "safe",
+          "item_id": null
+        },
+        {
+          "trial": 6,
+          "scenario": "user_task_2",
+          "version": "unsafe",
+          "item_id": "user_task_2__g2_ii_w2"
+        },
+        {
+          "trial": 7,
+          "scenario": "user_task_27",
+          "version": "unsafe",
+          "item_id": "user_task_27__g3_ii_w3v1"
+        },
+        {
+          "trial": 8,
+          "scenario": "user_task_1",
+          "version": "safe",
+          "item_id": null
+        }
+      ]
     }
   ]
 }
