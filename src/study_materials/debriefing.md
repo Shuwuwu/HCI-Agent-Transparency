@@ -1,6 +1,6 @@
 # Thank you for taking part :-)
 
-You have completed the study.
+You have completed the study!
 
 ## What was this study about?
 

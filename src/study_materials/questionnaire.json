@@ -1,6 +1,6 @@
 {
   "version": "questionnaire_v2",
-  "title": "A Few Last Questions",
+  "title": "Post Study Questions",
   "intro": "These questions are about the session as a whole, not one conversation.",
   "items": [
     {
