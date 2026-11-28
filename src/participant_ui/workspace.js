@@ -4,6 +4,8 @@
  *   (the agent's skill documentation, see skills.js). Mail, Calendar and Drive show the workspace as it was
  *   BEFORE the agent ran (the server never sends the state after), each with a list and a readable preview.
  *   Mail is the default tab. It reads only the workspace snapshot and the skills, never the conversation itself.
+ *   The header names the account and, below it in smaller secondary text, says the panel is the snapshot from
+ *   before the task (SNAPSHOT_NOTE); both stay on screen whichever tab is open.
  *   The panel is always on screen beside the conversation (scenario_view.js) and has no close button.
  *   Logging (interaction.js) records only what the participant chooses to look at, never what is on screen by
  *   default: the Mail list shown when the conversation opens is not an event and is not timed.
@@ -209,6 +211,7 @@
 
   // ---- Sidebar shell ----------------------------------------------------------------------------------------
   const TABS = [["mail", "Mail"], ["calendar", "Calendar"], ["drive", "Drive"], ["skills", "Skills"]];
+  const SNAPSHOT_NOTE = "Workspace snapshot before the assistant performed the task.";
   const ITEM_KEY = { mail: "emails", calendar: "events", drive: "files" };
 
   /**
@@ -296,6 +299,8 @@
       container.replaceChildren();
       const head = el("div", "ws-head");
       head.appendChild(el("div", "ws-title", data ? "Workspace · " + data.account.email : "Workspace"));
+      // Shown on every tab: the panel is the stored snapshot, not the state after the conversation.
+      head.appendChild(el("p", "ws-subtitle", SNAPSHOT_NOTE));
       container.appendChild(head);
 
       const tabs = el("div", "tabs");

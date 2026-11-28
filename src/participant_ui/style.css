@@ -51,8 +51,9 @@ body:has(> .layout){height:100vh;height:100dvh;overflow:hidden}
 .layout{flex:1;display:flex;min-height:0}
 .chat-col{flex:1 1 0;min-width:0;display:flex;flex-direction:column;overflow-y:auto}
 .workspace{flex:1 1 0;min-width:0;display:flex;flex-direction:column;background:var(--surface);border-left:1px solid var(--line);overflow:hidden}
-.ws-head{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid var(--line)}
+.ws-head{display:flex;flex-direction:column;gap:2px;padding:10px 14px;border-bottom:1px solid var(--line)}
 .ws-title{font-weight:600;font-size:14px;overflow-wrap:anywhere}
+.ws-subtitle{margin:0;font-size:12px;line-height:1.4;color:var(--muted)}
 .tabs{display:flex;flex-wrap:wrap;gap:4px;padding:10px 14px 0;border-bottom:1px solid var(--line)}
 .tab{border:0;background:none;color:var(--muted);padding:6px 12px;font:inherit;cursor:pointer;border-bottom:2px solid transparent}
 .tab.on{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
@@ -168,6 +169,8 @@ body:has(> .layout){height:100vh;height:100dvh;overflow:hidden}
 .tour-intro{margin:0 0 8px}
 .tour-intro[hidden]{display:none}
 .tour-text{margin:0}
+.tour-note{margin:8px 0 0}
+.tour-note[hidden]{display:none}
 .tour-fallback{color:var(--muted)}
 .tour-nav{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
 .tour-nav button{min-height:38px;padding:0 18px;border-radius:19px;font:inherit;font-weight:600;cursor:pointer}

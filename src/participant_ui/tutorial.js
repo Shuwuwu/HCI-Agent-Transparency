@@ -91,8 +91,11 @@
 
   /**
    * Run a tour over `steps`. A step is
-   * {title, text, intro?, target?, fallback?, fallbackText?, before?, done?, action?}:
+   * {title, text, intro?, note?, target?, fallback?, fallbackText?, before?, done?, action?}:
+   *   text          the instruction: a string, or a list of parts, each a string or {strong: "..."} for words shown
+   *                 in bold (inserted as text, never as HTML);
    *   intro         an optional paragraph shown above the text and its action label;
+   *   note          an optional paragraph shown below the text;
    *   target()      the element to spotlight, looked up again on every frame (panels re-render their DOM);
    *                 a step without one is a centred message;
    *   fallback()    spotlit instead while target() is not on screen, with fallbackText added to the text;
@@ -110,7 +113,7 @@
     const tip = overlay.appendChild(el("div", "tour-tip"));
     tip.setAttribute("role", "dialog");
     tip.setAttribute("aria-labelledby", "tour-title");
-    tip.setAttribute("aria-describedby", "tour-intro tour-text"); // a missing or hidden intro is simply skipped
+    tip.setAttribute("aria-describedby", "tour-intro tour-text tour-note"); // a hidden intro or note is skipped
     tip.tabIndex = -1;
     const arrow = tip.appendChild(el("div", "tour-arrow"));
     const count = tip.appendChild(el("p", "tour-count"));
@@ -121,6 +124,9 @@
     intro.hidden = true;
     const text = tip.appendChild(el("p", "tour-text"));
     text.id = "tour-text";
+    const note = tip.appendChild(el("p", "tour-note")); // a step's optional second paragraph, below its instruction
+    note.id = "tour-note";
+    note.hidden = true;
     const nav = tip.appendChild(el("div", "tour-nav"));
     const back = nav.appendChild(el("button", "tour-back", "Back"));
     const next = nav.appendChild(el("button", "tour-next", "Next"));
@@ -153,15 +159,20 @@
     }
 
     /** Fill the tooltip's body: the step's optional intro paragraph, then its instruction (with the bold action
-     *  label, such as "Try it now:", when the step has one) and, while the step's target is not on screen, the
-     *  fallback note. Steps without an intro look exactly as before. */
+     *  label, such as "Try it now:", when the step has one, and its {strong} parts in bold) and, while the step's
+     *  target is not on screen, the fallback note, then its optional note paragraph. Steps without an intro or
+     *  note look exactly as before. */
     function setText(step, fallback) {
       intro.textContent = step.intro || "";
       intro.hidden = !step.intro;
       text.replaceChildren();
       if (step.action && !fallback) text.appendChild(el("strong", "tour-action", step.action + ": "));
-      text.appendChild(document.createTextNode(step.text));
+      [].concat(step.text).forEach((part) => {
+        text.appendChild(typeof part === "string" ? document.createTextNode(part) : el("strong", null, part.strong));
+      });
       if (fallback && step.fallbackText) text.appendChild(el("span", "tour-fallback", " " + step.fallbackText));
+      note.textContent = step.note || "";
+      note.hidden = !step.note;
     }
 
     /** Lay the overlay out for the current step, writing to the DOM only when something moved. It runs on every
@@ -288,8 +299,9 @@
           + "scrolls on its own.",
         target: () => q("#workspace") },
       { title: "Workspace Tabs",
-        text: "Switch between Mail, Calendar, and Drive to explore Emma's workspace as it was before "
-          + "the assistant began the task.",
+        text: ["Switch between Mail, Calendar, and Drive to explore Emma's workspace as it was ", { strong: "before" },
+          " the assistant began the task."],
+        note: "Changes made during the conversation are not reflected in the workspace.",
         target: () => q("#workspace .tabs") },
       { title: "Opening an Item",
         text: "Click an email, event or file to view it. Use ← Back to list to return. Mail has separate "

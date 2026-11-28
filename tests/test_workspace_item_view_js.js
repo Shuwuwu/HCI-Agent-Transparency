@@ -1,6 +1,7 @@
 // Tests for the logging of src/participant_ui/workspace.js: nothing for the default view of the always-open panel,
 // tab choices, and the item viewing times (workspace_item_view), measured with the
-// visibility-aware timers of src/participant_ui/interaction.js. Run: node tests/test_workspace_item_view_js.js
+// visibility-aware timers of src/participant_ui/interaction.js; also the header's snapshot subtitle, on every tab.
+// Run: node tests/test_workspace_item_view_js.js
 //
 // Both files are loaded unchanged into a minimal fake DOM: just enough elements for workspace.js to draw its
 // panel and for the test to click its buttons, a controllable clock (performance.now) and page visibility, and a
@@ -171,5 +172,20 @@ assert.deepStrictEqual(views(), []);
 
 // The panel has no close button.
 assert.strictEqual(find(container, "ws-close"), null);
+
+// The header carries the snapshot subtitle below the account, on every tab and also without a snapshot.
+const SNAPSHOT_NOTE = "Workspace snapshot before the assistant performed the task.";
+const subtitleUnderTitle = (root) => {
+  const head = find(root, "ws-head");
+  assert.deepStrictEqual(head.children.map((c) => c.className), ["ws-title", "ws-subtitle"]);
+  assert.strictEqual(head.children[1].textContent, SNAPSHOT_NOTE);
+};
+for (const label of ["Mail", "Calendar", "Drive", "Skills"]) {
+  click(container, "tab", label);
+  subtitleUnderTitle(container);
+}
+const noSnapshot = el("aside");
+WorkspaceSidebar.init(noSnapshot, null, "t=x", {});
+subtitleUnderTitle(noSnapshot);
 
 console.log("workspace item view tests passed");
